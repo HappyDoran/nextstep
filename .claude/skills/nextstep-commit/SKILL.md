@@ -1,0 +1,1 @@
+../../../.codex/skills/nextstep-commit/SKILL.md

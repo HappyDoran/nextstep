@@ -1,0 +1,1 @@
+../../../.codex/skills/nextstep-structure/SKILL.md

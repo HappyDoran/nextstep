@@ -1,0 +1,35 @@
+{
+  "name": "nextstep",
+  "private": true,
+  "packageManager": "pnpm@10.34.6",
+  "engines": {
+    "node": "24.22.1"
+  },
+  "scripts": {
+    "dev": "turbo run dev --filter=@nextstep/web --filter=@nextstep/server",
+    "dev:desktop": "pnpm --filter @nextstep/desktop dev",
+    "storybook": "pnpm --filter @nextstep/design-system storybook",
+    "build": "turbo run build",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "turbo run typecheck && tsc -p tsconfig.tools.json",
+    "test": "pnpm test:harness && turbo run test",
+    "test:harness": "node --test tests/harness/*.test.mjs",
+    "test:e2e": "playwright test",
+    "structure:check": "node scripts/check-structure.mjs",
+    "check": "pnpm structure:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "prepare": "node scripts/install-hooks.mjs",
+    "test:desktop": "playwright test --config playwright.desktop.config.ts"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.10",
+    "typescript": "catalog:",
+    "eslint": "^9.39.5",
+    "@eslint/js": "^9.39.5",
+    "typescript-eslint": "^8.61.1",
+    "eslint-config-next": "16.4.3",
+    "@types/node": "^24.0.0",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@playwright/test": "1.62.1"
+  }
+}

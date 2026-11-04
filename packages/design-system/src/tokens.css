@@ -1,0 +1,6 @@
+:root { --ns-bg: #f6f7f9; --ns-surface: #fff; --ns-text: #172c2b; --ns-muted: #536764; --ns-accent: #146653; --ns-border: #dbe3df; --ns-radius: 16px; }
+.ns-button { background: var(--ns-accent); color: white; border: 0; border-radius: 8px; padding: 12px 20px; font: inherit; cursor: pointer; }
+.ns-button:hover { filter: brightness(.9); }
+.ns-button:disabled { opacity: .6; cursor: wait; }
+.ns-button:focus-visible, a:focus-visible { outline: 3px solid #ad7d27; outline-offset: 4px; }
+.ns-panel { background: var(--ns-surface); border: 1px solid var(--ns-border); border-radius: var(--ns-radius); padding: 28px; }

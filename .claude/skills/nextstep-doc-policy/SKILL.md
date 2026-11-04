@@ -1,0 +1,1 @@
+../../../.codex/skills/nextstep-doc-policy/SKILL.md

@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "playwright*.ts",
+    "tests/**/*.ts",
+    "packages/design-system/.storybook/*.ts",
+    "packages/design-system/src/*.stories.tsx"
+  ]
+}

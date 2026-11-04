@@ -1,0 +1,31 @@
+# 기술 규칙
+
+## 실행 환경과 선택
+
+개발 Node는 `.node-version`, 패키지 관리자는 루트 package.json, 공통 라이브러리 선언은 pnpm-workspace.yaml, 실제 해석 버전은 pnpm-lock.yaml이 소유한다. mise.toml은 로컬 도구 선택을 연결한다. Electron에 포함된 Node는 개발 Node와 별개이며 DB를 실행하지 않는다.
+
+서버는 Fastify 5, 로컬 관계형 DB는 SQLite와 Node 내장 `node:sqlite`를 사용한다. 단일 서버·작업자, 트랜잭션·고유 제약을 사용할 수 있는 초기 로컬 개발 선택이다. 내장 SQLite API의 안정성 상태는 Node 버전에 종속되며 현재 실행 시 실험적 경고가 발생할 수 있다. 작은 동기 쿼리용으로 한정하고 수집·추출처럼 오래 걸리는 처리는 요청 경로에 넣지 않는다. 운영 DB·배포 환경은 아직 결정하지 않았다.
+
+Fastify의 [Node 지원 정책](https://fastify.dev/docs/latest/Reference/LTS/), Node의 [SQLite API](https://nodejs.org/docs/latest-v24.x/api/sqlite.html), Electron의 [보안 권고](https://www.electronjs.org/docs/latest/tutorial/security)를 기준으로 설치·타입·실행 호환성을 검증한다. 버전 문자열만으로 호환성을 보장하지 않는다.
+
+Next.js App Router·React·Tailwind로 웹을 구현한다. 공통 UI·토큰은 design-system과 Storybook에서 관리한다. 현재 색상과 화면은 개발용 초기안이며 최종 디자인 확정이 아니다. TanStack Query·Zustand는 실제 서버 상태·클라이언트 상태 관리 수요가 생길 때 공통 버전을 검증해 추가한다.
+
+## 책임과 의존 그래프
+
+| workspace | 책임 | 허용하는 내부 의존 |
+|---|---|---|
+| apps/web | 웹 UI, 동일 출처 API 경유, 로딩·오류 표시 | contracts, design-system |
+| apps/server | API·로컬 DB·마이그레이션. 향후 인증·작업·수집의 소유자 | contracts |
+| apps/desktop | macOS 창·종료·검증한 외부 URL 열기 | 없음 |
+| packages/contracts | 런타임 Zod 계약·공통 타입·상태 구분 | 없음 |
+| packages/design-system | React UI·CSS 토큰·Storybook | 없음 |
+
+앱 사이 직접 import, workspace 밖 상대경로 import, 다른 패키지 src 직접 참조를 금지한다. package exports로만 소비한다. 공통 패키지에 DB·파일·자격정보·외부 수집을 넣지 않는다. 서버에서 UI를 import하지 않는다. 검사는 scripts/check-structure.mjs가 소유한다.
+
+## 신뢰 경계
+
+API는 기본 loopback에만 바인딩하고 개인 데이터를 제공하는 엔드포인트는 인증·사용자 범위와 삭제 경합 검증을 갖춘 뒤 추가한다. 현재 공개 준비 확인 외 개인 API가 없다. SQLite 파일은 서버의 무시된 비공개 경로에 두고 외래키·WAL·busy timeout을 적용한다. DB 스키마 버전은 트랜잭션으로 전진하며 미래 버전은 거부한다.
+
+Electron은 nodeIntegration=false, contextIsolation=true, sandbox=true, webSecurity=true를 명시한다. preload·IPC는 현재 필요 없어 제공하지 않는다. 서비스 origin 밖 이동·리다이렉트와 webview를 막고 권한 요청을 거부한다. 외부 HTTPS 링크는 사용자 확인 후 기본 브라우저로 연다. 개발 모드에만 loopback HTTP를 허용한다. 배포용 서비스 origin은 소유한 HTTPS 주소를 설정해야 한다. 자격정보가 포함된 URL·file/javascript 등 스킴은 거부한다.
+
+문서·메일·공고는 입력 자료이며 도구 실행이나 정책 변경 지시로 취급하지 않는다. 원문·연결 비밀정보의 평문 로그를 만들지 않는다. 실제 개인 데이터 투입 전 인증·암호화·보관·삭제 구현을 검증해야 한다.

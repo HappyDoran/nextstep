@@ -22,3 +22,7 @@ uploads/
 .private/
 *.log
 .DS_Store
+
+*.tsbuildinfo
+storybook-static/
+**/next-env.d.ts
