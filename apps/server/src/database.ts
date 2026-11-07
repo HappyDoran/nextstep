@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -139,6 +139,64 @@ export function openDatabase(filename: string) {
           PRIMARY KEY (user_id, posting_id)
         ) STRICT;
         PRAGMA user_version = 5;`);
+    }
+    if (version < 6) {
+      // P1-05: 네이버 연결(비밀번호는 암호화), 편지함별 확보 위치, 채용 메일 최소 근거, 확인 요청, 정정 재적용 억제.
+      db.exec(`CREATE TABLE mail_connections (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          provider TEXT NOT NULL,
+          account TEXT NOT NULL,
+          secret TEXT NOT NULL,
+          status TEXT NOT NULL,
+          consent_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          last_success_at TEXT,
+          last_error TEXT,
+          range_incomplete INTEGER NOT NULL DEFAULT 0
+        ) STRICT;
+        CREATE TABLE mail_cursors (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          mailbox TEXT NOT NULL,
+          uid_validity TEXT NOT NULL,
+          last_uid INTEGER NOT NULL,
+          PRIMARY KEY (user_id, mailbox)
+        ) STRICT;
+        CREATE TABLE mail_messages (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          provider TEXT NOT NULL,
+          message_key TEXT NOT NULL,
+          received_at TEXT,
+          subject TEXT NOT NULL,
+          platform TEXT,
+          classification TEXT NOT NULL,
+          evidence TEXT,
+          posting_key TEXT,
+          application_id TEXT REFERENCES applications(id) ON DELETE SET NULL,
+          outcome TEXT NOT NULL,
+          processed_at TEXT NOT NULL,
+          UNIQUE (user_id, provider, message_key)
+        ) STRICT;
+        CREATE TABLE review_requests (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          message_id TEXT NOT NULL REFERENCES mail_messages(id) ON DELETE CASCADE,
+          reason TEXT NOT NULL,
+          status TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          resolved_at TEXT,
+          UNIQUE (message_id)
+        ) STRICT;
+        CREATE TABLE evidence_suppressions (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          message_key TEXT NOT NULL,
+          application_id TEXT,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, message_key)
+        ) STRICT;
+        ALTER TABLE applications ADD COLUMN origin TEXT NOT NULL DEFAULT 'manual';
+        ALTER TABLE application_events ADD COLUMN message_id TEXT;
+        PRAGMA user_version = 6;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

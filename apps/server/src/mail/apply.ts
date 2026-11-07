@@ -1,0 +1,79 @@
+import { randomUUID } from 'node:crypto';
+import type { DatabaseSync } from 'node:sqlite';
+import { postingKey, type MailVerdict } from './classify.js';
+
+// 메일 근거를 지원 건에 반영한다. 기획서 5절 원칙:
+// - 공고 식별자로만 자동 연결하고, 회사명만 같거나 후보가 하나뿐이라는 이유로 확정하지 않는다.
+// - 오래된 접수·진행은 더 나중 상태를 되돌리지 않는다. 최종 결과 충돌은 현재 값을 두고 확인받는다.
+// - 열람은 개인 상태와 별도 속성이다. 공고 마감은 개인 상태를 바꾸지 않는다.
+const RANK: Record<string, number> = { 미지원: 0, '지원 완료': 1, '전형 진행중': 2, 합격: 3, 불합격: 3 };
+const now = () => new Date().toISOString();
+
+export type StoredMessage = { id: string; userId: string; messageKey: string; verdict: MailVerdict; subject: string; receivedAt: string | null };
+export type Outcome = 'applied' | 'created' | 'no_change' | 'review' | 'suppressed' | 'unlinked';
+
+type AppRow = { id: string; status: string; read_status: string; posting_url: string | null };
+
+function logEvent(db: DatabaseSync, appId: string, field: 'status' | 'readStatus', from: string, to: string, messageId: string) {
+  db.prepare("INSERT INTO application_events (id, application_id, field, from_value, to_value, source, at, message_id) VALUES (?, ?, ?, ?, ?, 'mail', ?, ?)")
+    .run(randomUUID(), appId, field, from, to, now(), messageId);
+}
+
+function review(db: DatabaseSync, msg: StoredMessage, reason: '연결 불명' | '모호' | '최종 결과 충돌'): Outcome {
+  // 같은 근거는 다시 요청하지 않는다(메시지당 하나).
+  db.prepare("INSERT OR IGNORE INTO review_requests (id, user_id, message_id, reason, status, created_at) VALUES (?, ?, ?, ?, '대기', ?)").run(randomUUID(), msg.userId, msg.id, reason, now());
+  return 'review';
+}
+
+// 연결 대상이 정해진 뒤 상태를 반영한다. 확인 목록에서 사용자가 연결할 때도 이 함수를 쓴다.
+export function applyToApplication(db: DatabaseSync, msg: StoredMessage, app: AppRow, options: { force?: boolean } = {}): Outcome {
+  const status = msg.verdict.status;
+  db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ?').run(app.id, msg.id);
+  if (status === '열람') {
+    if (app.read_status === '열람') return 'no_change';
+    db.prepare("UPDATE applications SET read_status = '열람', updated_at = ? WHERE id = ?").run(now(), app.id);
+    logEvent(db, app.id, 'readStatus', app.read_status, '열람', msg.id);
+    return 'applied';
+  }
+  if (status === '모호') return review(db, msg, '모호');
+  // 사용자가 확인 목록에서 확정하면 순서 규칙 대신 사용자 선택을 따른다.
+  if (options.force) {
+    if (app.status === status) return 'no_change';
+    db.prepare('UPDATE applications SET status = ?, updated_at = ? WHERE id = ?').run(status, now(), app.id);
+    logEvent(db, app.id, 'status', app.status, status, msg.id);
+    return 'applied';
+  }
+  const current = RANK[app.status] ?? 0;
+  const next = RANK[status]!;
+  if (current === 3 && next === 3 && app.status !== status) return review(db, msg, '최종 결과 충돌');
+  if (next <= current) return 'no_change';
+  db.prepare('UPDATE applications SET status = ?, updated_at = ? WHERE id = ?').run(status, now(), app.id);
+  logEvent(db, app.id, 'status', app.status, status, msg.id);
+  return 'applied';
+}
+
+export function applyMessage(db: DatabaseSync, msg: StoredMessage): Outcome {
+  if (db.prepare('SELECT 1 FROM evidence_suppressions WHERE user_id = ? AND message_key = ?').get(msg.userId, msg.messageKey)) return 'suppressed';
+  const keys = new Set(msg.verdict.postingKeys);
+  const apps = db.prepare('SELECT id, status, read_status, posting_url FROM applications WHERE user_id = ?').all(msg.userId) as AppRow[];
+  const matches = keys.size ? apps.filter(a => a.posting_url && keys.has(postingKey(a.posting_url) ?? '')) : [];
+  if (matches.length === 1) return applyToApplication(db, msg, matches[0]!);
+  if (matches.length > 1) return review(db, msg, '연결 불명');
+  // 지원 건은 없지만 공고 식별자가 수집한 공고와 일치하면 회사·직무가 명확하므로 지원 건을 만든다. 지원일은 만들지 않는다.
+  if (keys.size === 1 && msg.verdict.status !== '모호' && msg.verdict.status !== '열람') {
+    const [source, id] = [...keys][0]!.split(':');
+    const posting = db.prepare('SELECT url, title, company FROM postings WHERE source = ? AND source_id = ? AND (owner_user_id IS NULL OR owner_user_id = ?) LIMIT 1').get(source!, id!, msg.userId) as { url: string; title: string; company: string } | undefined;
+    if (posting) {
+      const appId = randomUUID();
+      const at = now();
+      db.prepare("INSERT INTO applications (id, user_id, company, role_title, posting_url, status, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'mail')")
+        .run(appId, msg.userId, posting.company.slice(0, 200), posting.title.slice(0, 200), posting.url, msg.verdict.status, at, at);
+      logEvent(db, appId, 'status', '미지원', msg.verdict.status, msg.id);
+      db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ?').run(appId, msg.id);
+      return 'created';
+    }
+  }
+  // 대상을 식별할 수 없는 메일은 확인 요청을 바로 만들지 않고 보관한다. 회사·직무 해석(AI) 단계가
+  // 지원 건 생성 또는 확인 요청으로 넘긴다. 최초 조회에서 수백 건의 확인 요청이 쌓이는 것을 막는다.
+  return 'unlinked';
+}

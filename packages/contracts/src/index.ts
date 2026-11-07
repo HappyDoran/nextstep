@@ -63,7 +63,7 @@ export const applicationEventSchema = z.object({
   field: z.enum(['status', 'readStatus']),
   from: z.string().nullable(),
   to: z.string(),
-  source: z.enum(['manual']),
+  source: z.enum(['manual', 'mail']),
   at: z.string(),
 });
 export const applicationDetailSchema = applicationSchema.extend({ events: z.array(applicationEventSchema) });
@@ -95,7 +95,7 @@ export type Profile = z.infer<typeof profileSchema>;
 export const jobStatusSchema = z.enum(['대기', '실행중', '성공', '일부 실패', '실패']);
 export const jobSchema = z.object({
   id: z.string(),
-  kind: z.enum(['refresh', 'link']),
+  kind: z.enum(['refresh', 'link', 'mail']),
   status: jobStatusSchema,
   errorCode: z.string().nullable(),
   result: z.record(z.string(), z.unknown()).nullable(),
@@ -131,3 +131,41 @@ export const recommendationSchema = z.object({
 });
 export type Recommendation = z.infer<typeof recommendationSchema>;
 export const recommendationListSchema = z.object({ items: z.array(recommendationSchema), lastJob: jobSchema.nullable() });
+
+// 네이버 메일 연결: 애플리케이션 비밀번호는 서버에서 암호화 저장하고 다시 내보내지 않는다.
+export const mailConnectRequestSchema = z.object({
+  account: z.email().max(254),
+  appPassword: z.string().min(1).max(100),
+  consent: z.literal(true),
+}).strict();
+export const mailConnectionSchema = z.object({
+  provider: z.literal('naver'),
+  account: z.string(),
+  status: z.enum(['정상', '인증 실패']),
+  consentAt: z.string(),
+  lastSuccessAt: z.string().nullable(),
+  lastError: z.string().nullable(),
+  rangeIncomplete: z.boolean(),
+  lastJob: jobSchema.nullable(),
+});
+export type MailConnection = z.infer<typeof mailConnectionSchema>;
+
+// 확인 목록: 연결 불명·모호·최종 결과 충돌. 처리는 연결·새 지원 건 확정·무시만 제공한다.
+export const mailStatusSchema = z.enum(['지원 완료', '전형 진행중', '합격', '불합격', '열람', '모호']);
+export const reviewSchema = z.object({
+  id: z.string(),
+  reason: z.enum(['연결 불명', '모호', '최종 결과 충돌']),
+  createdAt: z.string(),
+  subject: z.string(),
+  receivedAt: z.string().nullable(),
+  platform: z.string().nullable(),
+  classification: mailStatusSchema,
+  evidence: z.string().nullable(),
+});
+export type Review = z.infer<typeof reviewSchema>;
+const reviewStatus = z.enum(['지원 완료', '전형 진행중', '합격', '불합격', '열람']).optional();
+export const reviewActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('link'), applicationId: z.string().min(1), status: reviewStatus }).strict(),
+  z.object({ action: z.literal('create'), company: z.string().trim().min(1).max(200), roleTitle: z.string().trim().min(1).max(200), status: reviewStatus }).strict(),
+  z.object({ action: z.literal('ignore') }).strict(),
+]);

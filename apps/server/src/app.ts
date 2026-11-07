@@ -10,9 +10,13 @@ import { registerDocuments, removeUserFiles } from './documents/routes.js';
 import { dirname, join } from 'node:path';
 import { registerRecommendations } from './recommend/routes.js';
 import { createHandler, type PipelineDeps } from './recommend/pipeline.js';
-import { startWorker } from './recommend/jobs.js';
+import { startWorker, type ClaimedJob } from './recommend/jobs.js';
+import { loadSecretKey } from './secrets.js';
+import { registerMail } from './mail/routes.js';
+import { createMailHandler } from './mail/sync.js';
+import { naverSource, type MailSource } from './mail/naver.js';
 
-export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; deps?: PipelineDeps } = {}) {
+export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; deps?: PipelineDeps; mailSource?: MailSource } = {}) {
   const db = openDatabase(databasePath);
   // 원본 파일은 DB 옆 비공개 디렉터리에 둔다(Git 제외 경로).
   const filesDir = options.filesDir ?? join(dirname(databasePath), 'files');
@@ -37,9 +41,15 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
   registerProfile(app, db);
   registerDocuments(app, db, filesDir);
   registerRecommendations(app, db);
+  // 연결 비밀정보 키는 DB와 다른 파일(또는 환경 변수)에 둔다.
+  const secretKey = loadSecretKey(join(dirname(databasePath), 'secret.key'));
+  const mailSource = options.mailSource ?? naverSource;
+  registerMail(app, db, secretKey, mailSource);
   // 수집·추천 작업은 요청 경로 밖의 작업자가 처리한다. 테스트는 worker:false로 끄고 직접 실행한다.
   if (options.worker) {
-    const stop = startWorker(db, createHandler(db, options.deps));
+    const recommend = createHandler(db, options.deps);
+    const mail = createMailHandler(db, secretKey, mailSource);
+    const stop = startWorker(db, (job: ClaimedJob) => (job.kind === 'mail' ? mail(job) : recommend(job)));
     app.addHook('onClose', async () => { stop(); });
   }
   app.setErrorHandler((error: FastifyError, _request, reply) => {

@@ -3,6 +3,7 @@
 // 실행: NAVER_IMAP_USER=... NAVER_IMAP_PASSWORD=... pnpm --filter @nextstep/server verify:naver
 import { pathToFileURL } from 'node:url';
 import { ImapFlow } from 'imapflow';
+import { classifyImapError, type ImapFailure } from '../mail/naver.js';
 
 const EXCLUDED = new Set(['\\Sent', '\\Drafts', '\\Trash', '\\Junk']);
 const PLATFORMS: Record<string, string[]> = {
@@ -51,16 +52,6 @@ function textPart(node: Part | undefined): string | undefined {
     return parts[0];
   }
   return node.disposition !== 'attachment' && (node.type === 'text/html' || node.type === 'text/plain') ? (node.part ?? '1') : undefined;
-}
-
-export type ImapFailure = 'missing_credentials' | 'auth_failed' | 'network' | 'tls' | 'protocol';
-
-export function classifyImapError(error: unknown): ImapFailure {
-  const e = error as { authenticationFailed?: boolean; code?: string; message?: string };
-  if (e.authenticationFailed) return 'auth_failed';
-  if (e.code && ['ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ENETUNREACH', 'ETIMEOUT', 'NoConnection'].includes(e.code)) return 'network';
-  if (e.code?.startsWith('ERR_TLS') || e.code === 'CERT_HAS_EXPIRED' || /certificate|tls/i.test(e.message ?? '')) return 'tls';
-  return 'protocol';
 }
 
 function platformOf(address: string | undefined) {

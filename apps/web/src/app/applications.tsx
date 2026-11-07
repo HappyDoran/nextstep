@@ -121,6 +121,6 @@ function ApplicationDetail({ id, userKey }: { id: string; userKey: string[] }) {
     <h3 className="mb-2 mt-6 text-body font-semibold">변경 이력</h3>
     {d.events.length === 0 ? <p className="text-body-sm text-muted-foreground">상태·열람 변경 이력이 없습니다.</p>
       : <ul className="flex flex-col gap-1 text-body-sm text-muted-foreground">{d.events.map(e => <li key={`${e.at}-${e.field}`}>
-        {new Date(e.at).toLocaleString('ko-KR')} · {e.field === 'status' ? '상태' : '열람'} {e.from ?? '없음'} → {e.to} (직접 수정)</li>)}</ul>}
+        {new Date(e.at).toLocaleString('ko-KR')} · {e.field === 'status' ? '상태' : '열람'} {e.from ?? '없음'} → {e.to} ({e.source === 'mail' ? '메일' : '직접 수정'})</li>)}</ul>}
   </div>;
 }
