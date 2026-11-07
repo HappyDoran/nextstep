@@ -32,7 +32,7 @@ Next.js App Router·React·Tailwind CSS로 웹을 구현한다. 화면과 공통
 
 ## 신뢰 경계
 
-API는 기본 loopback에만 바인딩하고 개인 데이터를 제공하는 엔드포인트는 인증·사용자 범위와 삭제 경합 검증을 갖춘 뒤 추가한다. 현재 공개 준비 확인 외 개인 API가 없다. 수집 모드 조회·변경(`/settings/collection`)은 인증 없이 열려 있으며 P1-02에서 관리자 전용으로 제한한다. SQLite 파일은 서버의 무시된 비공개 경로에 두고 외래키·WAL·busy timeout을 적용한다. DB 스키마 버전은 트랜잭션으로 전진하며 미래 버전은 거부한다.
+API는 기본 loopback에만 바인딩하고 개인 데이터를 제공하는 엔드포인트는 인증·사용자 범위와 삭제 경합 검증을 갖춘 뒤 추가한다. 초대 인증은 운영자가 발급한 1회용 초대 코드(해시 저장, 14일 만료)로 가입하고 이메일·비밀번호로 로그인한다. 비밀번호는 Node 내장 scrypt로 해시하고, 세션은 무작위 토큰의 해시를 DB에 저장해 14일 후 만료하며 HttpOnly·SameSite=Lax 쿠키로 전달한다(HTTPS 배포는 Secure). 로그인 실패는 이메일별 15분 5회로 제한한다. 개인 API는 세션에서 얻은 사용자 ID로만 범위를 정하고 다른 사용자 자료는 404로 답한다. 웹은 동일 출처 경유 route가 허용 경로만 API로 전달하고 Origin이 다른 변경 요청을 거부한다. 계정 삭제는 외래키 연쇄로 세션·소유 자료를 지운다. 수집 모드 조회·변경(`/settings/collection`)은 사용자 결정에 따라 배포 전까지 인증 없이 열려 있다. SQLite 파일은 서버의 무시된 비공개 경로에 두고 외래키·WAL·busy timeout을 적용한다. DB 스키마 버전은 트랜잭션으로 전진하며 미래 버전은 거부한다.
 
 Electron은 nodeIntegration=false, contextIsolation=true, sandbox=true, webSecurity=true를 명시한다. preload·IPC는 현재 필요 없어 제공하지 않는다. 서비스 origin 밖 이동·리다이렉트와 webview를 막고 권한 요청을 거부한다. 외부 HTTPS 링크는 사용자 확인 후 기본 브라우저로 연다. 개발 모드에만 loopback HTTP를 허용한다. 배포용 서비스 origin은 소유한 HTTPS 주소를 설정해야 한다. 자격정보가 포함된 URL·file/javascript 등 스킴은 거부한다.
 

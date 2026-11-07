@@ -19,6 +19,6 @@ test('관리 토글로 수집 모드를 바꾸고 재접속 후 유지된다', a
     await page.unroute('**/api/settings/collection');
   } finally {
     // 로컬 DB에 남기지 않도록 기본값으로 되돌린다.
-    await page.request.put('/api/settings/collection', { data: { mode: 'service' } });
+    await page.request.put('/api/settings/collection', { data: { mode: 'service' }, headers: { origin: 'http://127.0.0.1:3100' } });
   }
 });

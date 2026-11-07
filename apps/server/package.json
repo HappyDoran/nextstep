@@ -12,7 +12,8 @@
     "verify:naver": "tsx src/verify/naver-imap.ts",
     "verify:jobkorea": "tsx src/verify/jobkorea.ts",
     "verify:wanted": "tsx src/verify/wanted.ts",
-    "verify:jasoseol": "tsx src/verify/jasoseol.ts"
+    "verify:jasoseol": "tsx src/verify/jasoseol.ts",
+    "invite": "tsx src/invite.ts"
   },
   "dependencies": {
     "@nextstep/contracts": "workspace:*",

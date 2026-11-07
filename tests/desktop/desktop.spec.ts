@@ -14,7 +14,7 @@ test('macOS 창·격리·창 닫기·완전 종료', async () => {
   });
   try {
     const page = await app.firstWindow();
-    await expect(page.getByRole('status')).toHaveText('API와 로컬 DB가 준비되었습니다.');
+    await expect(page.getByRole('status').filter({ hasText: /서버|API/ })).toHaveText('API와 로컬 DB가 준비되었습니다.');
     expect(await page.evaluate(() => typeof (globalThis as { require?: unknown }).require)).toBe('undefined');
     const preferences = await app.evaluate(({ BrowserWindow }) => {
       const contents = BrowserWindow.getAllWindows()[0]!.webContents as unknown as { getLastWebPreferences(): { nodeIntegration: boolean; sandbox: boolean; contextIsolation: boolean; webSecurity: boolean } };

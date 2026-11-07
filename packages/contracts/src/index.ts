@@ -24,3 +24,30 @@ export const collectionSettingsSchema = z.object({
 });
 export const collectionModeUpdateSchema = z.object({ mode: collectionModeSchema }).strict();
 export type CollectionSettings = z.infer<typeof collectionSettingsSchema>;
+
+// 초대 계정 인증: 초대 코드로 가입하고 이메일·비밀번호로 로그인한다.
+export const credentialsSchema = z.object({
+  email: z.email().max(254),
+  password: z.string().min(10).max(200),
+}).strict();
+export const signupSchema = credentialsSchema.extend({ inviteCode: z.string().trim().min(8).max(64) }).strict();
+export const meSchema = z.object({ id: z.string(), email: z.string() });
+export type Me = z.infer<typeof meSchema>;
+
+// 지원 건: 사용자 소유 자료. URL은 식별자가 아니며 없을 수 있다.
+export const applicationCreateSchema = z.object({
+  company: z.string().trim().min(1).max(200),
+  roleTitle: z.string().trim().min(1).max(200),
+  postingUrl: z.url({ protocol: /^https$/ }).max(2000).optional(),
+  status: applicationStatusSchema.default('미지원'),
+}).strict();
+export const applicationSchema = z.object({
+  id: z.string(),
+  company: z.string(),
+  roleTitle: z.string(),
+  postingUrl: z.string().nullable(),
+  status: applicationStatusSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type Application = z.infer<typeof applicationSchema>;

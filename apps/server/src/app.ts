@@ -2,8 +2,10 @@ import Fastify, { type FastifyError } from 'fastify';
 import { healthSchema, collectionModeUpdateSchema, collectionSettingsSchema, SOURCE_POLICY, type CollectionMode } from '@nextstep/contracts';
 import { openDatabase } from './database.js';
 import { readCollectionMode, writeCollectionMode } from './sources/policy.js';
+import { registerAuth } from './auth.js';
+import { registerApplications } from './applications.js';
 
-export function createApp(databasePath: string) {
+export function createApp(databasePath: string, options: { secureCookie?: boolean } = {}) {
   const db = openDatabase(databasePath);
   // 개인 자료를 로그에 남기지 않는다. 관측 이벤트는 별도 허용 목록으로 추가한다.
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 });
@@ -21,6 +23,8 @@ export function createApp(databasePath: string) {
     writeCollectionMode(db, body.data.mode);
     return settings(body.data.mode);
   });
+  registerAuth(app, db, { secureCookie: options.secureCookie ?? false });
+  registerApplications(app, db);
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     // 4xx는 Fastify가 판정한 클라이언트 오류이므로 상태를 유지한다. 내부 메시지는 노출하지 않는다.
     const status = error.statusCode !== undefined && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
