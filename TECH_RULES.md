@@ -8,7 +8,7 @@
 
 Fastify의 [Node 지원 정책](https://fastify.dev/docs/latest/Reference/LTS/), Node의 [SQLite API](https://nodejs.org/docs/latest-v24.x/api/sqlite.html), Electron의 [보안 권고](https://www.electronjs.org/docs/latest/tutorial/security)를 기준으로 설치·타입·실행 호환성을 검증한다. 버전 문자열만으로 호환성을 보장하지 않는다.
 
-Next.js App Router·React·Tailwind CSS로 웹을 구현한다. 화면과 공통 UI는 공유 Tailwind preset의 유틸리티로 작성하며 styled-components 등 CSS-in-JS를 도입하지 않는다. CSS 변수는 토큰·테마 값의 정본이고 preset은 값 복제 없이 색상·타입·크기·포커스·모션 유틸리티에 연결한다. 공통 UI·토큰은 design-system과 Storybook에서 관리한다. 아이콘은 Lucide React를 정적 import로 사용한다. 토큰·타입·아이콘의 사용법은 packages/design-system/README.md가 소유한다. 브랜드 색상 선택은 디자인 기초 소유 문서를 따른다. 화면·타입·테마의 세부 디자인은 개발 초기안이다. TanStack Query·Zustand는 실제 서버 상태·클라이언트 상태 관리 수요가 생길 때 공통 버전을 검증해 추가한다.
+Next.js App Router·React·Tailwind CSS로 웹을 구현한다. 화면과 공통 UI는 공유 Tailwind preset의 유틸리티로 작성하며 styled-components 등 CSS-in-JS를 도입하지 않는다. CSS 변수는 토큰·테마 값의 정본이고 preset은 값 복제 없이 색상·타입·크기·포커스·모션 유틸리티에 연결한다. 공통 UI·토큰은 design-system과 Storybook에서 관리한다. 아이콘은 Lucide React를 정적 import로 사용한다. 토큰·타입·아이콘의 사용법은 packages/design-system/README.md가 소유한다. 브랜드 색상 선택은 디자인 기초 소유 문서를 따른다. 화면·타입·테마의 세부 디자인은 개발 초기안이다. 서버 상태는 TanStack Query, 화면 간 공유하는 클라이언트 상태는 Jotai를 사용한다. 서버 응답을 atom에 복제하지 않고 컴포넌트 안에서만 필요한 상태는 React 로컬 상태로 둔다. QueryClient는 서버 요청 사이에 공유하지 않으며 Jotai는 앱의 Provider 범위에 격리한다. 개인 데이터 도입 시 query key의 사용자 구분과 로그아웃·계정 전환 시 캐시 및 atom 초기화를 함께 구현한다.
 
 ## 책임과 의존 그래프
 
