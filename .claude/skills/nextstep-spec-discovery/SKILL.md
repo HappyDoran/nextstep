@@ -1,0 +1,1 @@
+../../../.codex/skills/nextstep-spec-discovery/SKILL.md

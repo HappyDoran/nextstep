@@ -44,6 +44,7 @@ last_verified: 2026-11-07
 | 문서·skill·agent 변경 | docs/AI_AGENT_HARNESS.md, `nextstep-doc-policy` |
 | 범위 정리·변경 | docs/spec/서비스기획서_v0.2.md, docs/spec/기술설계_부록.md |
 | 기능 착수·완료, 다음 작업 선택 | docs/spec/gap-analysis.md, `nextstep-backlog` |
+| 범위·요구·완료 조건 정리·변경 | docs/spec/서비스기획서_v0.2.md, `nextstep-spec-discovery` |
 | 화면·공통 UI 변경 | packages/design-system/README.md |
 | 역할을 지정받은 작업 | `.codex/agents/nextstep-<역할>.md`, docs/AI_AGENT_HARNESS.md 역할 표 |
 | 여러 역할로 나누는 작업 | `nextstep-parallel` |

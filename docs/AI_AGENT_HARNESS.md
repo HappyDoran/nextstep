@@ -26,6 +26,7 @@ AGENTS.md (= CLAUDE.md)  →  작업 범위·완료 조건 확인(백로그)  �
 | nextstep-review | 완료 전, 리뷰 요청 |
 | nextstep-commit | 커밋·푸시 |
 | nextstep-backlog | 기능 착수·완료, 다음 작업 선택 |
+| nextstep-spec-discovery | 범위·요구·완료 조건 정리·변경 |
 | nextstep-parallel | 여러 역할로 나누는 작업, 병렬 실행·병합 |
 
 skill을 읽었다는 기록을 서비스 데이터나 보고서로 저장하지 않는다.
