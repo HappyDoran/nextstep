@@ -1,6 +1,157 @@
-:root { --ns-bg: #f6f7f9; --ns-surface: #fff; --ns-text: #172c2b; --ns-muted: #536764; --ns-accent: #146653; --ns-border: #dbe3df; --ns-radius: 16px; }
-.ns-button { background: var(--ns-accent); color: white; border: 0; border-radius: 8px; padding: 12px 20px; font: inherit; cursor: pointer; }
-.ns-button:hover { filter: brightness(.9); }
-.ns-button:disabled { opacity: .6; cursor: wait; }
-.ns-button:focus-visible, a:focus-visible { outline: 3px solid #ad7d27; outline-offset: 4px; }
-.ns-panel { background: var(--ns-surface); border: 1px solid var(--ns-border); border-radius: var(--ns-radius); padding: 28px; }
+@import './primitives.css';
+
+/* 의미별 색상. 제품 화면은 원시 팔레트 대신 이 역할을 소비한다. */
+:root, [data-ns-theme="light"] {
+  color-scheme: light;
+  --ns-color-background: var(--ns-palette-neutral-50);
+  --ns-color-foreground: var(--ns-palette-neutral-900);
+  --ns-color-card: var(--ns-palette-white);
+  --ns-color-card-foreground: var(--ns-palette-neutral-900);
+  --ns-color-popover: var(--ns-palette-white);
+  --ns-color-popover-foreground: var(--ns-palette-neutral-900);
+  --ns-color-primary: var(--ns-palette-indigo-700);
+  --ns-color-primary-foreground: var(--ns-palette-white);
+  --ns-color-secondary: var(--ns-palette-indigo-50);
+  --ns-color-secondary-foreground: var(--ns-palette-indigo-700);
+  --ns-color-muted: var(--ns-palette-neutral-100);
+  --ns-color-muted-foreground: var(--ns-palette-neutral-600);
+  --ns-color-accent: var(--ns-palette-indigo-50);
+  --ns-color-accent-foreground: var(--ns-palette-neutral-900);
+  --ns-color-destructive: var(--ns-palette-red-700);
+  --ns-color-destructive-foreground: var(--ns-palette-white);
+  --ns-color-destructive-muted: var(--ns-palette-red-50);
+  --ns-color-border: var(--ns-palette-neutral-200);
+  --ns-color-input: var(--ns-palette-neutral-400);
+  --ns-color-ring: var(--ns-palette-indigo-700);
+  --ns-color-success: var(--ns-palette-green-700);
+  --ns-color-success-foreground: var(--ns-palette-white);
+  --ns-color-success-muted: var(--ns-palette-green-50);
+  --ns-color-warning: var(--ns-palette-amber-800);
+  --ns-color-warning-foreground: var(--ns-palette-white);
+  --ns-color-warning-muted: var(--ns-palette-amber-50);
+  --ns-color-info: var(--ns-palette-blue-700);
+  --ns-color-info-muted: var(--ns-palette-blue-50);
+  --ns-color-highlight: var(--ns-palette-violet-700);
+  --ns-color-highlight-muted: var(--ns-palette-violet-50);
+  --ns-color-action-hover: var(--ns-palette-indigo-800);
+  --ns-color-action-active: var(--ns-palette-indigo-900);
+}
+
+[data-ns-theme="dark"] {
+  color-scheme: dark;
+  --ns-color-background: var(--ns-palette-dark-canvas);
+  --ns-color-foreground: var(--ns-palette-dark-text);
+  --ns-color-card: var(--ns-palette-dark-surface);
+  --ns-color-card-foreground: var(--ns-palette-dark-text);
+  --ns-color-popover: var(--ns-palette-dark-popover);
+  --ns-color-popover-foreground: var(--ns-palette-dark-text);
+  --ns-color-primary: var(--ns-palette-indigo-300);
+  --ns-color-primary-foreground: var(--ns-palette-dark-canvas);
+  --ns-color-secondary: var(--ns-palette-indigo-950);
+  --ns-color-secondary-foreground: var(--ns-palette-indigo-300);
+  --ns-color-muted: var(--ns-palette-dark-subtle);
+  --ns-color-muted-foreground: var(--ns-palette-dark-muted);
+  --ns-color-accent: var(--ns-palette-dark-accent);
+  --ns-color-accent-foreground: var(--ns-palette-dark-text);
+  --ns-color-destructive: var(--ns-palette-dark-danger-fill);
+  --ns-color-destructive-foreground: var(--ns-palette-dark-canvas);
+  --ns-color-destructive-muted: var(--ns-palette-dark-danger-bg);
+  --ns-color-border: var(--ns-palette-dark-border);
+  --ns-color-input: var(--ns-palette-dark-border-strong);
+  --ns-color-ring: var(--ns-palette-indigo-300);
+  --ns-color-success: var(--ns-palette-dark-success-fill);
+  --ns-color-success-foreground: var(--ns-palette-dark-canvas);
+  --ns-color-success-muted: var(--ns-palette-dark-success-bg);
+  --ns-color-warning: var(--ns-palette-dark-warning-fill);
+  --ns-color-warning-foreground: var(--ns-palette-dark-canvas);
+  --ns-color-warning-muted: var(--ns-palette-dark-warning-bg);
+  --ns-color-info: var(--ns-palette-dark-info-fill);
+  --ns-color-info-muted: var(--ns-palette-dark-info-bg);
+  --ns-color-highlight: var(--ns-palette-violet-300);
+  --ns-color-highlight-muted: var(--ns-palette-dark-highlight);
+  --ns-color-action-hover: var(--ns-palette-indigo-200);
+  --ns-color-action-active: var(--ns-palette-indigo-100);
+}
+
+/* 소비자 별칭은 각 테마 범위에서 재계산한다. */
+:root, [data-ns-theme="light"], [data-ns-theme="dark"] {
+  --ns-color-bg-canvas: var(--ns-color-background);
+  --ns-color-bg-surface: var(--ns-color-card);
+  --ns-color-bg-subtle: var(--ns-color-muted);
+  --ns-color-text-primary: var(--ns-color-foreground);
+  --ns-color-text-secondary: var(--ns-color-muted-foreground);
+  --ns-color-text-disabled: var(--ns-color-muted-foreground);
+  --ns-color-text-on-accent: var(--ns-color-primary-foreground);
+  --ns-color-border-default: var(--ns-color-border);
+  --ns-color-border-strong: var(--ns-color-input);
+  --ns-color-action-primary: var(--ns-color-primary);
+  --ns-color-action-disabled: var(--ns-color-muted);
+  --ns-color-focus: var(--ns-color-ring);
+  --ns-color-success-text: var(--ns-color-success);
+  --ns-color-success-bg: var(--ns-color-success-muted);
+  --ns-color-warning-text: var(--ns-color-warning);
+  --ns-color-warning-bg: var(--ns-color-warning-muted);
+  --ns-color-danger-text: var(--ns-color-destructive);
+  --ns-color-danger-bg: var(--ns-color-destructive-muted);
+  --ns-color-info-text: var(--ns-color-info);
+  --ns-color-info-bg: var(--ns-color-info-muted);
+}
+
+:root {
+  --ns-type-display-size: var(--ns-font-size-32);
+  --ns-type-display-weight: var(--ns-font-weight-extrabold);
+  --ns-type-display-line-height: 1.3;
+  --ns-type-display-tracking: -0.02em;
+  --ns-type-title-lg-size: var(--ns-font-size-24);
+  --ns-type-title-lg-weight: var(--ns-font-weight-extrabold);
+  --ns-type-title-lg-line-height: 1.35;
+  --ns-type-title-lg-tracking: -0.015em;
+  --ns-type-title-size: var(--ns-font-size-20);
+  --ns-type-title-weight: var(--ns-font-weight-bold);
+  --ns-type-title-line-height: 1.4;
+  --ns-type-title-tracking: -0.01em;
+  --ns-type-body-lg-size: var(--ns-font-size-18);
+  --ns-type-body-lg-weight: var(--ns-font-weight-semibold);
+  --ns-type-body-lg-line-height: 1.5;
+  --ns-type-body-lg-tracking: 0;
+  --ns-type-body-size: var(--ns-font-size-16);
+  --ns-type-body-weight: var(--ns-font-weight-regular);
+  --ns-type-body-line-height: 1.6;
+  --ns-type-body-tracking: 0;
+  --ns-type-body-sm-size: var(--ns-font-size-14);
+  --ns-type-body-sm-weight: var(--ns-font-weight-regular);
+  --ns-type-body-sm-line-height: 1.5;
+  --ns-type-body-sm-tracking: 0;
+  --ns-type-caption-size: var(--ns-font-size-12);
+  --ns-type-caption-weight: var(--ns-font-weight-regular);
+  --ns-type-caption-line-height: 1.5;
+  --ns-type-caption-tracking: 0;
+  --ns-type-micro-size: var(--ns-font-size-11);
+  --ns-type-micro-weight: var(--ns-font-weight-semibold);
+  --ns-type-micro-line-height: 1.4;
+  --ns-type-micro-tracking: 0.01em;
+  --ns-type-mono-size: var(--ns-font-size-12);
+  --ns-type-mono-weight: var(--ns-font-weight-regular);
+  --ns-type-mono-line-height: 1.6;
+  --ns-type-mono-tracking: 0;
+
+  --ns-text-caption: var(--ns-font-size-12);
+  --ns-text-label: var(--ns-font-size-14);
+  --ns-text-body: var(--ns-font-size-16);
+  --ns-text-heading: var(--ns-font-size-20);
+  --ns-text-title: var(--ns-font-size-24);
+  --ns-text-display: var(--ns-font-size-32);
+  --ns-radius-control: var(--ns-radius-lg);
+  --ns-radius-surface: var(--ns-radius-xl);
+  --ns-focus-width: var(--ns-border-width-2);
+  --ns-focus-offset: var(--ns-space-1);
+  --ns-control-height: 2.75rem;
+  --ns-content-width: 64rem;
+  --ns-icon-size-xs: 0.75rem;
+  --ns-icon-size-sm: 0.875rem;
+  --ns-icon-size-base: 1rem;
+  --ns-icon-size-md: 1.25rem;
+  --ns-icon-size-lg: 1.5rem;
+  --ns-icon-stroke-width: 1.5;
+  --ns-icon-stroke-width-strong: 2;
+}

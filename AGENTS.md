@@ -8,6 +8,7 @@
 | 데이터·작업·보호·P1 구현 순서 | [기술 설계 부록](docs/spec/기술설계_부록.md) |
 | 기술 선택·workspace 책임·의존 경계 | [TECH_RULES.md](TECH_RULES.md) |
 | 실행·검증·환경 변수·현재 구현 범위 | [README.md](README.md) |
+| 디자인 기초의 토큰·타입·아이콘 사용법 | [디자인 기초](packages/design-system/README.md) |
 | 작업 지원 체계·검사 한계 | [AI_AGENT_HARNESS.md](docs/AI_AGENT_HARNESS.md) |
 | 웹·서버·데스크톱·공통 패키지 지역 규칙 | 각 workspace의 AGENTS.md |
 

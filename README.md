@@ -4,9 +4,9 @@
 
 ## 현재 구현 범위
 
-pnpm/Turborepo 모노레포, 웹 개발 화면, API·SQLite 준비 확인, DB 버전 관리, Electron 기본 창·종료·URL 보호, 공통 계약·UI·토큰과 Storybook을 구성했다. 웹의 연결 확인은 실제 로컬 API와 DB를 읽는다. 실패 후 재시도할 수 있다. 개인 데이터는 아직 받지 않는다.
+pnpm/Turborepo 모노레포, 웹 개발 화면, API·SQLite 준비 확인, DB 버전 관리, Electron 기본 창·종료·URL 보호, 공통 계약·UI·토큰과 Storybook을 구성했다. 디자인 기초는 원시 값·의미 색상·타입·간격·radius·그림자·모션 설계값·Lucide React 아이콘을 제공하며 선택한 브랜드와 Light/Dark를 카탈로그에서 비교할 수 있다. 웹의 연결 확인은 실제 로컬 API와 DB를 읽는다. 실패 후 재시도할 수 있다. 개인 데이터는 아직 받지 않는다.
 
-초대 로그인·세션·수동 지원·이력서·추천·메일·작업자·예약·삭제 기능은 미구현이다. 로컬 기반 구축은 P1-01~07 또는 MVP 완료가 아니다. 앱·사용자 컴퓨터 종료 중 별도 서버 자동화와 배포·서명·패키징도 검증 대상에 남아 있다. 색상·레이아웃은 초기 개발안이다.
+초대 로그인·세션·수동 지원·이력서·추천·메일·작업자·예약·삭제 기능은 미구현이다. 로컬 기반 구축은 P1-01~07 또는 MVP 완료가 아니다. 앱·사용자 컴퓨터 종료 중 별도 서버 자동화와 배포·서명·패키징도 검증 대상에 남아 있다. 브랜드 색상은 디자인 기초 소유 문서를 따르며 화면 레이아웃은 초기 개발안이다.
 
 ## 설치와 실행
 
@@ -61,7 +61,7 @@ pnpm test:e2e
 | `pnpm lint` | 전체 JS·TS·React ESLint, 경고도 실패 |
 | `pnpm typecheck` | workspace·Storybook 설정·브라우저/Electron 테스트·Next route 타입 |
 | `pnpm test:harness` | 구조 검사 자체의 위반 탐지 회귀 |
-| `pnpm test` | harness·공통 계약·파일 DB/API·Electron URL 정책 |
+| `pnpm test` | harness·공통 계약·파일 DB/API·Electron URL 정책·토큰 참조/색상 대비 |
 | `pnpm build` | 실제 빌드·Storybook 정적 출력 |
 | `pnpm test:e2e` | 빌드된 로컬 웹·API 실행, Chromium에서 연결·503·재시도 |
 | `pnpm test:desktop` | macOS Electron 실행·권한 격리·창 닫기·완전 종료. 격리된 임시 프로필 사용 |

@@ -1,6 +1,9 @@
-@import '@nextstep/design-system/tokens.css';
+@import '@nextstep/design-system/styles.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-body { margin: 0; background: var(--ns-bg); color: var(--ns-text); font-family: system-ui, sans-serif; }
-a { color: var(--ns-accent); }
+
+@layer base {
+  body { @apply m-0 bg-background font-sans text-body text-foreground; }
+  a { @apply text-primary focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus; }
+}

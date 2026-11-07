@@ -1,0 +1,43 @@
+/* Storybook 카탈로그 배치도 같은 Tailwind preset으로 컴파일한다. */
+body { @apply bg-background font-sans text-body text-foreground; }
+.foundation { @apply max-w-content p-6; }
+.foundation h1 { @apply mb-3 text-title-lg; }
+.foundation h2 { @apply mt-8 text-title; }
+.foundation p { @apply my-4 text-muted-foreground; }
+.foundation-grid { @apply grid grid-cols-1 gap-4 md:grid-cols-3; }
+.foundation-swatch { @apply flex flex-col gap-2; }
+.foundation-swatch > div { @apply min-h-16 rounded-control border border-border; }
+.foundation code { @apply break-words text-body-sm; }
+.foundation-row { @apply my-4 flex flex-wrap items-center gap-4; }
+.foundation-sample { @apply border border-border bg-card p-4; }
+.foundation-table { @apply w-full border-collapse text-left; }
+.foundation-table th, .foundation-table td { @apply border-b border-border p-3; }
+.foundation-theme { @apply bg-background text-foreground; }
+.foundation-palette { @apply grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-6; }
+.foundation-palette strong { @apply text-body-sm font-semibold; }
+.foundation-palette code { @apply text-caption text-muted-foreground; }
+.foundation-rules li { @apply my-3; }
+.foundation-value { @apply inline-block break-words font-mono text-caption text-muted-foreground; }
+
+/* 선택한 인디고와 이전 후보를 비교한다. 제품의 기본 브랜드는 tokens.css가 소유한다. */
+[data-ns-brand="teal"] {
+  --ns-color-primary: var(--ns-palette-teal-700);
+  --ns-color-action-primary: var(--ns-palette-teal-700);
+  --ns-color-action-hover: var(--ns-palette-teal-800);
+  --ns-color-action-active: var(--ns-palette-teal-900);
+  --ns-color-ring: var(--ns-palette-teal-700);
+}
+[data-ns-brand="indigo"] {
+  --ns-color-primary: var(--ns-palette-indigo-700);
+  --ns-color-action-primary: var(--ns-palette-indigo-700);
+  --ns-color-action-hover: var(--ns-palette-indigo-800);
+  --ns-color-action-active: var(--ns-palette-indigo-900);
+  --ns-color-ring: var(--ns-palette-indigo-700);
+}
+[data-ns-brand="slate-blue"] {
+  --ns-color-primary: var(--ns-palette-slate-blue-700);
+  --ns-color-action-primary: var(--ns-palette-slate-blue-700);
+  --ns-color-action-hover: var(--ns-palette-slate-blue-800);
+  --ns-color-action-active: var(--ns-palette-slate-blue-900);
+  --ns-color-ring: var(--ns-palette-slate-blue-700);
+}

@@ -14,7 +14,8 @@
     "@nextstep/design-system": "workspace:*",
     "next": "16.4.3",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "lucide-react": "catalog:"
   },
   "devDependencies": {
     "tailwindcss": "catalog:",

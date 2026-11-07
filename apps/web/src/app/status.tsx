@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { LoaderCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@nextstep/design-system';
 import { healthSchema } from '@nextstep/contracts';
 async function connectionMessage(signal: AbortSignal) {
@@ -25,5 +26,5 @@ export function ConnectionStatus() {
     setStatus(await connectionMessage(AbortSignal.timeout(5000)));
     setLoading(false);
   }
-  return <div><p role="status" aria-live="polite" className="mb-5 text-[var(--ns-muted)]">{status}</p><Button disabled={loading} onClick={() => { void check(); }}>{loading ? '확인중' : '다시 확인'}</Button></div>;
+  return <div><p role="status" aria-live="polite" className="mb-5 text-muted-foreground">{status}</p><Button disabled={loading} onClick={() => { void check(); }}>{loading ? <LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" focusable="false" /> : <RefreshCw className="size-icon-md shrink-0 stroke-icon" aria-hidden="true" focusable="false" />}{loading ? '확인중' : '다시 확인'}</Button></div>;
 }
