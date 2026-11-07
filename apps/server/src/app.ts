@@ -1,6 +1,7 @@
 import Fastify, { type FastifyError } from 'fastify';
-import { healthSchema, collectionModeSchema, collectionModeUpdateSchema, collectionSettingsSchema, SOURCE_POLICY, type CollectionMode } from '@nextstep/contracts';
+import { healthSchema, collectionModeUpdateSchema, collectionSettingsSchema, SOURCE_POLICY, type CollectionMode } from '@nextstep/contracts';
 import { openDatabase } from './database.js';
+import { readCollectionMode, writeCollectionMode } from './sources/policy.js';
 
 export function createApp(databasePath: string) {
   const db = openDatabase(databasePath);
@@ -12,17 +13,12 @@ export function createApp(databasePath: string) {
     return healthSchema.parse({ service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: version.user_version });
   });
   // 수집 모드는 서버 전체 설정이다. ponytail: 인증이 없어 누구나 바꿀 수 있다. P1-02에서 관리자 전용으로 제한한다.
-  const readMode = (): CollectionMode => {
-    const row = db.prepare("SELECT value FROM service_metadata WHERE key = 'collection_mode'").get() as { value: string } | undefined;
-    // 값이 없거나 손상되면 약관 위험이 낮은 서비스 모드로 둔다.
-    return collectionModeSchema.safeParse(row?.value).data ?? 'service';
-  };
   const settings = (mode: CollectionMode) => collectionSettingsSchema.parse({ mode, sources: SOURCE_POLICY[mode] });
-  app.get('/settings/collection', async () => settings(readMode()));
+  app.get('/settings/collection', async () => settings(readCollectionMode(db)));
   app.put('/settings/collection', async (request, reply) => {
     const body = collectionModeUpdateSchema.safeParse(request.body);
     if (!body.success) return reply.status(400).send({ message: '요청을 확인하세요.' });
-    db.prepare("INSERT INTO service_metadata VALUES ('collection_mode', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(body.data.mode);
+    writeCollectionMode(db, body.data.mode);
     return settings(body.data.mode);
   });
   app.setErrorHandler((error: FastifyError, _request, reply) => {

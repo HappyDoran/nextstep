@@ -4,7 +4,7 @@
 
 ## 현재 구현 범위
 
-pnpm/Turborepo 모노레포, 웹 개발 화면, API·SQLite 준비 확인, DB 버전 관리, Electron 기본 창·종료·URL 보호, 공통 계약·UI·토큰과 Storybook을 구성했다. 디자인 기초는 원시 값·의미 색상·타입·간격·radius·그림자·모션 시간·이징·Lucide React 아이콘을 제공하며 선택한 브랜드와 Light/Dark를 카탈로그에서 비교할 수 있다. 웹의 연결 확인은 실제 로컬 API와 DB를 읽는다. 실패 후 재시도할 수 있다. 개인 데이터는 아직 받지 않는다. 서버에는 P1-01 기술 검증용 텍스트 PDF/MD 이력서 추출 모듈과 잡코리아 공고·네이버 IMAP 읽기 전용 검증 명령이 있으며 API에 연결하지 않았다. 웹 첫 화면의 관리 토글로 서버 전체 수집 모드(서비스·개인)를 바꾸며 DB에 저장한다. 출처별 수집기는 아직 이 모드를 읽지 않는다. 토글은 인증 없이 누구에게나 보인다.
+pnpm/Turborepo 모노레포, 웹 개발 화면, API·SQLite 준비 확인, DB 버전 관리, Electron 기본 창·종료·URL 보호, 공통 계약·UI·토큰과 Storybook을 구성했다. 디자인 기초는 원시 값·의미 색상·타입·간격·radius·그림자·모션 시간·이징·Lucide React 아이콘을 제공하며 선택한 브랜드와 Light/Dark를 카탈로그에서 비교할 수 있다. 웹의 연결 확인은 실제 로컬 API와 DB를 읽는다. 실패 후 재시도할 수 있다. 개인 데이터는 아직 받지 않는다. 서버에는 P1-01 기술 검증용 텍스트 PDF/MD 이력서 추출 모듈과 잡코리아 공고·네이버 IMAP 읽기 전용 검증 명령이 있으며 API에 연결하지 않았다. 웹 첫 화면의 관리 토글로 서버 전체 수집 모드(서비스·개인)를 바꾸며 DB에 저장한다. 공고 검증 명령은 이 모드를 읽어 자동 수집 허용 출처만 요청한다. 토글은 인증 없이 누구에게나 보인다.
 
 초대 로그인·세션·수동 지원·이력서·추천·메일·작업자·예약·삭제 기능은 미구현이다. 단계별 진행 상태는 [백로그](docs/spec/gap-analysis.md)가 소유한다. 앱·사용자 컴퓨터 종료 중 별도 서버 자동화와 배포·서명·패키징도 검증 대상에 남아 있다. 브랜드 색상은 디자인 기초 소유 문서를 따르며 화면 레이아웃은 초기 개발안이다.
 
@@ -29,7 +29,9 @@ mise exec -- pnpm dev
 | `pnpm build` | 계약·UI·Storybook·서버·웹·Electron main 컴파일 |
 | `pnpm --filter @nextstep/server start` | 빌드된 API 실행 |
 | `pnpm --filter @nextstep/web start` | 빌드된 웹 실행 |
-| `pnpm --filter @nextstep/server verify:jobkorea` | 잡코리아 네 직무 공개 공고 소량 조회(직무당 목록 1회·상세 3건, 요청 간 2.5초). 원문 없이 추출 결과·실패 구분만 출력 |
+| `pnpm --filter @nextstep/server verify:jobkorea` | 잡코리아 네 직무 공개 공고 소량 조회(직무당 목록 1회·상세 3건, 요청 간 2.5초). 원문 없이 추출 결과·실패 구분만 출력. 공고 검증 명령은 모두 서버 DB의 수집 모드를 따르고 403·429를 받은 호스트에는 다시 요청하지 않음 |
+| `pnpm --filter @nextstep/server verify:wanted` | 개인 모드에서만 원티드 네 직무 공개 목록·상세 각 3건 조회. 서비스 모드면 요청 없이 종료 |
+| `pnpm --filter @nextstep/server verify:jasoseol` | 개인 모드에서만 자소설닷컴 sitemap 최신 공고 상세 20건 조회. 서비스 모드면 요청 없이 종료 |
 | `pnpm --filter @nextstep/server verify:naver` | 네이버 IMAP 읽기 전용(EXAMINE) 조회. 제목·주소·본문 없이 편지함별 위치·건수·출처 도메인과 알림 메일의 공고 링크 확보 건수 집계만 출력. 원티드 추적 링크는 최대 5건 리다이렉트 위치만 확인 |
 
 `pnpm dev:desktop`은 개발 실행이며 설치용 앱 패키지를 만들지 않는다. macOS 창 닫기는 창만 닫으며 메뉴의 ‘NextStep 종료’로 완전 종료한다. 서버는 독립 프로세스이므로 앱 종료가 서버 종료나 자동 OFF를 의미하지 않는다.
@@ -64,7 +66,7 @@ pnpm test:e2e
 | `pnpm lint` | 전체 JS·TS·React ESLint, 경고도 실패 |
 | `pnpm typecheck` | workspace·Storybook 설정·브라우저/Electron 테스트·Next route 타입 |
 | `pnpm test:harness` | 구조 검사 자체의 위반 탐지 회귀 |
-| `pnpm test` | harness·공통 계약·파일 DB/API·이력서 추출(합성 텍스트·암호화·스캔·손상 PDF와 MD)·잡코리아 상세 구조 해석(합성 HTML)·메일 알림 공고 링크 추출·추천 정답 사례 구조·수집 모드 기본값·변경 유지·잘못된 값 거부·Electron URL 정책·토큰 참조/색상 대비 |
+| `pnpm test` | harness·공통 계약·파일 DB/API·이력서 추출(합성 텍스트·암호화·스캔·손상 PDF와 MD)·잡코리아 상세 구조 해석(합성 HTML)·메일 알림 공고 링크 추출·추천 정답 사례 구조·수집 모드 기본값·변경 유지·잘못된 값 거부·차단 호스트 재요청 중단·원티드/자소설닷컴 상세 해석(합성)·Electron URL 정책·토큰 참조/색상 대비 |
 | `pnpm build` | 실제 빌드·Storybook 정적 출력 |
 | `pnpm test:e2e` | 빌드된 로컬 웹·API 실행, Chromium에서 연결·503·재시도, 수집 모드 변경·재접속 유지·저장 실패 표시. 끝나면 모드를 서비스로 되돌림 |
 | `pnpm test:desktop` | macOS Electron 실행·권한 격리·창 닫기·완전 종료. 격리된 임시 프로필 사용 |

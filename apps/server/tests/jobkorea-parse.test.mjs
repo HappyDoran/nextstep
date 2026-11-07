@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { listPostingIds, parsePosting, bodyText } from '../dist/verify/jobkorea.js';
+import { listPostingIds, parsePosting } from '../dist/verify/jobkorea.js';
+import { htmlText as bodyText } from '../dist/sources/http.js';
 
 // 실제 공고 원문을 저장하지 않으려고 잡코리아 상세 페이지의 RSC hydration 구조만 본뜬 합성 HTML을 쓴다.
 function page(jobs, corp) {
