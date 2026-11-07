@@ -3,11 +3,13 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { judge, RECOMMEND_PROMPT_VERSION } from '../prompts/recommend.js';
+import { usageTotals } from '../ai/openai.js';
 
 type Case = { id: string; jobFamily: string; profileId: string; tags: string[]; posting: unknown; expected: { classification: string } };
 const data = JSON.parse(readFileSync(new URL('../../tests/prompts/recommendation-cases.json', import.meta.url), 'utf8')) as { evaluatedAt: string; profiles: { id: string }[]; cases: Case[] };
 
 async function main() {
+  const started = Date.now();
   const profiles = new Map(data.profiles.map(p => [p.id, p]));
   const results: { id: string; family: string; expected: string; got: string; tags: string[] }[] = [];
   const queue = [...data.cases];
@@ -32,6 +34,8 @@ async function main() {
   console.log(JSON.stringify({
     prompt: RECOMMEND_PROMPT_VERSION,
     model: process.env.NEXTSTEP_OPENAI_MODEL,
+    seconds: Math.round((Date.now() - started) / 1000),
+    usage: usageTotals,
     total: results.length,
     correct,
     byFamily,

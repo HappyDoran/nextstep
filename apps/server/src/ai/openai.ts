@@ -7,6 +7,9 @@ export class AiError extends Error {
   constructor(readonly code: AiFailure, readonly status?: number) { super(code); }
 }
 
+// 호출 사용량 누계(평가·비용 추정용). 요청 본문은 남기지 않는다.
+export const usageTotals = { calls: 0, inputTokens: 0, outputTokens: 0 };
+
 export function aiConfigured() {
   return Boolean(process.env.OPENAI_API_KEY && process.env.NEXTSTEP_OPENAI_MODEL);
 }
@@ -35,7 +38,10 @@ export async function structured<T extends z.ZodType>(name: string, schema: T, i
     throw new AiError('ai_network');
   }
   if (!res.ok) throw new AiError('ai_http', res.status);
-  const body = await res.json() as { output?: { type?: string; content?: { type?: string; text?: string }[] }[] };
+  const body = await res.json() as { output?: { type?: string; content?: { type?: string; text?: string }[] }[]; usage?: { input_tokens?: number; output_tokens?: number } };
+  usageTotals.calls++;
+  usageTotals.inputTokens += body.usage?.input_tokens ?? 0;
+  usageTotals.outputTokens += body.usage?.output_tokens ?? 0;
   const text = body.output?.flatMap(item => item.content ?? []).find(part => part.type === 'output_text')?.text;
   try {
     return schema.parse(JSON.parse(text ?? ''));
