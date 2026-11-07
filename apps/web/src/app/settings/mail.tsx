@@ -47,7 +47,7 @@ export function MailSetting({ me }: { me: Me }) {
       {conn.account} · {conn.status}{conn.lastSuccessAt ? ` · 최근 성공 ${new Date(conn.lastSuccessAt).toLocaleString('ko-KR')}` : ''}
       {job ? ` · ${ACTIVE.includes(job.status) ? '메일을 확인하고 있습니다' : `${job.status}${job.errorCode ? `(${ERRORS[job.errorCode] ?? job.errorCode})` : ''}: 채용 메일 ${result?.stored ?? 0}건, 반영 ${(result?.applied ?? 0) + (result?.created ?? 0)}건, 확인 필요 ${result?.review ?? 0}건${result?.more ? ', 남은 메일은 다음 조회에서 이어서 처리' : ''}`}` : ''}
     </p>
-    {conn.rangeIncomplete && <p className="text-body-sm text-destructive">네이버가 IMAP으로 보여 주는 메일이 최근 3개월보다 짧습니다. 일부 오래된 메일은 확인하지 못했을 수 있습니다.</p>}
+    {conn.rangeIncomplete && <p className="text-body-sm text-destructive">네이버가 IMAP으로 보여 주는 메일이 최근 3개월보다 짧습니다. 네이버 메일 환경설정 &gt; POP3/IMAP 설정 &gt; IMAP/SMTP 설정의 &lsquo;IMAP 동기화 메일 제한&rsquo;(기본 1,000통, 최대 5,000통)을 늘린 뒤 다시 연결하면 더 오래된 메일까지 확인합니다.</p>}
     <div className="flex flex-wrap gap-3">
       <Button disabled={sync.isPending || Boolean(job && ACTIVE.includes(job.status))} onClick={() => sync.mutate()}>지금 메일 확인</Button>
     </div>

@@ -14,11 +14,11 @@ const now = () => new Date().toISOString();
 export const toJob = (r: Row): Job => jobSchema.parse({ id: r.id, kind: r.kind, status: r.status, errorCode: r.error_code, result: r.result ? JSON.parse(r.result) : null, createdAt: r.created_at, finishedAt: r.finished_at });
 
 // 사용자·종류별 대기·실행중 작업은 하나만 둔다(부분 고유 인덱스). 이미 있으면 그 작업을 돌려준다.
-export function enqueue(db: DatabaseSync, userId: string, kind: JobKind, payload?: unknown): Job {
+export function enqueue(db: DatabaseSync, userId: string, kind: JobKind, payload?: unknown, scheduled = false): Job {
   const existing = db.prepare("SELECT * FROM jobs WHERE user_id = ? AND kind = ? AND status IN ('대기', '실행중')").get(userId, kind) as Row | undefined;
   if (existing) return toJob(existing);
   const id = randomUUID();
-  db.prepare("INSERT INTO jobs (id, user_id, kind, payload, status, created_at) VALUES (?, ?, ?, ?, '대기', ?)").run(id, userId, kind, payload === undefined ? null : JSON.stringify(payload), now());
+  db.prepare("INSERT INTO jobs (id, user_id, kind, payload, status, created_at, scheduled) VALUES (?, ?, ?, ?, '대기', ?, ?)").run(id, userId, kind, payload === undefined ? null : JSON.stringify(payload), now(), scheduled ? 1 : 0);
   return toJob(db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as Row);
 }
 

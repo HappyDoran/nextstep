@@ -169,3 +169,9 @@ export const reviewActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('create'), company: z.string().trim().min(1).max(200), roleTitle: z.string().trim().min(1).max(200), status: reviewStatus }).strict(),
   z.object({ action: z.literal('ignore') }).strict(),
 ]);
+
+// 자동 갱신 상태: 최근 예약 실행 결과(앱이 꺼져 있던 동안 처리된 것 포함)를 다음 실행에서 보여 준다.
+export const automationStatusSchema = z.object({
+  enabled: z.boolean(),
+  lastScheduled: z.array(z.object({ kind: z.string(), status: jobStatusSchema.nullable(), finishedAt: z.string().nullable(), runDate: z.string() })),
+});

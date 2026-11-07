@@ -55,6 +55,7 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
     try {
       db.prepare('DELETE FROM mail_connections WHERE user_id = ?').run(user.id);
       db.prepare('DELETE FROM mail_cursors WHERE user_id = ?').run(user.id);
+      // 연결 해제는 수동·예약 구분 없이 대기 중인 메일 작업을 모두 정리한다.
       db.prepare("DELETE FROM jobs WHERE user_id = ? AND kind = 'mail' AND status = '대기'").run(user.id);
       if (!keep) {
         // 같은 과거 메일로 다시 만들어지지 않도록 근거 키를 억제 목록에 남긴다.

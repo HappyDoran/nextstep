@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -205,6 +205,20 @@ export function openDatabase(filename: string) {
         ALTER TABLE mail_messages ADD COLUMN uid INTEGER;
         ALTER TABLE mail_messages ADD COLUMN interpret_attempts INTEGER NOT NULL DEFAULT 0;
         PRAGMA user_version = 7;`);
+    }
+    if (version < 8) {
+      // P1-06: 1차 자동화 권한은 초대 테스트 권한(가입 시 부여). 예약 실행은 사용자·날짜·종류별 한 번만 만든다.
+      db.exec(`ALTER TABLE users ADD COLUMN test_permission INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE jobs ADD COLUMN scheduled INTEGER NOT NULL DEFAULT 0;
+        CREATE TABLE schedule_runs (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          run_date TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          job_id TEXT,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, run_date, kind)
+        ) STRICT;
+        PRAGMA user_version = 8;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

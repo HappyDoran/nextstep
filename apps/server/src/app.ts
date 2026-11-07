@@ -11,6 +11,7 @@ import { dirname, join } from 'node:path';
 import { registerRecommendations } from './recommend/routes.js';
 import { createHandler, type PipelineDeps } from './recommend/pipeline.js';
 import { startWorker, type ClaimedJob } from './recommend/jobs.js';
+import { startScheduler } from './schedule.js';
 import { loadSecretKey } from './secrets.js';
 import { registerMail } from './mail/routes.js';
 import { createMailHandler } from './mail/sync.js';
@@ -18,7 +19,7 @@ import { naverBodies, naverSource, type MailSource } from './mail/naver.js';
 import { aiConfigured } from './ai/openai.js';
 import { interpretMail } from './prompts/mail.js';
 
-export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; deps?: PipelineDeps; mailSource?: MailSource } = {}) {
+export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; scheduleHour?: number; deps?: PipelineDeps; mailSource?: MailSource } = {}) {
   const db = openDatabase(databasePath);
   // 원본 파일은 DB 옆 비공개 디렉터리에 둔다(Git 제외 경로).
   const filesDir = options.filesDir ?? join(dirname(databasePath), 'files');
@@ -53,7 +54,9 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
     // AI가 설정된 경우에만 보관 메일 해석 단계를 켠다.
     const mail = createMailHandler(db, secretKey, mailSource, aiConfigured() ? { interpret: interpretMail, bodies: naverBodies } : undefined);
     const stop = startWorker(db, (job: ClaimedJob) => (job.kind === 'mail' ? mail(job) : recommend(job)));
-    app.addHook('onClose', async () => { stop(); });
+    // 예약 실행은 작업자와 같은 서버 프로세스에서 돈다. 앱(Electron) 종료와 무관하다.
+    const stopSchedule = startScheduler(db, options.scheduleHour ?? 21);
+    app.addHook('onClose', async () => { stop(); stopSchedule(); });
   }
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     // 4xx는 Fastify가 판정한 클라이언트 오류이므로 상태를 유지한다. 내부 메시지는 노출하지 않는다.

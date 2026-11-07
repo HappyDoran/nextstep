@@ -148,11 +148,11 @@ test('자동 ON/OFF는 사용자별로 저장된다', async () => {
   try {
     const a = await signup(app, path, 'a@example.com');
     const b = await signup(app, path, 'b@example.com');
-    assert.deepEqual((await app.inject({ url: '/settings/automation', headers: { cookie: a } })).json(), { enabled: false });
+    assert.deepEqual((await app.inject({ url: '/settings/automation', headers: { cookie: a } })).json().enabled, false);
     assert.equal((await app.inject({ method: 'PUT', url: '/settings/automation', headers: { cookie: a }, payload: { enabled: 'yes' } })).statusCode, 400);
     await app.inject({ method: 'PUT', url: '/settings/automation', headers: { cookie: a }, payload: { enabled: true } });
-    assert.deepEqual((await app.inject({ url: '/settings/automation', headers: { cookie: a } })).json(), { enabled: true });
-    assert.deepEqual((await app.inject({ url: '/settings/automation', headers: { cookie: b } })).json(), { enabled: false });
+    assert.deepEqual((await app.inject({ url: '/settings/automation', headers: { cookie: a } })).json().enabled, true);
+    assert.deepEqual((await app.inject({ url: '/settings/automation', headers: { cookie: b } })).json().enabled, false);
     assert.equal((await app.inject({ url: '/settings/automation' })).statusCode, 401);
   } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
 });
