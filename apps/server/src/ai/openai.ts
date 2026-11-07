@@ -45,8 +45,9 @@ export async function structured<T extends z.ZodType>(name: string, schema: T, i
 }
 
 function jsonSchema(schema: z.ZodType) {
-  const { $schema: _ignored, ...rest } = z.toJSONSchema(schema, { target: 'draft-7' }) as Record<string, unknown>;
-  return rest;
+  const out = z.toJSONSchema(schema, { target: 'draft-7' }) as Record<string, unknown>;
+  delete out.$schema;
+  return out;
 }
 
 // 외부 자료는 구분자 안의 데이터로만 전달한다. 구분자 위조를 막으려고 닫는 태그를 무력화한다.
