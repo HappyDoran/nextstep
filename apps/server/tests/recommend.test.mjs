@@ -8,7 +8,7 @@ import { createApp } from '../dist/app.js';
 import { openDatabase } from '../dist/database.js';
 import { createInvite } from '../dist/auth.js';
 import { runNext, claim, recoverExpired } from '../dist/recommend/jobs.js';
-import { createHandler, parsePostingLink } from '../dist/recommend/pipeline.js';
+import { createHandler, isNotHiring, parsePostingLink } from '../dist/recommend/pipeline.js';
 import { writeCollectionMode } from '../dist/sources/policy.js';
 
 // 출처·AI를 가짜로 바꿔 작업·저장·격리·모드 규칙만 확인한다(실제 수집·OpenAI 검증이 아님).
@@ -145,4 +145,9 @@ test('공고 링크 해석은 세 출처 상세만 받는다', () => {
   assert.deepEqual(parsePostingLink('https://www.wanted.co.kr/wd/397013'), { source: 'wanted', id: '397013' });
   assert.deepEqual(parsePostingLink('https://jasoseol.com/recruit/107128'), { source: 'jasoseol', id: '107128' });
   for (const bad of ['http://www.wanted.co.kr/wd/1', 'https://evil.example/wd/1', 'https://www.wanted.co.kr.evil.example/wd/1', 'https://jasoseol.com/career/1', 'not a url']) assert.equal(parsePostingLink(bad), undefined);
+});
+
+test('교육생·부트캠프 모집은 채용 공고로 받지 않는다', () => {
+  for (const t of ['청년취업사관학교 성북캠퍼스 6기 교육생 모집', '[취업·인턴 연계] SeSAC AI 서비스 기획·PM 부트캠프', '모빌리티 SW 스쿨 5기 클래스메이트 모집']) assert.equal(isNotHiring(t), true, t);
+  for (const t of ['2026년 하반기 신입사원 채용', '2027 엔키업 채용연계형 인턴십', 'AI 영상 콘텐츠 크리에이터 (기획·제작)', '시니어 React Native 개발자']) assert.equal(isNotHiring(t), false, t);
 });
