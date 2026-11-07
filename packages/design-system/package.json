@@ -14,14 +14,11 @@
     "./tailwind-preset": {
       "types": "./dist/tailwind-preset.d.ts",
       "default": "./dist/tailwind-preset.js"
-    },
-    "./motion": {
-      "types": "./dist/motion.d.ts",
-      "default": "./dist/motion.js"
     }
   },
   "scripts": {
-    "build": "tsc && storybook build --quiet",
+    "build": "tsc",
+    "build-storybook": "storybook build --quiet",
     "storybook": "storybook dev -p 6006 --host 127.0.0.1 --no-open",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs"

@@ -73,30 +73,6 @@
   --ns-color-action-active: var(--ns-palette-indigo-100);
 }
 
-/* 소비자 별칭은 각 테마 범위에서 재계산한다. */
-:root, [data-ns-theme="light"], [data-ns-theme="dark"] {
-  --ns-color-bg-canvas: var(--ns-color-background);
-  --ns-color-bg-surface: var(--ns-color-card);
-  --ns-color-bg-subtle: var(--ns-color-muted);
-  --ns-color-text-primary: var(--ns-color-foreground);
-  --ns-color-text-secondary: var(--ns-color-muted-foreground);
-  --ns-color-text-disabled: var(--ns-color-muted-foreground);
-  --ns-color-text-on-accent: var(--ns-color-primary-foreground);
-  --ns-color-border-default: var(--ns-color-border);
-  --ns-color-border-strong: var(--ns-color-input);
-  --ns-color-action-primary: var(--ns-color-primary);
-  --ns-color-action-disabled: var(--ns-color-muted);
-  --ns-color-focus: var(--ns-color-ring);
-  --ns-color-success-text: var(--ns-color-success);
-  --ns-color-success-bg: var(--ns-color-success-muted);
-  --ns-color-warning-text: var(--ns-color-warning);
-  --ns-color-warning-bg: var(--ns-color-warning-muted);
-  --ns-color-danger-text: var(--ns-color-destructive);
-  --ns-color-danger-bg: var(--ns-color-destructive-muted);
-  --ns-color-info-text: var(--ns-color-info);
-  --ns-color-info-bg: var(--ns-color-info-muted);
-}
-
 :root {
   --ns-type-display-size: var(--ns-font-size-32);
   --ns-type-display-weight: var(--ns-font-weight-extrabold);
@@ -135,12 +111,6 @@
   --ns-type-mono-line-height: 1.6;
   --ns-type-mono-tracking: 0;
 
-  --ns-text-caption: var(--ns-font-size-12);
-  --ns-text-label: var(--ns-font-size-14);
-  --ns-text-body: var(--ns-font-size-16);
-  --ns-text-heading: var(--ns-font-size-20);
-  --ns-text-title: var(--ns-font-size-24);
-  --ns-text-display: var(--ns-font-size-32);
   --ns-radius-control: var(--ns-radius-lg);
   --ns-radius-surface: var(--ns-radius-xl);
   --ns-focus-width: var(--ns-border-width-2);

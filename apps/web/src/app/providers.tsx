@@ -1,7 +1,6 @@
 'use client';
 import type { PropsWithChildren } from 'react';
 import { QueryClient, QueryClientProvider, isServer } from '@tanstack/react-query';
-import { Provider as JotaiProvider } from 'jotai';
 
 let browserQueryClient: QueryClient | undefined;
 function getQueryClient() {
@@ -10,5 +9,5 @@ function getQueryClient() {
 }
 
 export function Providers({ children }: PropsWithChildren) {
-  return <QueryClientProvider client={getQueryClient()}><JotaiProvider>{children}</JotaiProvider></QueryClientProvider>;
+  return <QueryClientProvider client={getQueryClient()}>{children}</QueryClientProvider>;
 }

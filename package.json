@@ -9,7 +9,7 @@
     "dev": "turbo run dev --filter=@nextstep/web --filter=@nextstep/server",
     "dev:desktop": "pnpm --filter @nextstep/desktop dev",
     "storybook": "pnpm --filter @nextstep/design-system storybook",
-    "build": "turbo run build",
+    "build": "turbo run build build-storybook",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "turbo run typecheck && tsc -p tsconfig.tools.json",
     "test": "pnpm test:harness && turbo run test",

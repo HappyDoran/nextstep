@@ -26,11 +26,11 @@ Lucide React에서 필요한 아이콘을 정적으로 직접 import한다. 전�
 
 ## 현재 적용 기준
 
-Light/Dark 모두 background·foreground, card·popover, primary·secondary·muted·accent, destructive, border·input·ring, success·warning·info·highlight 역할을 제공한다. `--ns-color-bg-canvas`, `--ns-color-text-primary`, `--ns-color-action-primary` 같은 CSS 변수 이름은 이 역할의 별칭이다. 테마 범위마다 별칭을 다시 계산하므로 부모의 Light 값이 Dark 자식에 고정되지 않는다. 브랜드 강조와 success·info는 별도 역할이며 상태 색상은 지원 결과를 자동 판정하지 않는다.
+Light/Dark 모두 background·foreground, card·popover, primary·secondary·muted·accent, destructive, border·input·ring, success·warning·info·highlight 역할을 제공한다. CSS 변수 이름은 `--ns-color-<역할>`이다. 브랜드 강조와 success·info는 별도 역할이며 상태 색상은 지원 결과를 자동 판정하지 않는다.
 
 타입 역할은 Display·Title Lg·Title·Body Lg·Body·Body Sm·Caption·Micro·Mono다. 긴 공고·근거를 읽는 제품 특성에 맞춰 기본 본문 크기와 줄간격을 확보한다. 상세 수치의 정답은 tokens.css에만 둔다. 브랜드 색상 선택은 완료했으며 제품 화면·로고·전체 브랜드 가이드 완성을 의미하지 않는다.
 
-`@nextstep/design-system/motion`은 response/damping 방식의 spring 설계값을 제공한다. 아직 애니메이션 라이브러리나 제스처 동작은 없다. 다른 엔진의 stiffness/damping에 그대로 넣지 않으며 도입 시 단위·질량·초기 속도·중단/역전·최종 정지 상태를 검증한다. CSS 일반 전환과 spring은 같은 실행 방식이 아니다.
+spring 설계값과 애니메이션 라이브러리는 제스처 동작을 구현할 때 추가하며 단위·질량·초기 속도·중단/역전·최종 정지 상태를 함께 검증한다. CSS 일반 전환과 spring은 같은 실행 방식이 아니다.
 
 진입은 ease-out, 위치 전환은 ease-in-out, hover는 ease를 기본으로 한다. ease-in으로 진입을 늦추지 않는다. 반복 키보드 작업은 진입 애니메이션을 생략한다. 이동은 transform·opacity로 처리하고 레이아웃 크기를 애니메이션하지 않는다. 동작 감소 설정에서는 이동·spring·회전을 없애고, 필요한 시각 전환만 base 길이의 opacity로 처리한다. 실제로 존재하는 버튼·로더에는 현재 가능한 범위의 포커스·전환·동작 감소 처리를 적용했다. 팝오버·모달·드래그 등은 실제 구현 시 이 기준으로 검증한다.
 

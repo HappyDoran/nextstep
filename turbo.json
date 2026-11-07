@@ -15,8 +15,7 @@
       "outputs": [
         "dist/**",
         ".next/**",
-        "!.next/cache/**",
-        "storybook-static/**"
+        "!.next/cache/**"
       ],
       "env": [
         "NEXTSTEP_API_URL",
@@ -34,6 +33,14 @@
         "build"
       ],
       "outputs": []
+    },
+    "build-storybook": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        "storybook-static/**"
+      ]
     }
   }
 }

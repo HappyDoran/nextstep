@@ -30,10 +30,6 @@ const preset = {
         'body-lg': typeRole('body-lg'), body: typeRole('body'), 'body-sm': typeRole('body-sm'),
         caption: typeRole('caption'), micro: typeRole('micro'), mono: typeRole('mono'),
       },
-      fontWeight: {
-        normal: 'var(--ns-font-weight-regular)', medium: 'var(--ns-font-weight-medium)',
-        semibold: 'var(--ns-font-weight-semibold)', bold: 'var(--ns-font-weight-bold)',
-      },
       lineHeight: { tight: 'var(--ns-line-height-tight)', normal: 'var(--ns-line-height-normal)', relaxed: 'var(--ns-line-height-relaxed)' },
       spacing: {
         0: 'var(--ns-space-0)', 0.5: 'var(--ns-space-0-5)', 1: 'var(--ns-space-1)', 1.5: 'var(--ns-space-1-5)',
@@ -51,7 +47,6 @@ const preset = {
         xl: 'var(--ns-radius-xl)', '2xl': 'var(--ns-radius-2xl)', full: 'var(--ns-radius-full)',
         control: 'var(--ns-radius-control)', surface: 'var(--ns-radius-surface)',
       },
-      borderWidth: { DEFAULT: 'var(--ns-border-width-1)' },
       outlineWidth: { focus: 'var(--ns-focus-width)' },
       outlineOffset: { focus: 'var(--ns-focus-offset)' },
       boxShadow: { sm: 'var(--ns-shadow-sm)', md: 'var(--ns-shadow-md)', lg: 'var(--ns-shadow-lg)' },

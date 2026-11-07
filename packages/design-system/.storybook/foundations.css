@@ -22,21 +22,12 @@ body { @apply bg-background font-sans text-body text-foreground; }
 /* 선택한 인디고와 이전 후보를 비교한다. 제품의 기본 브랜드는 tokens.css가 소유한다. */
 [data-ns-brand="teal"] {
   --ns-color-primary: var(--ns-palette-teal-700);
-  --ns-color-action-primary: var(--ns-palette-teal-700);
   --ns-color-action-hover: var(--ns-palette-teal-800);
   --ns-color-action-active: var(--ns-palette-teal-900);
   --ns-color-ring: var(--ns-palette-teal-700);
 }
-[data-ns-brand="indigo"] {
-  --ns-color-primary: var(--ns-palette-indigo-700);
-  --ns-color-action-primary: var(--ns-palette-indigo-700);
-  --ns-color-action-hover: var(--ns-palette-indigo-800);
-  --ns-color-action-active: var(--ns-palette-indigo-900);
-  --ns-color-ring: var(--ns-palette-indigo-700);
-}
 [data-ns-brand="slate-blue"] {
   --ns-color-primary: var(--ns-palette-slate-blue-700);
-  --ns-color-action-primary: var(--ns-palette-slate-blue-700);
   --ns-color-action-hover: var(--ns-palette-slate-blue-800);
   --ns-color-action-active: var(--ns-palette-slate-blue-900);
   --ns-color-ring: var(--ns-palette-slate-blue-700);

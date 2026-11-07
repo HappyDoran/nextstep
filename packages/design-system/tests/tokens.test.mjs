@@ -39,12 +39,12 @@ test('제품 CSS·Tailwind의 토큰 참조는 존재하며 순환하지 않는�
 test('Light·Dark의 본문·피드백은 4.5:1, 포커스는 3:1 이상이다', () => {
   for (const [mode, values] of [['light', base], ['dark', dark]]) {
     const ratio = (text, bg) => contrast(resolve(`--ns-color-${text}`, values), resolve(`--ns-color-${bg}`, values));
-    for (const bg of ['bg-canvas', 'bg-surface', 'bg-subtle']) {
-      for (const text of ['text-primary', 'text-secondary']) assert.ok(ratio(text, bg) >= 4.5, `${mode}: ${text}/${bg}`);
-      assert.ok(ratio('focus', bg) >= 3, `${mode}: focus/${bg}`);
+    for (const bg of ['background', 'card', 'muted']) {
+      for (const text of ['foreground', 'muted-foreground']) assert.ok(ratio(text, bg) >= 4.5, `${mode}: ${text}/${bg}`);
+      assert.ok(ratio('ring', bg) >= 3, `${mode}: ring/${bg}`);
     }
-    for (const action of ['action-primary', 'action-hover', 'action-active']) assert.ok(ratio('text-on-accent', action) >= 4.5, `${mode}: ${action}`);
-    for (const role of ['success', 'warning', 'danger', 'info']) assert.ok(ratio(`${role}-text`, `${role}-bg`) >= 4.5, `${mode}: ${role}`);
+    for (const action of ['primary', 'action-hover', 'action-active']) assert.ok(ratio('primary-foreground', action) >= 4.5, `${mode}: ${action}`);
+    for (const role of ['success', 'warning', 'destructive', 'info']) assert.ok(ratio(role, `${role}-muted`) >= 4.5, `${mode}: ${role} muted`);
     for (const role of ['primary', 'destructive', 'success', 'warning']) assert.ok(ratio(`${role}-foreground`, role) >= 4.5, `${mode}: ${role} fill`);
     for (const role of ['card', 'popover', 'secondary', 'accent']) assert.ok(ratio(`${role}-foreground`, role) >= 4.5, `${mode}: ${role} surface`);
     assert.ok(ratio('highlight', 'highlight-muted') >= 4.5, `${mode}: highlight`);

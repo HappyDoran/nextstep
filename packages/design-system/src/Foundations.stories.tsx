@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { springPresets } from './motion.js';
 import { Button } from './index.js';
 import { Search, Filter, ArrowUpRight, RefreshCw, CircleCheck, CircleAlert, Info, X, LoaderCircle } from 'lucide-react';
 const meta = { title: '기초/토큰', parameters: { layout: 'fullscreen' } } satisfies Meta;
@@ -55,12 +54,12 @@ export const Typography: Story = {
 export const Spacing: Story = {
   name: '간격',
   render: () => <article className="foundation"><h1>간격</h1><p>기본 4px 스케일에 2·6·10px 미세 간격을 둡니다. rem 단위이므로 브라우저 기본 글자 크기에 따라 함께 변합니다.</p>
-    {['0-5', '1', '1-5', '2', '2-5', '3', '4', '5', '6', '8', '10', '12', '16', '24'].map(step => <div className="foundation-row" key={step}><code>--ns-space-{step}</code><span style={{ display: 'block', width: `var(--ns-space-${step})`, height: 'var(--ns-space-4)', background: 'var(--ns-color-action-primary)' }} /><TokenValue tokens={[`--ns-space-${step}`]} /></div>)}
+    {['0-5', '1', '1-5', '2', '2-5', '3', '4', '5', '6', '8', '10', '12', '16', '24'].map(step => <div className="foundation-row" key={step}><code>--ns-space-{step}</code><span style={{ display: 'block', width: `var(--ns-space-${step})`, height: 'var(--ns-space-4)', background: 'var(--ns-color-primary)' }} /><TokenValue tokens={[`--ns-space-${step}`]} /></div>)}
   </article>,
 };
 export const ShapeAndFocus: Story = {
   name: '모서리·포커스',
-  render: () => <article className="foundation"><h1>모서리·포커스</h1><div className="foundation-row">{['xs', 'sm', 'md', 'lg', 'xl', '2xl', 'full'].map(size => <div className="foundation-sample" data-radius={size} key={size} style={{ borderRadius: `var(--ns-radius-${size})` }}><code>radius-{size}</code><br /><TokenValue tokens={[`--ns-radius-${size}`]} /></div>)}</div><p>Tab 키로 아래 링크의 포커스를 확인하세요.</p><a className="text-primary focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus" style={{ color: 'var(--ns-color-action-primary)' }} href="#foundation-focus" id="foundation-focus">키보드 포커스 예시</a></article>,
+  render: () => <article className="foundation"><h1>모서리·포커스</h1><div className="foundation-row">{['xs', 'sm', 'md', 'lg', 'xl', '2xl', 'full'].map(size => <div className="foundation-sample" data-radius={size} key={size} style={{ borderRadius: `var(--ns-radius-${size})` }}><code>radius-{size}</code><br /><TokenValue tokens={[`--ns-radius-${size}`]} /></div>)}</div><p>Tab 키로 아래 링크의 포커스를 확인하세요.</p><a className="text-primary focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus" style={{ color: 'var(--ns-color-primary)' }} href="#foundation-focus" id="foundation-focus">키보드 포커스 예시</a></article>,
 };
 const icons = [Search, Filter, ArrowUpRight, RefreshCw, CircleCheck, CircleAlert, Info, X];
 export const Icons: Story = {
@@ -74,20 +73,20 @@ export const Icons: Story = {
 
 export const ElevationAndMotion: Story = {
   name: '그림자·모션',
-  render: () => <article className="foundation"><h1>그림자·모션</h1><div className="foundation-row">{['sm', 'md', 'lg'].map(size => <div key={size} className="foundation-sample" style={{ boxShadow: `var(--ns-shadow-${size})`, borderRadius: 'var(--ns-radius-surface)' }}>shadow-{size}<br /><TokenValue tokens={[`--ns-shadow-${size}`]} /></div>)}</div><p>상태 변화 120ms, 일반 전환 200ms, 큰 전환 320ms. 진입·피드백은 ease-out, 위치 전환은 ease-in-out을 사용합니다.</p><p>동작 감소 설정에서는 회전과 버튼 전환을 멈춥니다. 제스처용 spring은 설계값만 정의했으며 실행 엔진은 아직 추가하지 않았습니다.</p><LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" focusable="false" /> 처리중</article>,
+  render: () => <article className="foundation"><h1>그림자·모션</h1><div className="foundation-row">{['sm', 'md', 'lg'].map(size => <div key={size} className="foundation-sample" style={{ boxShadow: `var(--ns-shadow-${size})`, borderRadius: 'var(--ns-radius-surface)' }}>shadow-{size}<br /><TokenValue tokens={[`--ns-shadow-${size}`]} /></div>)}</div><p>상태 변화 120ms, 일반 전환 200ms, 큰 전환 320ms. 진입·피드백은 ease-out, 위치 전환은 ease-in-out을 사용합니다.</p><p>동작 감소 설정에서는 회전과 버튼 전환을 멈춥니다. 제스처용 spring은 제스처 구현 시 정의합니다.</p><LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" focusable="false" /> 처리중</article>,
 };
 export const Themes: Story = {
   name: 'Light·Dark',
-  render: () => <article className="foundation"><h1>Light·Dark</h1><p>토큰 수준의 테마 초안입니다. 앱의 테마 설정 기능은 아직 없습니다.</p><div className="foundation-grid">{['light', 'dark'].map(theme => <section key={theme} data-ns-theme={theme} className="foundation-sample" style={{ background: 'var(--ns-color-bg-canvas)', color: 'var(--ns-color-text-primary)' }}><h2>{theme}</h2><p>공고와 최소 근거를 확인하는 공간입니다.</p><Button>다음 단계</Button><p style={{ color: 'var(--ns-color-warning-text)' }}>확인이 필요한 정보가 있습니다.</p></section>)}</div></article>,
+  render: () => <article className="foundation"><h1>Light·Dark</h1><p>토큰 수준의 테마 초안입니다. 앱의 테마 설정 기능은 아직 없습니다.</p><div className="foundation-grid">{['light', 'dark'].map(theme => <section key={theme} data-ns-theme={theme} className="foundation-sample" style={{ background: 'var(--ns-color-background)', color: 'var(--ns-color-foreground)' }}><h2>{theme}</h2><p>공고와 최소 근거를 확인하는 공간입니다.</p><Button>다음 단계</Button><p style={{ color: 'var(--ns-color-warning)' }}>확인이 필요한 정보가 있습니다.</p></section>)}</div></article>,
 };
 export const BrandCandidates: Story = {
   name: '브랜드 색상 비교',
-  render: () => <article className="foundation"><h1>브랜드 색상</h1><p>선택한 인디고를 기본 브랜드에 적용했습니다. 이전 후보는 비교용으로 유지합니다.</p><div className="foundation-grid">{[['indigo', '인디고 · 선택', 'NextStep의 기본 브랜드 색상'], ['teal', '페트롤 틸', '이전 후보 · 차분한 강조'], ['slate-blue', '슬레이트 블루', '절제되고 업무 도구에 가까운 표현']].map(([brand, title, description]) => <section key={brand} data-ns-brand={brand} className="foundation-sample"><h2 style={{ color: 'var(--ns-color-action-primary)' }}>{title}</h2><TokenValue tokens={['--ns-color-action-primary']} /><p>{description}</p><Button>다음 단계</Button></section>)}</div></article>,
+  render: () => <article className="foundation"><h1>브랜드 색상</h1><p>선택한 인디고를 기본 브랜드에 적용했습니다. 이전 후보는 비교용으로 유지합니다.</p><div className="foundation-grid">{[['indigo', '인디고 · 선택', 'NextStep의 기본 브랜드 색상'], ['teal', '페트롤 틸', '이전 후보 · 차분한 강조'], ['slate-blue', '슬레이트 블루', '절제되고 업무 도구에 가까운 표현']].map(([brand, title, description]) => <section key={brand} data-ns-brand={brand} className="foundation-sample"><h2 style={{ color: 'var(--ns-color-primary)' }}>{title}</h2><TokenValue tokens={['--ns-color-primary']} /><p>{description}</p><Button>다음 단계</Button></section>)}</div></article>,
 };
 
 export const EasingAndDuration: Story = {
-  name: '이징·시간·spring',
-  render: () => <article className="foundation"><h1>이징·시간·spring</h1><p>일반 전환은 CSS 토큰을 사용합니다. spring과 duration은 서로 대체하는 값이 아닙니다.</p><div className="foundation-grid">{['out', 'in-out', 'hover', 'drawer'].map(name => <div className="foundation-sample" key={name}><strong>ease-{name}</strong><br /><code>--ns-ease-{name}</code><br /><TokenValue tokens={[`--ns-ease-${name}`]} /></div>)}</div><div className="foundation-row">{['fast', 'base', 'slow'].map(name => <div key={name} className="foundation-sample"><code>--ns-duration-{name}</code><br /><span style={{ transitionDuration: `var(--ns-duration-${name})` }}><TokenValue tokens={[`--ns-duration-${name}`]} /></span></div>)}</div><h2>제스처 설계값</h2><p>response/damping 표기입니다. 라이브러리의 stiffness/damping에 그대로 전달하지 않습니다.</p><table className="foundation-table"><thead><tr><th>범위</th><th>damping</th><th>response (s)</th></tr></thead><tbody>{Object.entries(springPresets).map(([name, value]) => <tr key={name}><th>{name}</th><td>{value.damping}</td><td>{value.responseSeconds}</td></tr>)}</tbody></table></article>,
+  name: '이징·시간',
+  render: () => <article className="foundation"><h1>이징·시간</h1><p>일반 전환은 CSS 토큰을 사용합니다.</p><div className="foundation-grid">{['out', 'in-out', 'hover', 'drawer'].map(name => <div className="foundation-sample" key={name}><strong>ease-{name}</strong><br /><code>--ns-ease-{name}</code><br /><TokenValue tokens={[`--ns-ease-${name}`]} /></div>)}</div><div className="foundation-row">{['fast', 'base', 'slow'].map(name => <div key={name} className="foundation-sample"><code>--ns-duration-{name}</code><br /><span style={{ transitionDuration: `var(--ns-duration-${name})` }}><TokenValue tokens={[`--ns-duration-${name}`]} /></span></div>)}</div></article>,
 };
 export const MotionRules: Story = {
   name: '모션 규칙',

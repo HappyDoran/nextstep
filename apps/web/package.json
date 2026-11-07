@@ -16,7 +16,6 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "@tanstack/react-query": "catalog:",
-    "jotai": "catalog:",
     "lucide-react": "catalog:"
   },
   "devDependencies": {
