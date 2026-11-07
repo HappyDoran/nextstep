@@ -1,8 +1,11 @@
 import { app, BrowserWindow, dialog, Menu, session, shell } from 'electron';
 import { serviceUrl, isServiceNavigation, isExternalUrl } from './security.js';
-const service = serviceUrl(process.env.NEXTSTEP_WEB_URL, !app.isPackaged);
+let service: URL;
 async function openExternal(target: string) {
-  if (!isExternalUrl(target)) return;
+  if (!isExternalUrl(target)) {
+    if (URL.parse(target)?.protocol === 'http:') await dialog.showMessageBox({ type: 'warning', message: '보안 연결(HTTPS)이 아닌 외부 주소는 열지 않습니다.', detail: new URL(target).hostname });
+    return;
+  }
   const answer = await dialog.showMessageBox({ type: 'question', buttons: ['취소', '브라우저로 열기'], defaultId: 0, cancelId: 0, message: '외부 페이지를 기본 브라우저로 엽니다.', detail: new URL(target).hostname });
   if (answer.response === 1) await shell.openExternal(target);
 }
@@ -20,8 +23,14 @@ function createWindow() {
   void window.loadURL(service.href);
 }
 void app.whenReady().then(() => {
-session.fromPartition('persist:nextstep').setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
-session.fromPartition('persist:nextstep').setPermissionCheckHandler(() => false);
+try { service = serviceUrl(process.env.NEXTSTEP_WEB_URL, !app.isPackaged); } catch {
+  dialog.showErrorBox('NextStep을 시작하지 못했습니다.', '서비스 주소(NEXTSTEP_WEB_URL)를 확인하세요.');
+  app.quit();
+  return;
+}
+const partition = session.fromPartition('persist:nextstep');
+partition.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+partition.setPermissionCheckHandler(() => false);
 Menu.setApplicationMenu(Menu.buildFromTemplate([{ label: 'NextStep', submenu: [{ label: 'NextStep 종료', click: () => app.quit() }] }, { label: '편집', submenu: [{ role: 'copy', label: '복사' }, { role: 'paste', label: '붙여넣기' }, { role: 'selectAll', label: '전체 선택' }] }]));
 createWindow();
 });

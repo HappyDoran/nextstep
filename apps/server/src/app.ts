@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyError } from 'fastify';
 import { healthSchema } from '@nextstep/contracts';
 import { openDatabase } from './database.js';
 
@@ -11,6 +11,10 @@ export function createApp(databasePath: string) {
     const version = db.prepare('PRAGMA user_version').get() as { user_version: number };
     return healthSchema.parse({ service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: version.user_version });
   });
-  app.setErrorHandler((_error, _request, reply) => { void reply.status(500).send({ message: '요청을 처리하지 못했습니다.' }); });
+  app.setErrorHandler((error: FastifyError, _request, reply) => {
+    // 4xx는 Fastify가 판정한 클라이언트 오류이므로 상태를 유지한다. 내부 메시지는 노출하지 않는다.
+    const status = error.statusCode !== undefined && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
+    void reply.status(status).send({ message: status === 500 ? '요청을 처리하지 못했습니다.' : '요청을 확인하세요.' });
+  });
   return app;
 }

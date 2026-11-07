@@ -14,11 +14,15 @@ test('HTTP 준비 응답과 파일 DB 재시작·마이그레이션 재실행', 
     db.prepare('INSERT INTO service_metadata VALUES (?, ?)').run('검증', '재시작 유지');
     db.close();
     const app = createApp(path);
+    app.post('/echo', async () => ({}));
     try {
       const res = await app.inject({ method: 'GET', url: '/health' });
       assert.equal(res.statusCode, 200);
       assert.deepEqual(res.json(), { service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: 1 });
       assert.equal((await app.inject('/users')).statusCode, 404);
+      const malformed = await app.inject({ method: 'POST', url: '/echo', headers: { 'content-type': 'application/json' }, payload: '{' });
+      assert.equal(malformed.statusCode, 400);
+      assert.deepEqual(malformed.json(), { message: '요청을 확인하세요.' });
     } finally { await app.close(); }
     db = openDatabase(path);
     assert.equal(db.prepare('SELECT value FROM service_metadata WHERE key = ?').get('검증').value, '재시작 유지');
@@ -30,12 +34,13 @@ test('알 수 없는 미래 DB를 변경하지 않는다', () => {
   const dir = mkdtempSync(join(tmpdir(), 'nextstep-future-'));
   try {
     const path = join(dir, 'future.sqlite');
-    const db = openDatabase(path);
+    const db = new DatabaseSync(path);
     db.exec('PRAGMA user_version = 2');
     db.close();
     assert.throws(() => openDatabase(path), /지원하지 않는 DB 버전/);
     const original = new DatabaseSync(path);
     assert.equal(original.prepare('PRAGMA user_version').get().user_version, 2);
+    assert.equal(original.prepare('PRAGMA journal_mode').get().journal_mode, 'delete');
     original.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

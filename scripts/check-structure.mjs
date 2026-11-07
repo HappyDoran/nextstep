@@ -2,6 +2,7 @@ import { readFileSync, readdirSync, lstatSync, readlinkSync, existsSync } from '
 import { resolve, relative, dirname, join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { builtinModules } from 'node:module';
 import ts from 'typescript';
 
 export const graph = {
@@ -11,6 +12,14 @@ export const graph = {
   'packages/contracts': [],
   'packages/design-system': [],
 };
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+// 내부 패키지의 subpath는 해당 package.json exports에 공개된 경로만 허용한다.
+function isExported(name, value) {
+  if (value === name) return true;
+  const manifest = join(repoRoot, 'packages', name.split('/')[1], 'package.json');
+  return existsSync(manifest) && Object.hasOwn(JSON.parse(readFileSync(manifest, 'utf8')).exports ?? {}, `.${value.slice(name.length)}`);
+}
+const serverRuntime = new Set([...builtinModules, 'electron', 'fastify']);
 export function dependencyErrors(owner, dependencies) {
   return Object.keys(dependencies).filter(name => name.startsWith('@nextstep/') && !graph[owner]?.includes(name)).map(name => `${owner}: 허용하지 않는 의존 ${name}`);
 }
@@ -25,9 +34,9 @@ export function importErrors(owner, filename, source) {
     }
     if (value.startsWith('@nextstep/')) {
       const name = value.split('/').slice(0, 2).join('/');
-      if (!graph[owner]?.includes(name) || value !== name) errors.push(`${filename}: 허용하지 않는 내부 참조 ${value}`);
+      if (!graph[owner]?.includes(name) || !isExported(name, value)) errors.push(`${filename}: 허용하지 않는 내부 참조 ${value}`);
     }
-    if ((owner.startsWith('packages/') || owner === 'apps/web') && (value.startsWith('node:') || value === 'electron' || value === 'fastify')) errors.push(`${filename}: 런타임 경계 위반 ${value}`);
+    if ((owner.startsWith('packages/') || owner === 'apps/web') && (value.startsWith('node:') || serverRuntime.has(value.split('/')[0]))) errors.push(`${filename}: 런타임 경계 위반 ${value}`);
   };
   const visit = node => {
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) check(node.moduleSpecifier.text);
@@ -46,8 +55,9 @@ function walk(dir) {
   return readdirSync(dir).flatMap(name => {
     if (ignored.has(name)) return [];
     const path = join(dir, name);
-    if (lstatSync(path).isSymbolicLink()) return [];
-    return lstatSync(path).isDirectory() ? walk(path) : [path];
+    const stat = lstatSync(path);
+    if (stat.isSymbolicLink()) return [];
+    return stat.isDirectory() ? walk(path) : [path];
   });
 }
 export function checkRepository(root) {
@@ -78,7 +88,7 @@ export function checkRepository(root) {
   }
   const tracked = spawnSync('git', ['ls-files', '-z', '--cached'], { cwd: root, encoding: 'utf8' });
   if (tracked.status !== 0) errors.push('Git 추적 파일을 확인하지 못했습니다.');
-  for (const path of tracked.stdout.split('\0').filter(Boolean)) {
+  for (const path of (tracked.stdout ?? '').split('\0').filter(Boolean)) {
     if (/(^|\/)(\.env(?:\..*)?|\.data|uploads|\.private)(\/|$)/.test(path) && !path.endsWith('.env.example')) errors.push(`${path}: 비공개 파일 추적 금지`);
     if (/\.(db|sqlite|sqlite3)(-|$)/.test(path) || /(^|\/)LLM_REPORT\.md$/i.test(path)) errors.push(`${path}: 금지 파일 추적`);
   }
