@@ -43,7 +43,7 @@ test('자소설닷컴 사이트맵 최신 ID와 상세의 모집 분야·직무�
   const parsed = jasoseol.parseDetail('7', page({ initialEmploymentCompany: detail }));
   assert.deepEqual(parsed.roles, ['app', 'design']);
   assert.deepEqual(parsed.body, { code: 'body_image_only' });
-  assert.equal(parsed.companyType, 'middle_market');
+  assert.equal(parsed.companyType, '중견기업');
   assert.deepEqual(jasoseol.parseDetail('7', '<html></html>'), { code: 'parse_failed' });
   assert.equal(nextData('<html></html>'), undefined);
 });

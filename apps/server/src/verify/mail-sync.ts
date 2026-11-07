@@ -10,7 +10,9 @@ import { openDatabase } from '../database.js';
 import { encrypt, loadSecretKey } from '../secrets.js';
 import { enqueue, runNext } from '../recommend/jobs.js';
 import { createMailHandler } from '../mail/sync.js';
-import { naverSource } from '../mail/naver.js';
+import { naverBodies, naverSource } from '../mail/naver.js';
+import { aiConfigured, usageTotals } from '../ai/openai.js';
+import { interpretMail } from '../prompts/mail.js';
 
 async function main() {
   const user = process.env.NAVER_IMAP_USER;
@@ -24,9 +26,11 @@ async function main() {
     const at = new Date().toISOString();
     db.prepare('INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)').run(userId, 'verify@example.com', 'x', at);
     db.prepare("INSERT INTO mail_connections (user_id, provider, account, secret, status, consent_at, created_at) VALUES (?, 'naver', ?, ?, '정상', ?, ?)").run(userId, user, encrypt(key, pass), at, at);
-    const handler = createMailHandler(db, key, naverSource);
+    // AI가 설정되면 해석 단계까지 실행한다(실제 메일 본문이 OpenAI로 전달됨). 요금을 줄이려고 1회만 돈다.
+    const ai = aiConfigured() ? { interpret: interpretMail, bodies: naverBodies } : undefined;
+    const handler = createMailHandler(db, key, naverSource, ai);
     const runs = [];
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < (ai ? 1 : 3); i++) {
       enqueue(db, userId, 'mail');
       const started = Date.now();
       await runNext(db, handler);
@@ -36,7 +40,9 @@ async function main() {
     const distribution = db.prepare('SELECT classification, outcome, count(*) AS n FROM mail_messages GROUP BY classification, outcome ORDER BY n DESC').all();
     const duplicates = (db.prepare('SELECT count(*) AS n FROM (SELECT message_key FROM mail_messages GROUP BY message_key HAVING count(*) > 1)').get() as { n: number }).n;
     const cursors = db.prepare('SELECT count(*) AS n FROM mail_cursors').get();
-    console.log(JSON.stringify({ ok: true, runs, distribution, duplicates, cursors }, null, 2));
+    const reviews = db.prepare('SELECT reason, count(*) AS n FROM review_requests GROUP BY reason').all();
+    const apps = db.prepare('SELECT status, count(*) AS n FROM applications GROUP BY status').all();
+    console.log(JSON.stringify({ ok: true, ai: Boolean(ai), usage: usageTotals, runs, distribution, duplicates, cursors, reviews, createdApplications: apps }, null, 2));
     db.close();
   } finally {
     rmSync(dir, { recursive: true, force: true });

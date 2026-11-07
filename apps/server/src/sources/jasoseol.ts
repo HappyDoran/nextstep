@@ -14,6 +14,9 @@ export const ROLE_KEYWORDS: Record<string, RegExp> = {
   planning: /서비스\s*기획|웹\s*기획|앱\s*기획|\bpm\b|\bpo\b|프로덕트\s*매니저|product\s*(manager|owner)/i,
 };
 
+// 자소설닷컴 기업 규모 코드. 모르는 코드는 미확인으로 둔다.
+const BUSINESS_SIZE: Record<string, string> = { big_business: '대기업', middle_market: '중견기업', small_business: '중소기업', public_institution: '공공기관', foreign_company: '외국계', startup: '스타트업' };
+
 export type JasoseolPosting = {
   id: string;
   url: string;
@@ -67,7 +70,7 @@ export function parseDetail(id: string, html: string): JasoseolPosting | { code:
     fields,
     roles: Object.keys(ROLE_KEYWORDS).filter(role => ROLE_KEYWORDS[role]!.test(haystack)),
     externalApplyUrl: d.employment_page_url && /^https:\/\//.test(d.employment_page_url) ? d.employment_page_url : null,
-    companyType: d.company_group?.business_size ?? null,
+    companyType: BUSINESS_SIZE[d.company_group?.business_size ?? ''] ?? null,
     employeeCount: null,
     body: htmlText(d.content ?? ''),
   };

@@ -20,6 +20,7 @@ export type JobkoreaPosting = {
   careers: { type: string; fromYears: number | null; toYears: number | null }[];
   receptionTypes: string[];
   externalApplyUrl: string | null;
+  location: string | null;
   companyType: string | null;
   employeeCount: number | null;
 };
@@ -64,6 +65,7 @@ type Jobs = {
     post?: { postingCompanyName?: string };
     reception?: { receptionOptions?: { type: string; contents?: unknown }[] };
     requirement?: { careers?: { type: string; range?: { from?: number | null; to?: number | null } | null }[] };
+    workCondition?: { workplace?: { locationAttributes?: { address?: string | null; fullAddress?: string | null }[] } };
   };
 };
 type Corp = { info?: { companyTypeName?: string; employeeCount?: number } };
@@ -95,6 +97,8 @@ export function parsePosting(id: string, html: string): JobkoreaPosting | { code
     careers: (base.requirement?.careers ?? []).map(c => ({ type: c.type, fromYears: c.range?.from ?? null, toYears: c.range?.to ?? null })),
     receptionTypes: options.map(o => o.type),
     externalApplyUrl: external,
+    // 근무지는 출처에 적힌 주소 앞부분(시·구)만 쓴다.
+    location: base.workCondition?.workplace?.locationAttributes?.map(l => (l.address ?? l.fullAddress ?? '').trim()).find(Boolean)?.split(/\s+/).slice(0, 2).join(' ') || null,
     // 기업 유형·규모는 출처가 명시한 값만 사용하고 없으면 미확인(null)으로 둔다.
     companyType: corp?.info?.companyTypeName ?? null,
     // 0명은 미입력으로 보고 미확인 처리한다.
@@ -112,7 +116,7 @@ export async function fetchJobkorea(id: string): Promise<CollectedPosting | Coll
   const body = 'text' in raw ? htmlText(raw.text) : raw;
   return {
     source: 'jobkorea', sourceId: id, url: p.url, title: p.title, company: p.company, deadline: p.deadline, alwaysHire: p.alwaysHire,
-    location: null, remote: null, careers: p.careers.map(c => ({ ...c, type: c.type === 'NEWBIE' || c.type === 'EXPERIENCED' ? c.type : 'ANY' })),
+    location: p.location, remote: null, careers: p.careers.map(c => ({ ...c, type: c.type === 'NEWBIE' || c.type === 'EXPERIENCED' ? c.type : 'ANY' })),
     companyType: p.companyType, employeeCount: p.employeeCount, externalApplyUrl: p.externalApplyUrl,
     body: 'text' in body ? body.text : null, bodyFailure: 'code' in body ? body.code : null,
   };

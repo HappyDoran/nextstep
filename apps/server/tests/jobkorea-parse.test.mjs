@@ -22,6 +22,7 @@ const jobs = (reception, recruitment = { applicationEndAt: '2026-12-01T23:59:59+
     overview: { recruitment },
     reception: { receptionOptions: reception },
     requirement: { careers: [{ type: 'EXPERIENCED', range: { from: 3, to: null } }] },
+    workCondition: { workplace: { locationAttributes: [{ address: '서울 강남구 테헤란로 1', fullAddress: '서울 강남구 테헤란로 1 10층' }] } },
   },
 });
 
@@ -42,6 +43,7 @@ test('상세의 마감·경력·홈페이지 지원 URL·명시된 기업 규모
     careers: [{ type: 'EXPERIENCED', fromYears: 3, toYears: null }],
     receptionTypes: ['HOMEPAGE'],
     externalApplyUrl: 'https://careers.example.com/1',
+    location: '서울 강남구',
     companyType: '중견기업',
     employeeCount: 300,
   });
