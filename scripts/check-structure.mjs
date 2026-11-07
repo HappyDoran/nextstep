@@ -60,6 +60,33 @@ function walk(dir) {
     return stat.isDirectory() ? walk(path) : [path];
   });
 }
+// 규범 문서는 종류와 마지막 확인일, skill·역할은 이름과 사용 시점을 frontmatter로 가진다.
+export function parseFrontmatter(source) {
+  const match = /^---\n([\s\S]*?)\n---\n/.exec(source);
+  if (!match) return undefined;
+  return Object.fromEntries(match[1].split('\n').map(line => /^([\w-]+):\s*(.*)$/.exec(line)).filter(Boolean).map(([, key, value]) => [key, value.trim()]));
+}
+const kinds = new Set(['rule', 'design', 'spec', 'guide', 'runbook', 'snapshot', 'history']);
+const list = dir => (existsSync(dir) ? readdirSync(dir) : []);
+export function frontmatterErrors(root) {
+  const errors = [];
+  const ruleDocs = ['AGENTS.md', 'TECH_RULES.md'].filter(path => existsSync(join(root, path)));
+  if (existsSync(join(root, 'docs'))) ruleDocs.push(...walk(join(root, 'docs')).filter(path => extname(path) === '.md').map(path => relative(root, path)));
+  for (const path of ruleDocs) {
+    const meta = parseFrontmatter(readFileSync(join(root, path), 'utf8'));
+    if (!meta?.title || !kinds.has(meta.kind)) errors.push(`${path}: title·kind frontmatter가 필요합니다.`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(meta?.last_verified ?? '')) errors.push(`${path}: last_verified(YYYY-MM-DD)가 필요합니다.`);
+  }
+  for (const name of list(join(root, '.codex/skills'))) {
+    const meta = parseFrontmatter(readFileSync(join(root, '.codex/skills', name, 'SKILL.md'), 'utf8'));
+    if (meta?.name !== name || !meta.description) errors.push(`.codex/skills/${name}: name(디렉터리와 같음)·description이 필요합니다.`);
+  }
+  for (const file of list(join(root, '.codex/agents'))) {
+    const meta = parseFrontmatter(readFileSync(join(root, '.codex/agents', file), 'utf8'));
+    if (meta?.name !== file.replace(/\.md$/, '') || !meta.description) errors.push(`.codex/agents/${file}: name(파일명과 같음)·description이 필요합니다.`);
+  }
+  return errors;
+}
 export function checkRepository(root) {
   const errors = [];
   for (const [owner] of Object.entries(graph)) {
@@ -71,11 +98,13 @@ export function checkRepository(root) {
   }
   const expectedLinks = ['CLAUDE.md', ...Object.keys(graph).map(owner => `${owner}/CLAUDE.md`)];
   for (const name of readdirSync(join(root, '.codex/skills'))) expectedLinks.push(`.claude/skills/${name}/SKILL.md`);
+  for (const name of readdirSync(join(root, '.codex/agents'))) expectedLinks.push(`.claude/agents/${name}`);
   for (const path of expectedLinks) {
     const canonical = path.startsWith('.claude/') ? path.replace('.claude/', '.codex/') : path.replace('CLAUDE.md', 'AGENTS.md');
     const absolute = join(root, path);
     if (!existsSync(absolute) || !lstatSync(absolute).isSymbolicLink() || resolve(dirname(absolute), readlinkSync(absolute)) !== resolve(root, canonical)) errors.push(`${path}: canonical symlink가 필요합니다.`);
   }
+  errors.push(...frontmatterErrors(root));
   for (const path of walk(root)) {
     if (extname(path) !== '.md') continue;
     const source = readFileSync(path, 'utf8').replace(/```[\s\S]*?```/g, '');
@@ -97,5 +126,5 @@ export function checkRepository(root) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const errors = checkRepository(process.cwd());
   if (errors.length) { console.error(errors.join('\n')); process.exitCode = 1; }
-  else console.info('구조·의존 경계·symlink·문서 링크·추적 파일 검사 통과');
+  else console.info('구조·의존 경계·symlink·frontmatter·문서 링크·추적 파일 검사 통과');
 }

@@ -1,3 +1,9 @@
+---
+title: 기술 규칙
+kind: rule
+last_verified: 2026-11-07
+---
+
 # 기술 규칙
 
 ## 실행 환경과 선택

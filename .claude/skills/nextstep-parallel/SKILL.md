@@ -1,0 +1,1 @@
+../../../.codex/skills/nextstep-parallel/SKILL.md

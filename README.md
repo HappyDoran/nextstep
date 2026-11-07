@@ -1,12 +1,12 @@
 # NextStep
 
-취업·이직 준비자를 위한 맞춤 채용공고 추천·지원 관리 독립 서비스다. 1차는 초대 계정의 비공개 MVP이며 [서비스 기획서](docs/spec/서비스기획서_v0.2.md)와 [기술 설계 부록](docs/spec/기술설계_부록.md)이 요구·완료 조건을 소유한다.
+취업·이직 준비자를 위한 맞춤 채용공고 추천·지원 관리 독립 서비스다. 1차는 초대 계정의 비공개 MVP이며 [서비스 기획서](docs/spec/서비스기획서_v0.2.md)가 요구·완료 조건, [기술 설계 부록](docs/spec/기술설계_부록.md)이 데이터·작업·보호 설계를 소유한다.
 
 ## 현재 구현 범위
 
 pnpm/Turborepo 모노레포, 웹 개발 화면, API·SQLite 준비 확인, DB 버전 관리, Electron 기본 창·종료·URL 보호, 공통 계약·UI·토큰과 Storybook을 구성했다. 디자인 기초는 원시 값·의미 색상·타입·간격·radius·그림자·모션 시간·이징·Lucide React 아이콘을 제공하며 선택한 브랜드와 Light/Dark를 카탈로그에서 비교할 수 있다. 웹의 연결 확인은 실제 로컬 API와 DB를 읽는다. 실패 후 재시도할 수 있다. 개인 데이터는 아직 받지 않는다.
 
-초대 로그인·세션·수동 지원·이력서·추천·메일·작업자·예약·삭제 기능은 미구현이다. 로컬 기반 구축은 P1-01~07 또는 MVP 완료가 아니다. 앱·사용자 컴퓨터 종료 중 별도 서버 자동화와 배포·서명·패키징도 검증 대상에 남아 있다. 브랜드 색상은 디자인 기초 소유 문서를 따르며 화면 레이아웃은 초기 개발안이다.
+초대 로그인·세션·수동 지원·이력서·추천·메일·작업자·예약·삭제 기능은 미구현이다. 단계별 진행 상태는 [백로그](docs/spec/gap-analysis.md)가 소유한다. 앱·사용자 컴퓨터 종료 중 별도 서버 자동화와 배포·서명·패키징도 검증 대상에 남아 있다. 브랜드 색상은 디자인 기초 소유 문서를 따르며 화면 레이아웃은 초기 개발안이다.
 
 ## 설치와 실행
 
@@ -57,7 +57,7 @@ pnpm test:e2e
 
 | 명령 | 검증 범위 |
 |---|---|
-| `pnpm structure:check` | 의존 그래프·import 경계·symlink·문서 상대 링크·금지 파일 추적 |
+| `pnpm structure:check` | 의존 그래프·import 경계·symlink·규범 문서·skill·agent frontmatter·문서 상대 링크·금지 파일 추적 |
 | `pnpm lint` | 전체 JS·TS·React ESLint, 경고도 실패 |
 | `pnpm typecheck` | workspace·Storybook 설정·브라우저/Electron 테스트·Next route 타입 |
 | `pnpm test:harness` | 구조 검사 자체의 위반 탐지 회귀 |
@@ -70,8 +70,8 @@ pnpm test:e2e
 
 CI는 설치·전체 검사·Chromium E2E를 수행한다. macOS Electron 실제 실행·완전 종료는 별도 확인한다. CI 성공과 브랜치 보호 설정은 별개다.
 
-## 다음 작업 경계
+## 다음 작업
 
-기반 세팅 후 기술 부록 P1-01의 세 출처 수집 → 동의된 네이버 시험 계정의 읽기 전용 조회 → 텍스트 PDF/MD 추출 검증을 진행한다. 네 직무 정답 사례와 실패 구분을 확보한 뒤 P1-02 인증·사용자 격리·삭제 경계를 구현한다. 초대 인증 수단·AI 처리 제공자·별도 서버 배포 환경·운영 DB·macOS 최소 환경은 필요한 시점에 결정한다. 개인 Notion·메일·키체인·기존 Chrome 로그인 세션을 재사용하지 않는다.
+다음 착수 단계와 막는 결정은 [백로그](docs/spec/gap-analysis.md)를 따른다. 개인 Notion·메일·키체인·기존 Chrome 로그인 세션을 재사용하지 않는다.
 
 기술 책임은 [TECH_RULES.md](TECH_RULES.md), 작업 규칙은 [AGENTS.md](AGENTS.md), 지원 체계와 검사 한계는 [AI_AGENT_HARNESS.md](docs/AI_AGENT_HARNESS.md)를 따른다.
