@@ -27,7 +27,8 @@ export const defaultDeps: PipelineDeps = {
 
 // 실행당 요청·판정 상한(출처 부담·요금 제한).
 const PER_FAMILY = 5;
-const JASOSEOL_CAP = 20;
+// 자소설닷컴은 직무별 목록에서 직무당 이 수만큼 상세를 읽는다.
+const JASOSEOL_PER_FAMILY = 5;
 const JUDGE_CAP = 40;
 
 // 사용자가 넣는 링크에서 출처와 공고 ID를 찾는다. 지원 출처가 아니면 undefined.
@@ -141,7 +142,7 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
       if (SOURCE_POLICY[mode].jobkorea === 'auto') runs.push(() => deps.collect.jobkorea(family, PER_FAMILY));
       if (SOURCE_POLICY[mode].wanted === 'auto') runs.push(() => deps.collect.wanted(family, PER_FAMILY));
     }
-    if (SOURCE_POLICY[mode].jasoseol === 'auto') runs.push(() => deps.collect.jasoseol(families, JASOSEOL_CAP));
+    if (SOURCE_POLICY[mode].jasoseol === 'auto') runs.push(() => deps.collect.jasoseol(families, JASOSEOL_PER_FAMILY));
     // 출처끼리는 순서대로 요청한다(같은 출처에 동시 요청을 만들지 않는다).
     for (const run of runs) {
       const { postings, failures } = await run();

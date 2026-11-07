@@ -47,3 +47,9 @@ test('자소설닷컴 사이트맵 최신 ID와 상세의 모집 분야·직무�
   assert.deepEqual(jasoseol.parseDetail('7', '<html></html>'), { code: 'parse_failed' });
   assert.equal(nextData('<html></html>'), undefined);
 });
+
+test('자소설닷컴 직무별 목록에서 공고 ID를 읽는다', () => {
+  assert.deepEqual(jasoseol.dutyListIds('[{"id":107053,"name":"x"},{"id":"bad"},{}]'), ['107053']);
+  assert.deepEqual(jasoseol.dutyListIds('{"error":"x"}'), []);
+  assert.deepEqual(jasoseol.DUTY_GROUPS['앱 개발'], [161, 172, 173]);
+});

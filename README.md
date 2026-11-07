@@ -33,7 +33,7 @@ mise exec -- pnpm dev
 | `pnpm --filter @nextstep/server invite` | 운영자용 초대 코드 발급(14일 유효, 1회용). 서버와 같은 DB에 해시만 저장하고 코드 원문은 이 출력에서만 보임 |
 | `pnpm --filter @nextstep/server eval:recommend` | 추천 판정 프롬프트를 정답 사례 57건(합성)으로 실제 OpenAI에 보내 직무별 일치율·주입 사례 결과를 출력. 요금 발생 |
 | `pnpm --filter @nextstep/server verify:wanted` | 개인 모드에서만 원티드 네 직무 공개 목록·상세 각 3건 조회. 서비스 모드면 요청 없이 종료 |
-| `pnpm --filter @nextstep/server verify:jasoseol` | 개인 모드에서만 자소설닷컴 sitemap 최신 공고 상세 20건 조회. 서비스 모드면 요청 없이 종료 |
+| `pnpm --filter @nextstep/server verify:jasoseol` | 개인 모드에서만 자소설닷컴 네 직무 공개 직무별 목록·상세 각 2건 조회. 서비스 모드면 요청 없이 종료 |
 | `pnpm --filter @nextstep/server verify:recommend-flow [--personal] [링크…]` | 임시 DB·합성 이력서로 실제 출처 수집과 OpenAI 조건 추출·판정을 한 번 실행하고 공개 공고 제목·분류·근거 요약만 출력 후 삭제. `--personal`은 개인 모드·네 직무. 출처 요청·요금 발생 |
 | `pnpm --filter @nextstep/server verify:mail-sync` | 임시 DB·임시 사용자로 실제 네이버 증분 동기화를 3회(AI 설정 시 해석 포함 1회) 실행해 건수·분류 분포·중복 수만 출력하고 임시 DB를 삭제. `NAVER_IMAP_USER`·`NAVER_IMAP_PASSWORD` 필요 |
 | `pnpm --filter @nextstep/server verify:naver` | 네이버 IMAP 읽기 전용(EXAMINE) 조회. 제목·주소·본문 없이 편지함별 위치·건수·출처 도메인과 알림 메일의 공고 링크 확보 건수 집계만 출력. 원티드 추적 링크는 최대 5건 리다이렉트 위치만 확인 |

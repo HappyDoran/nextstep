@@ -1,6 +1,6 @@
 // jasoseol 공개 페이지 해석. 수집 정책(모드)은 호출하는 쪽이 확인한다.
 import type { JobFamily } from '@nextstep/contracts';
-import { FAMILY_KEYS, type CollectedPosting, type CollectFailure } from './types.js';
+import type { CollectedPosting, CollectFailure } from './types.js';
 import { htmlText, nextData, politeGet, type BodyFailure } from './http.js';
 
 export const ORIGIN = 'https://jasoseol.com';
@@ -92,17 +92,31 @@ export async function fetchJasoseol(id: string): Promise<(CollectedPosting & { r
   };
 }
 
-// 사이트맵에 직무 정보가 없어 최신 공고를 정해진 수만 확인하고 모집 분야로 직무를 고른다.
-export async function collectJasoseol(families: JobFamily[], cap: number) {
+// 자소설닷컴 직무 분류 ID(2026-11-07 /api/v1/duty-groups로 확인한 초기값).
+export const DUTY_GROUPS: Record<JobFamily, number[]> = { 프론트엔드: [175, 162], '앱 개발': [161, 172, 173], 디자인: [241], 기획: [171] };
+
+export function dutyListIds(json: string) {
+  const list = JSON.parse(json) as { id?: number }[];
+  return Array.isArray(list) ? list.map(e => String(e.id)).filter(id => /^\d+$/.test(id)) : [];
+}
+
+// 웹 화면이 쓰는 공개 직무별 목록으로 후보를 찾고 상세를 읽는다(개인 모드 전용).
+export async function collectJasoseol(families: JobFamily[], perFamily: number) {
   const postings: CollectedPosting[] = [];
   const failures: CollectFailure[] = [];
-  const sitemap = await politeGet(`${ORIGIN}/sitemap/employment_companies.xml`, { accept: 'application/xml' });
-  if ('code' in sitemap) return { postings, failures: [{ source: 'jasoseol' as const, code: sitemap.code }] };
-  const wanted = new Set(families.map(f => FAMILY_KEYS[f]));
-  for (const id of sitemapRecruitIds(sitemap.text, cap)) {
-    const r = await fetchJasoseol(id);
-    if ('code' in r) failures.push(r);
-    else if (r.roles.some(role => wanted.has(role as never))) postings.push(r);
+  const seen = new Set<string>();
+  for (const family of families) {
+    const ids: string[] = [];
+    for (const group of DUTY_GROUPS[family]) {
+      const list = await politeGet(`${ORIGIN}/api/v1/duty-groups/${group}/employment-companies?per_page=${perFamily}`, { accept: 'application/json' });
+      if ('code' in list) { failures.push({ source: 'jasoseol', code: list.code }); continue; }
+      for (const id of dutyListIds(list.text)) if (!ids.includes(id)) ids.push(id);
+    }
+    for (const id of ids.filter(id => !seen.has(id)).slice(0, perFamily)) {
+      seen.add(id);
+      const r = await fetchJasoseol(id);
+      if ('code' in r) failures.push(r); else postings.push(r);
+    }
   }
   return { postings, failures };
 }
