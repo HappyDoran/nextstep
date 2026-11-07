@@ -19,32 +19,30 @@ export async function structured<T extends z.ZodType>(name: string, schema: T, i
   const model = process.env.NEXTSTEP_OPENAI_MODEL;
   if (!key || !model) throw new AiError('ai_unconfigured');
   const base = process.env.NEXTSTEP_OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
-  // chat: Chat Completions 호환 서버(Ollama·LM Studio 등 로컬 모델)용. 기본은 OpenAI Responses API.
-  const chat = process.env.NEXTSTEP_AI_API === 'chat';
-  const format = { name, strict: true, schema: jsonSchema(schema) };
-  const payload = chat
-    ? { model, messages: [{ role: 'system', content: instructions }, { role: 'user', content: input }], response_format: { type: 'json_schema', json_schema: format }, reasoning_effort: 'none' }
-    // 학습·보관 옵션은 계정 기본값을 따른다. 응답 저장은 요청하지 않는다.
-    : { model, instructions, input, store: false, text: { format: { type: 'json_schema', ...format } } };
   let res: Response;
   try {
-    res = await fetch(`${base}/${chat ? 'chat/completions' : 'responses'}`, {
+    res = await fetch(`${base}/responses`, {
       method: 'POST',
       headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-      // 로컬 모델은 느려 상한을 환경 변수로 늘린다.
-      signal: AbortSignal.timeout(Number(process.env.NEXTSTEP_AI_TIMEOUT_MS ?? 60_000)),
+      body: JSON.stringify({
+        model,
+        instructions,
+        input,
+        // 학습·보관 옵션은 계정 기본값을 따른다. 응답 저장은 요청하지 않는다.
+        store: false,
+        text: { format: { type: 'json_schema', name, strict: true, schema: jsonSchema(schema) } },
+      }),
+      signal: AbortSignal.timeout(60_000),
     });
   } catch {
     throw new AiError('ai_network');
   }
   if (!res.ok) throw new AiError('ai_http', res.status);
-  type Body = { output?: { content?: { type?: string; text?: string }[] }[]; choices?: { message?: { content?: string } }[]; usage?: { input_tokens?: number; output_tokens?: number; prompt_tokens?: number; completion_tokens?: number } };
-  const body = await res.json() as Body;
+  const body = await res.json() as { output?: { type?: string; content?: { type?: string; text?: string }[] }[]; usage?: { input_tokens?: number; output_tokens?: number } };
   usageTotals.calls++;
-  usageTotals.inputTokens += body.usage?.input_tokens ?? body.usage?.prompt_tokens ?? 0;
-  usageTotals.outputTokens += body.usage?.output_tokens ?? body.usage?.completion_tokens ?? 0;
-  const text = chat ? body.choices?.[0]?.message?.content : body.output?.flatMap(item => item.content ?? []).find(part => part.type === 'output_text')?.text;
+  usageTotals.inputTokens += body.usage?.input_tokens ?? 0;
+  usageTotals.outputTokens += body.usage?.output_tokens ?? 0;
+  const text = body.output?.flatMap(item => item.content ?? []).find(part => part.type === 'output_text')?.text;
   try {
     return schema.parse(JSON.parse(text ?? ''));
   } catch {
