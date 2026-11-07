@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 test('관리 토글로 수집 모드를 바꾸고 재접속 후 유지된다', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/settings');
   const personal = page.getByRole('radio', { name: /개인/ });
   const service = page.getByRole('radio', { name: /서비스/ });
   const status = page.getByRole('status').filter({ hasText: /잡코리아|수집 모드/ });

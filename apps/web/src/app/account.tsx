@@ -1,11 +1,11 @@
 'use client';
 import { useState, type FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@nextstep/design-system';
 import { meSchema, type Me } from '@nextstep/contracts';
+import { call, fieldClass as field, ME_KEY, useMe } from './api-client';
 
-const ME_KEY = ['auth', 'me'];
-const MESSAGES: Record<number, string> = {
+const AUTH_MESSAGES: Record<number, string> = {
   400: '입력값을 확인하세요. 비밀번호는 10자 이상입니다.',
   401: '이메일 또는 비밀번호를 확인하세요.',
   403: '초대 코드를 확인하세요.',
@@ -13,37 +13,21 @@ const MESSAGES: Record<number, string> = {
   429: '로그인 실패가 반복되었습니다. 잠시 후 다시 시도하세요.',
 };
 
-class RequestError extends Error {
-  constructor(readonly status: number) { super(MESSAGES[status] ?? '요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요.'); }
-}
-
-async function call(path: string, init?: RequestInit) {
-  const response = await fetch(`/api/${path}`, { ...init, cache: 'no-store', signal: AbortSignal.timeout(10_000), ...(init?.body ? { headers: { 'content-type': 'application/json' } } : {}) });
-  if (!response.ok) throw new RequestError(response.status);
-  return response.status === 204 ? null : response.json();
-}
-
-async function fetchMe(): Promise<Me | null> {
-  try {
-    return meSchema.parse(await call('auth/me'));
-  } catch (error) {
-    if (error instanceof RequestError && error.status === 401) return null;
-    throw error;
-  }
-}
-
-const field = 'min-h-control w-full rounded-control border border-input bg-background px-4 text-body focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus';
-
 export function Account() {
   const client = useQueryClient();
-  const me = useQuery({ queryKey: ME_KEY, queryFn: fetchMe, retry: false, refetchOnWindowFocus: false });
+  const me = useMe();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   // 사용자가 바뀌면 이전 사용자의 캐시를 모두 버린다.
-  const reset = (next: Me | null) => { client.clear(); client.setQueryData(ME_KEY, next); };
+  // 계정 조회 쿼리는 화면 여러 곳이 구독하므로 지우지 않고 값만 바꾼다.
+  const reset = (next: Me | null) => {
+    client.removeQueries({ predicate: query => query.queryKey[0] !== ME_KEY[0] });
+    client.setQueryData(ME_KEY, next);
+  };
   const auth = useMutation({
     mutationFn: async (form: FormData) => meSchema.parse(await call(mode === 'login' ? 'auth/login' : 'auth/signup', {
       method: 'POST',
       body: JSON.stringify(Object.fromEntries([...form.entries()].filter(([key]) => mode === 'signup' || key !== 'inviteCode'))),
+      messages: AUTH_MESSAGES,
     })),
     onSuccess: reset,
   });

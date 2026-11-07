@@ -4,6 +4,7 @@ import { openDatabase } from './database.js';
 import { readCollectionMode, writeCollectionMode } from './sources/policy.js';
 import { registerAuth } from './auth.js';
 import { registerApplications } from './applications.js';
+import { registerUserSettings } from './user-settings.js';
 
 export function createApp(databasePath: string, options: { secureCookie?: boolean } = {}) {
   const db = openDatabase(databasePath);
@@ -25,6 +26,7 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
   });
   registerAuth(app, db, { secureCookie: options.secureCookie ?? false });
   registerApplications(app, db);
+  registerUserSettings(app, db);
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     // 4xx는 Fastify가 판정한 클라이언트 오류이므로 상태를 유지한다. 내부 메시지는 노출하지 않는다.
     const status = error.statusCode !== undefined && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;

@@ -113,8 +113,46 @@ test('계정 삭제는 세션·지원 건을 지우고 다른 계정에 영향�
     assert.equal(db.prepare('SELECT count(*) AS n FROM applications WHERE user_id = ?').get(userA).n, 0);
     assert.equal(db.prepare('SELECT count(*) AS n FROM sessions WHERE user_id = ?').get(userA).n, 0);
     // 삭제 전에 시작된 작업이 늦게 쓰더라도 외래키가 거부한다.
-    assert.throws(() => db.prepare("INSERT INTO applications VALUES ('late', ?, 'x', 'y', NULL, '미지원', 't', 't')").run(userA), /FOREIGN KEY/);
+    assert.throws(() => db.prepare("INSERT INTO applications (id, user_id, company, role_title, status, created_at, updated_at) VALUES ('late', ?, 'x', 'y', '미지원', 't', 't')").run(userA), /FOREIGN KEY/);
     db.close();
     assert.equal((await app.inject({ method: 'POST', url: '/applications', headers: { cookie: b }, payload: { ...payload, postingUrl: 'http://example.com' } })).statusCode, 400);
+  } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('지원 건 직접 수정은 본인 것만, 상태·열람 변경 이력을 남기고 지원하기 클릭과 무관하다', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-patch-'));
+  const path = join(dir, 'db.sqlite');
+  const app = createApp(path);
+  try {
+    const a = await signup(app, path, 'a@example.com');
+    const b = await signup(app, path, 'b@example.com');
+    const created = (await app.inject({ method: 'POST', url: '/applications', headers: { cookie: a }, payload: { company: '가상회사', roleTitle: 'iOS', postingUrl: 'https://example.com/1' } })).json();
+    assert.equal(created.readStatus, '정보 없음');
+    const patch = (cookie, payload) => app.inject({ method: 'PATCH', url: `/applications/${created.id}`, headers: { cookie }, payload });
+    assert.equal((await patch(b, { status: '합격' })).statusCode, 404);
+    assert.equal((await patch(a, {})).statusCode, 400);
+    assert.equal((await patch(a, { status: '마감' })).statusCode, 400);
+    assert.equal((await patch(a, { status: '지원 완료' })).json().status, '지원 완료');
+    assert.equal((await patch(a, { readStatus: '열람', roleTitle: 'iOS 개발자' })).json().roleTitle, 'iOS 개발자');
+    assert.equal((await patch(a, { status: '지원 완료', postingUrl: null })).json().postingUrl, null);
+    const detail = (await app.inject({ url: `/applications/${created.id}`, headers: { cookie: a } })).json();
+    assert.deepEqual(detail.events.map(e => [e.field, e.from, e.to]), [['readStatus', '정보 없음', '열람'], ['status', '미지원', '지원 완료']]);
+    assert.equal((await app.inject({ url: `/applications/${created.id}`, headers: { cookie: b } })).statusCode, 404);
+  } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('자동 ON/OFF는 사용자별로 저장된다', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-auto-'));
+  const path = join(dir, 'db.sqlite');
+  const app = createApp(path);
+  try {
+    const a = await signup(app, path, 'a@example.com');
+    const b = await signup(app, path, 'b@example.com');
+    assert.deepEqual((await app.inject({ url: '/settings/automation', headers: { cookie: a } })).json(), { enabled: false });
+    assert.equal((await app.inject({ method: 'PUT', url: '/settings/automation', headers: { cookie: a }, payload: { enabled: 'yes' } })).statusCode, 400);
+    await app.inject({ method: 'PUT', url: '/settings/automation', headers: { cookie: a }, payload: { enabled: true } });
+    assert.deepEqual((await app.inject({ url: '/settings/automation', headers: { cookie: a } })).json(), { enabled: true });
+    assert.deepEqual((await app.inject({ url: '/settings/automation', headers: { cookie: b } })).json(), { enabled: false });
+    assert.equal((await app.inject({ url: '/settings/automation' })).statusCode, 401);
   } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
 });

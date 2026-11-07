@@ -47,7 +47,27 @@ export const applicationSchema = z.object({
   roleTitle: z.string(),
   postingUrl: z.string().nullable(),
   status: applicationStatusSchema,
+  readStatus: readStatusSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+// 직접 수정: 보낸 필드만 바꾼다. postingUrl은 null로 지울 수 있다.
+export const applicationUpdateSchema = z.object({
+  company: z.string().trim().min(1).max(200).optional(),
+  roleTitle: z.string().trim().min(1).max(200).optional(),
+  postingUrl: z.url({ protocol: /^https$/ }).max(2000).nullable().optional(),
+  status: applicationStatusSchema.optional(),
+  readStatus: readStatusSchema.optional(),
+}).strict().refine(value => Object.keys(value).length > 0);
+export const applicationEventSchema = z.object({
+  field: z.enum(['status', 'readStatus']),
+  from: z.string().nullable(),
+  to: z.string(),
+  source: z.enum(['manual']),
+  at: z.string(),
+});
+export const applicationDetailSchema = applicationSchema.extend({ events: z.array(applicationEventSchema) });
+export type ApplicationEvent = z.infer<typeof applicationEventSchema>;
+export type ApplicationDetail = z.infer<typeof applicationDetailSchema>;
+export const automationSchema = z.object({ enabled: z.boolean() }).strict();
 export type Application = z.infer<typeof applicationSchema>;
