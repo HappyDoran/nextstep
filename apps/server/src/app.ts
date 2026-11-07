@@ -5,9 +5,14 @@ import { readCollectionMode, writeCollectionMode } from './sources/policy.js';
 import { registerAuth } from './auth.js';
 import { registerApplications } from './applications.js';
 import { registerUserSettings } from './user-settings.js';
+import { registerProfile } from './profile.js';
+import { registerDocuments, removeUserFiles } from './documents/routes.js';
+import { dirname, join } from 'node:path';
 
-export function createApp(databasePath: string, options: { secureCookie?: boolean } = {}) {
+export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string } = {}) {
   const db = openDatabase(databasePath);
+  // 원본 파일은 DB 옆 비공개 디렉터리에 둔다(Git 제외 경로).
+  const filesDir = options.filesDir ?? join(dirname(databasePath), 'files');
   // 개인 자료를 로그에 남기지 않는다. 관측 이벤트는 별도 허용 목록으로 추가한다.
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 });
   app.addHook('onClose', async () => { db.close(); });
@@ -24,9 +29,11 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
     writeCollectionMode(db, body.data.mode);
     return settings(body.data.mode);
   });
-  registerAuth(app, db, { secureCookie: options.secureCookie ?? false });
+  registerAuth(app, db, { secureCookie: options.secureCookie ?? false, onAccountDeleted: userId => removeUserFiles(filesDir, userId) });
   registerApplications(app, db);
   registerUserSettings(app, db);
+  registerProfile(app, db);
+  registerDocuments(app, db, filesDir);
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     // 4xx는 Fastify가 판정한 클라이언트 오류이므로 상태를 유지한다. 내부 메시지는 노출하지 않는다.
     const status = error.statusCode !== undefined && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;

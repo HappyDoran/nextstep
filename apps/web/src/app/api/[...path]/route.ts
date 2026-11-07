@@ -1,7 +1,7 @@
 // 브라우저 → 웹 서버 → API 동일 출처 경유. 세션 쿠키를 그대로 전달하고 API 응답 상태·쿠키를 돌려준다.
 // 인가는 API가 세션으로 판단한다. 여기서는 허용 경로와 교차 출처 변경 요청만 거른다.
 export const dynamic = 'force-dynamic';
-const ALLOWED = /^(auth\/(signup|login|logout|me)|account|applications(\/[\w-]+)?|settings\/(collection|automation))$/;
+const ALLOWED = /^(auth\/(signup|login|logout|me)|account|applications(\/[\w-]+)?|settings\/(collection|automation)|documents\/resume|profile(\/suggest)?|postings\/(refresh|link)|recommendations(\/[\w-]+(\/hide)?)?|jobs\/[\w-]+)$/;
 const origin = () => process.env.NEXTSTEP_API_URL ?? 'http://127.0.0.1:4100';
 
 async function forward(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
@@ -12,7 +12,7 @@ async function forward(request: Request, { params }: { params: Promise<{ path: s
     if (!from || new URL(from).host !== request.headers.get('host')) return Response.json({ message: '요청을 확인하세요.' }, { status: 403 });
   }
   const headers: Record<string, string> = {};
-  for (const name of ['cookie', 'content-type']) {
+  for (const name of ['cookie', 'content-type', 'x-filename']) {
     const value = request.headers.get(name);
     if (value) headers[name] = value;
   }
@@ -20,10 +20,12 @@ async function forward(request: Request, { params }: { params: Promise<{ path: s
     const response = await fetch(new URL(`/${path}`, origin()), {
       method: request.method,
       headers,
-      body: request.method === 'GET' || request.method === 'DELETE' ? null : await request.text(),
+      // 이력서 파일처럼 이진 본문도 그대로 전달한다.
+      body: request.method === 'GET' || request.method === 'DELETE' ? null : await request.arrayBuffer(),
       cache: 'no-store',
       redirect: 'manual',
-      signal: AbortSignal.timeout(5000),
+      // 이력서 추출·AI 판정은 수 초가 걸릴 수 있다.
+      signal: AbortSignal.timeout(60_000),
     });
     const out = new Headers({ 'content-type': response.headers.get('content-type') ?? 'application/json' });
     const cookie = response.headers.get('set-cookie');

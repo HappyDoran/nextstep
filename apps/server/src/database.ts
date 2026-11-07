@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -67,6 +67,26 @@ export function openDatabase(filename: string) {
         ) STRICT;
         CREATE INDEX application_events_app ON application_events(application_id, at);
         PRAGMA user_version = 3;`);
+    }
+    if (version < 4) {
+      // P1-04: 사용자당 활성 이력서 한 개(원본은 비공개 파일, 추출 본문은 DB)와 사용자가 확인한 프로필·필터.
+      db.exec(`CREATE TABLE documents (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL,
+          filename TEXT NOT NULL,
+          size INTEGER NOT NULL,
+          storage_key TEXT NOT NULL,
+          text TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          UNIQUE (user_id, kind)
+        ) STRICT;
+        CREATE TABLE profiles (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          data TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        ) STRICT;
+        PRAGMA user_version = 4;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

@@ -13,13 +13,15 @@
     "verify:jobkorea": "tsx src/verify/jobkorea.ts",
     "verify:wanted": "tsx src/verify/wanted.ts",
     "verify:jasoseol": "tsx src/verify/jasoseol.ts",
-    "invite": "tsx src/invite.ts"
+    "invite": "tsx src/invite.ts",
+    "eval:recommend": "tsx src/verify/eval-recommend.ts"
   },
   "dependencies": {
     "@nextstep/contracts": "workspace:*",
     "fastify": "5.12.8",
     "imapflow": "2.9.1",
-    "pdfjs-dist": "6.4.299"
+    "pdfjs-dist": "6.4.299",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "tsx": "^4.21.0"

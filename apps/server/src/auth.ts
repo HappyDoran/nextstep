@@ -81,7 +81,7 @@ export function requireUser(db: DatabaseSync, request: FastifyRequest, reply: Fa
   return user;
 }
 
-export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { secureCookie: boolean }) {
+export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { secureCookie: boolean; onAccountDeleted?: (userId: string) => void }) {
   const invalid = (reply: FastifyReply) => reply.status(400).send({ message: '요청을 확인하세요.' });
   const setSession = (reply: FastifyReply, token: string) => reply.header('set-cookie', sessionCookie(token, SESSION_DAYS * 86_400, options.secureCookie));
 
@@ -149,6 +149,7 @@ export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { 
     const user = requireUser(db, request, reply);
     if (!user) return reply;
     db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+    options.onAccountDeleted?.(user.id);
     reply.header('set-cookie', sessionCookie('', 0, options.secureCookie));
     return reply.status(204).send();
   });

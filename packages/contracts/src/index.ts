@@ -71,3 +71,21 @@ export type ApplicationEvent = z.infer<typeof applicationEventSchema>;
 export type ApplicationDetail = z.infer<typeof applicationDetailSchema>;
 export const automationSchema = z.object({ enabled: z.boolean() }).strict();
 export type Application = z.infer<typeof applicationSchema>;
+
+// 이력서: 사용자당 활성 문서 한 개. 추출 실패 사유는 사용자에게 재등록 경로와 함께 보여 준다.
+export const resumeFailureSchema = z.enum(['unsupported_type', 'too_large', 'encrypted', 'damaged', 'scanned_or_empty', 'timeout']);
+export const resumeSchema = z.object({ id: z.string(), filename: z.string(), size: z.number().int(), createdAt: z.string(), text: z.string() });
+export type Resume = z.infer<typeof resumeSchema>;
+
+// 프로필·필터: 사용자가 확인한 사실만 저장한다. 직무는 1차 네 직무, 복수 선택은 OR.
+export const jobFamilySchema = z.enum(['프론트엔드', '앱 개발', '디자인', '기획']);
+export const profileSchema = z.object({
+  jobFamilies: z.array(jobFamilySchema).min(1).max(4),
+  experiences: z.array(z.object({ jobFamily: jobFamilySchema, years: z.number().min(0).max(50) })).max(4),
+  regions: z.array(z.string().trim().min(1).max(40)).max(10),
+  remoteOk: z.boolean(),
+  employmentTypes: z.array(z.enum(['정규직', '계약직', '인턴', '프리랜서'])).max(4),
+  skills: z.array(z.string().trim().min(1).max(60)).max(60),
+  summary: z.string().trim().max(2000),
+}).strict();
+export type Profile = z.infer<typeof profileSchema>;
