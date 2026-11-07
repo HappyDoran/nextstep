@@ -143,3 +143,40 @@ test('저장된 비밀번호가 더는 맞지 않으면 인증 실패로 표시�
     assert.equal(conn.lastJob.errorCode, 'auth_failed');
   } finally { await s.done(); }
 });
+
+test('AI 해석: 회사·직무가 명확하면 지원 건을 만들고, 회사만 같거나 확신이 낮으면 확인받고, 홍보는 제외한다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    await s.app.inject({ method: 'POST', url: '/applications', headers: { cookie: a }, payload: { company: '(주)기존회사', roleTitle: '디자이너' } });
+    s.state.mails = [
+      mail(1, 'hr@new.example', '서류 전형 결과 안내', `가상신규 프론트엔드 포지션 결과: 아쉽게도 함께하기 어렵습니다. ${'안내문 '.repeat(60)}본문끝표시`),
+      mail(2, 'hr@old.example', '서류 합격 및 면접 안내', '기존회사 iOS 개발자 포지션 서류 합격'),
+      mail(3, 'hr@low.example', '채용 결과 안내', '결과는 홈페이지에서 확인'),
+      mail(4, 'news@ad.example', '면접 안내 특강 모집', '광고'),
+    ];
+    await s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 'tester@naver.com', appPassword: 'app-password', consent: true } });
+    const answers = {
+      1: { isRecruiting: true, company: '가상신규', roleTitle: '프론트엔드', status: '불합격', confidence: 'high', evidence: '함께하기 어렵습니다' },
+      2: { isRecruiting: true, company: '기존회사', roleTitle: 'iOS 개발자', status: '전형 진행중', confidence: 'high', evidence: '서류 합격' },
+      3: { isRecruiting: true, company: null, roleTitle: null, status: '모호', confidence: 'low', evidence: '홈페이지 확인' },
+      4: { isRecruiting: false, company: null, roleTitle: null, status: '모호', confidence: 'low', evidence: '광고' },
+    };
+    const seenBodies = [];
+    const interpret = async m => { seenBodies.push(m.body); const uid = s.state.mails.find(x => x.text === m.body).uid; return answers[uid]; };
+    const db = openDatabase(s.path);
+    try {
+      await runNext(db, createMailHandler(db, loadSecretKey(join(s.dir, 'secret.key')), async (_a, p, cursors) => [{ mailbox: 'INBOX', uidValidity: '7', messages: s.state.mails.filter(m => m.uid > (cursors.get('INBOX')?.lastUid ?? 0)), oldestDate: null, complete: true }], { interpret, bodies: async () => new Map() }));
+    } finally { db.close(); }
+    const apps = (await s.app.inject({ url: '/applications', headers: { cookie: a } })).json();
+    assert.deepEqual(apps.map(x => [x.company, x.status]).sort(), [['(주)기존회사', '미지원'], ['가상신규', '불합격']]);
+    const reviews = (await s.app.inject({ url: '/reviews', headers: { cookie: a } })).json();
+    assert.deepEqual(reviews.map(r => r.reason).sort(), ['모호', '연결 불명']);
+    // 본문은 저장하지 않고 짧은 근거 발췌만 남는다.
+    const raw = new DatabaseSync(s.path);
+    assert.equal(JSON.stringify(raw.prepare('SELECT * FROM mail_messages').all()).includes('본문끝표시'), false);
+    assert.equal(raw.prepare("SELECT count(*) n FROM mail_messages WHERE outcome = 'ignored'").get().n, 1);
+    raw.close();
+    assert.equal(seenBodies.length, 4);
+  } finally { await s.done(); }
+});

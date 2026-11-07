@@ -77,3 +77,35 @@ export function applyMessage(db: DatabaseSync, msg: StoredMessage): Outcome {
   // 지원 건 생성 또는 확인 요청으로 넘긴다. 최초 조회에서 수백 건의 확인 요청이 쌓이는 것을 막는다.
   return 'unlinked';
 }
+
+// 회사·직무 표기 차이(주식회사·㈜·공백·대소문자)만 지운다. 비슷한 이름을 같다고 보지 않는다.
+export const normalizeName = (value: string) => value.replace(/\(주\)|㈜|주식회사|\s+/g, '').toLowerCase();
+
+// AI 해석 결과로 대상 찾기·지원 건 생성·확인 요청을 정한다.
+// 회사와 직무가 모두 같은 지원 건이 정확히 하나일 때만 연결하고, 회사만 같거나 확신이 낮으면 확인받는다.
+export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp: { isRecruiting: boolean; company: string | null; roleTitle: string | null; status: string; confidence: string }): Outcome | 'ignored' {
+  if (!interp.isRecruiting) return 'ignored';
+  if (db.prepare('SELECT 1 FROM evidence_suppressions WHERE user_id = ? AND message_key = ?').get(msg.userId, msg.messageKey)) return 'suppressed';
+  const status = interp.status as MailVerdict['status'];
+  const verdictMsg: StoredMessage = { ...msg, verdict: { ...msg.verdict, status } };
+  if (interp.confidence !== 'high' || !interp.company || !interp.roleTitle || status === '모호') {
+    if (status === '열람') return 'no_change';
+    return review(db, verdictMsg, status === '모호' ? '모호' : '연결 불명');
+  }
+  const company = normalizeName(interp.company);
+  const role = normalizeName(interp.roleTitle);
+  const apps = (db.prepare('SELECT id, company, role_title, status, read_status, posting_url FROM applications WHERE user_id = ?').all(msg.userId) as (AppRow & { company: string; role_title: string })[])
+    .filter(a => normalizeName(a.company) === company);
+  const exact = apps.filter(a => normalizeName(a.role_title) === role);
+  if (exact.length === 1) return applyToApplication(db, verdictMsg, exact[0]!);
+  if (exact.length > 1 || apps.length > 0) return review(db, verdictMsg, '연결 불명');
+  if (status === '열람') return 'no_change';
+  // 결과만 있어도 회사·직무·결과가 명확하면 지원 건을 만든다. 실제 지원일은 만들지 않는다.
+  const appId = randomUUID();
+  const at = now();
+  db.prepare("INSERT INTO applications (id, user_id, company, role_title, status, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, ?, ?, 'mail')")
+    .run(appId, msg.userId, interp.company.slice(0, 200), interp.roleTitle.slice(0, 200), status, at, at);
+  logEvent(db, appId, 'status', '미지원', status, msg.id);
+  db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ?').run(appId, msg.id);
+  return 'created';
+}

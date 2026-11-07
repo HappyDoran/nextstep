@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -197,6 +197,14 @@ export function openDatabase(filename: string) {
         ALTER TABLE applications ADD COLUMN origin TEXT NOT NULL DEFAULT 'manual';
         ALTER TABLE application_events ADD COLUMN message_id TEXT;
         PRAGMA user_version = 6;`);
+    }
+    if (version < 7) {
+      // P1-05: 보관한 메일을 나중에 해석할 때 본문을 다시 조회할 위치(편지함·UIDVALIDITY·UID). 본문은 저장하지 않는다.
+      db.exec(`ALTER TABLE mail_messages ADD COLUMN mailbox TEXT;
+        ALTER TABLE mail_messages ADD COLUMN uid_validity TEXT;
+        ALTER TABLE mail_messages ADD COLUMN uid INTEGER;
+        ALTER TABLE mail_messages ADD COLUMN interpret_attempts INTEGER NOT NULL DEFAULT 0;
+        PRAGMA user_version = 7;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

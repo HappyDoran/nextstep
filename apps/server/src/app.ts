@@ -14,7 +14,9 @@ import { startWorker, type ClaimedJob } from './recommend/jobs.js';
 import { loadSecretKey } from './secrets.js';
 import { registerMail } from './mail/routes.js';
 import { createMailHandler } from './mail/sync.js';
-import { naverSource, type MailSource } from './mail/naver.js';
+import { naverBodies, naverSource, type MailSource } from './mail/naver.js';
+import { aiConfigured } from './ai/openai.js';
+import { interpretMail } from './prompts/mail.js';
 
 export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; deps?: PipelineDeps; mailSource?: MailSource } = {}) {
   const db = openDatabase(databasePath);
@@ -48,7 +50,8 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
   // 수집·추천 작업은 요청 경로 밖의 작업자가 처리한다. 테스트는 worker:false로 끄고 직접 실행한다.
   if (options.worker) {
     const recommend = createHandler(db, options.deps);
-    const mail = createMailHandler(db, secretKey, mailSource);
+    // AI가 설정된 경우에만 보관 메일 해석 단계를 켠다.
+    const mail = createMailHandler(db, secretKey, mailSource, aiConfigured() ? { interpret: interpretMail, bodies: naverBodies } : undefined);
     const stop = startWorker(db, (job: ClaimedJob) => (job.kind === 'mail' ? mail(job) : recommend(job)));
     app.addHook('onClose', async () => { stop(); });
   }

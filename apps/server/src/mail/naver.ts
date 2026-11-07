@@ -98,3 +98,41 @@ export const naverSource: MailSource = async (account, password, cursors, since)
   await client.logout();
   return batches;
 };
+
+export type BodyRef = { mailbox: string; uidValidity: string; uid: number };
+export type MailBody = { text: string; links: string[]; fromAddress: string };
+export type MailBodySource = (account: string, password: string, refs: BodyRef[]) => Promise<Map<string, MailBody>>;
+export const bodyKey = (r: { mailbox: string; uid: number }) => `${r.mailbox}:${r.uid}`;
+
+// 보관한 메일을 해석할 때 본문을 다시 읽는다(읽기 전용). UIDVALIDITY가 바뀐 편지함은 건너뛴다.
+export const naverBodies: MailBodySource = async (account, password, refs) => {
+  const out = new Map<string, MailBody>();
+  if (!refs.length) return out;
+  const client = new ImapFlow({ host: 'imap.naver.com', port: 993, secure: true, auth: { user: account, pass: password }, logger: false });
+  client.on('error', () => {});
+  try { await client.connect(); } catch (error) { throw new MailSourceError(classifyImapError(error)); }
+  try {
+    const byBox = new Map<string, BodyRef[]>();
+    for (const r of refs) byBox.set(r.mailbox, [...(byBox.get(r.mailbox) ?? []), r]);
+    for (const [mailbox, list] of byBox) {
+      const opened = await client.mailboxOpen(mailbox, { readOnly: true }).catch(() => undefined);
+      if (!opened) continue;
+      const uids = list.filter(r => r.uidValidity === String(opened.uidValidity)).map(r => r.uid);
+      if (!uids.length) continue;
+      const metas = [];
+      for await (const msg of client.fetch(uids, { uid: true, envelope: true, bodyStructure: true }, { uid: true })) metas.push(msg);
+      for (const msg of metas) {
+        const part = textPart(msg.bodyStructure as Part);
+        let raw = '';
+        if (part) {
+          const { content } = await client.download(String(msg.uid), part.part, { uid: true });
+          if (content) for await (const chunk of content) raw += chunk.toString('utf8');
+        }
+        out.set(bodyKey({ mailbox, uid: msg.uid }), { ...mailText(raw, part?.html ?? false), fromAddress: msg.envelope?.from?.[0]?.address ?? '' });
+      }
+    }
+  } finally {
+    await client.logout().catch(() => {});
+  }
+  return out;
+};
