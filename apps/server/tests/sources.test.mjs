@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { politeGet, nextData } from '../dist/sources/http.js';
-import * as wanted from '../dist/verify/wanted.js';
-import * as jasoseol from '../dist/verify/jasoseol.js';
+import * as wanted from '../dist/sources/wanted.js';
+import * as jasoseol from '../dist/sources/jasoseol.js';
 
 const page = data => `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: data } })}</script></html>`;
 

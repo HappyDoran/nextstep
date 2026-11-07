@@ -6,7 +6,7 @@ import { useMe } from './api-client';
 export function Nav() {
   const me = useMe();
   const path = usePathname();
-  const items = [{ href: '/', label: me.data ? '지원 현황' : '로그인' }, { href: '/settings', label: '설정' }];
+  const items = [{ href: '/', label: me.data ? '지원 현황' : '로그인' }, ...(me.data ? [{ href: '/recommendations', label: '추천' }] : []), { href: '/settings', label: '설정' }];
   return <header className="mb-12 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-6">
     <strong className="text-title-lg">NextStep<span className="text-primary">.</span></strong>
     <nav aria-label="주 메뉴" className="flex gap-2">

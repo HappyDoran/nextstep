@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -87,6 +87,58 @@ export function openDatabase(filename: string) {
           updated_at TEXT NOT NULL
         ) STRICT;
         PRAGMA user_version = 4;`);
+    }
+    if (version < 5) {
+      // P1-04: 공고 사실(원문 없음)·작업 기록·사용자별 추천. owner_user_id가 있으면 사용자가 넣은 링크로 가져온 개인 공고다.
+      db.exec(`CREATE TABLE postings (
+          id TEXT PRIMARY KEY,
+          source TEXT NOT NULL,
+          source_id TEXT NOT NULL,
+          owner_user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+          url TEXT NOT NULL,
+          title TEXT NOT NULL,
+          company TEXT NOT NULL,
+          deadline TEXT,
+          always_hire INTEGER NOT NULL,
+          location TEXT,
+          remote INTEGER,
+          careers TEXT NOT NULL,
+          company_type TEXT,
+          employee_count INTEGER,
+          external_apply_url TEXT,
+          requirements TEXT,
+          body_failure TEXT,
+          collected_mode TEXT NOT NULL,
+          checked_at TEXT NOT NULL
+        ) STRICT;
+        CREATE UNIQUE INDEX postings_key ON postings(source, source_id, ifnull(owner_user_id, ''));
+        CREATE TABLE jobs (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL,
+          payload TEXT,
+          status TEXT NOT NULL,
+          attempts INTEGER NOT NULL DEFAULT 0,
+          error_code TEXT,
+          result TEXT,
+          created_at TEXT NOT NULL,
+          started_at TEXT,
+          finished_at TEXT,
+          lease_until TEXT
+        ) STRICT;
+        CREATE UNIQUE INDEX jobs_active ON jobs(user_id, kind) WHERE status IN ('대기', '실행중');
+        CREATE INDEX jobs_queue ON jobs(status, created_at);
+        CREATE TABLE recommendations (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          posting_id TEXT NOT NULL REFERENCES postings(id) ON DELETE CASCADE,
+          basis TEXT NOT NULL,
+          classification TEXT NOT NULL,
+          judgement TEXT NOT NULL,
+          hidden INTEGER NOT NULL DEFAULT 0,
+          evaluated_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, posting_id)
+        ) STRICT;
+        PRAGMA user_version = 5;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

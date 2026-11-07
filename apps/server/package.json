@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch --env-file-if-exists=.env.local src/main.ts",
     "build": "tsc",
-    "start": "node dist/main.js",
+    "start": "node --env-file-if-exists=.env.local dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs tests/prompts/*.test.mjs",
     "verify:naver": "tsx src/verify/naver-imap.ts",
@@ -14,7 +14,7 @@
     "verify:wanted": "tsx src/verify/wanted.ts",
     "verify:jasoseol": "tsx src/verify/jasoseol.ts",
     "invite": "tsx src/invite.ts",
-    "eval:recommend": "tsx src/verify/eval-recommend.ts"
+    "eval:recommend": "tsx --env-file-if-exists=.env.local src/verify/eval-recommend.ts"
   },
   "dependencies": {
     "@nextstep/contracts": "workspace:*",

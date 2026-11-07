@@ -79,6 +79,7 @@ export type Resume = z.infer<typeof resumeSchema>;
 
 // 프로필·필터: 사용자가 확인한 사실만 저장한다. 직무는 1차 네 직무, 복수 선택은 OR.
 export const jobFamilySchema = z.enum(['프론트엔드', '앱 개발', '디자인', '기획']);
+export type JobFamily = z.infer<typeof jobFamilySchema>;
 export const profileSchema = z.object({
   jobFamilies: z.array(jobFamilySchema).min(1).max(4),
   experiences: z.array(z.object({ jobFamily: jobFamilySchema, years: z.number().min(0).max(50) })).max(4),
@@ -89,3 +90,44 @@ export const profileSchema = z.object({
   summary: z.string().trim().max(2000),
 }).strict();
 export type Profile = z.infer<typeof profileSchema>;
+
+// 작업: 화면 요청과 분리해 처리하고 상태를 조회한다.
+export const jobStatusSchema = z.enum(['대기', '실행중', '성공', '일부 실패', '실패']);
+export const jobSchema = z.object({
+  id: z.string(),
+  kind: z.enum(['refresh', 'link']),
+  status: jobStatusSchema,
+  errorCode: z.string().nullable(),
+  result: z.record(z.string(), z.unknown()).nullable(),
+  createdAt: z.string(),
+  finishedAt: z.string().nullable(),
+});
+export type Job = z.infer<typeof jobSchema>;
+export const linkRequestSchema = z.object({ url: z.url({ protocol: /^https$/ }).max(2000) }).strict();
+
+// 추천: 공고 사실과 판정 근거. 기업 유형·규모는 출처 명시값만, 없으면 null(미확인).
+export const recommendationClassSchema = z.enum(['기본', '도전', '미확인', '제외']);
+export const recommendationSchema = z.object({
+  postingId: z.string(),
+  source: sourceIdSchema,
+  linkOnly: z.boolean(),
+  url: z.string(),
+  externalApplyUrl: z.string().nullable(),
+  title: z.string(),
+  company: z.string(),
+  deadline: z.string().nullable(),
+  alwaysHire: z.boolean(),
+  postingStatus: postingStatusSchema,
+  companyType: z.string().nullable(),
+  employeeCount: z.number().nullable(),
+  checkedAt: z.string(),
+  classification: recommendationClassSchema,
+  met: z.array(z.string()),
+  unmet: z.array(z.string()),
+  unknown: z.array(z.string()),
+  reason: z.string(),
+  hidden: z.boolean(),
+  evaluatedAt: z.string(),
+});
+export type Recommendation = z.infer<typeof recommendationSchema>;
+export const recommendationListSchema = z.object({ items: z.array(recommendationSchema), lastJob: jobSchema.nullable() });

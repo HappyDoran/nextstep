@@ -1,0 +1,148 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { createApp } from '../dist/app.js';
+import { openDatabase } from '../dist/database.js';
+import { createInvite } from '../dist/auth.js';
+import { runNext, claim, recoverExpired } from '../dist/recommend/jobs.js';
+import { createHandler, parsePostingLink } from '../dist/recommend/pipeline.js';
+import { writeCollectionMode } from '../dist/sources/policy.js';
+
+// 출처·AI를 가짜로 바꿔 작업·저장·격리·모드 규칙만 확인한다(실제 수집·OpenAI 검증이 아님).
+const posting = (source, sourceId, title, body = '필수: React 3년') => ({ source, sourceId, url: `https://example.com/${source}/${sourceId}`, title, company: '가상회사', deadline: '2099-01-01T00:00:00+09:00', alwaysHire: false, location: '서울', remote: false, careers: [], companyType: null, employeeCount: null, externalApplyUrl: null, body, bodyFailure: null });
+function fakeDeps(calls) {
+  return {
+    collect: {
+      jobkorea: async family => { calls.push(`jobkorea:${family}`); return { postings: [posting('jobkorea', '1', '프론트엔드 개발자')], failures: [] }; },
+      wanted: async family => { calls.push(`wanted:${family}`); return { postings: [posting('wanted', '2', '프론트엔드')], failures: [{ source: 'wanted', id: '9', code: 'blocked' }] }; },
+      jasoseol: async () => { calls.push('jasoseol'); return { postings: [], failures: [] }; },
+    },
+    fetchOne: { jobkorea: async () => ({ source: 'jobkorea', code: 'not_found' }), wanted: async id => posting('wanted', id, '링크 공고'), jasoseol: async id => posting('jasoseol', id, '링크') },
+    extract: async p => { calls.push(`extract:${p.title}`); return { jobFamilies: ['프론트엔드'], required: ['React 3년'], preferred: [], remote: '없음', portfolioRequired: false }; },
+    judge: async (_at, candidate, facts) => { calls.push(`judge:${facts.title}`); assert.equal('body' in facts, false); return { classification: '기본', met: ['React'], unmet: [], unknown: ['기업 유형·규모 미기재'], reason: '조건 충족' }; },
+  };
+}
+async function setup() {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-rec-'));
+  const path = join(dir, 'db.sqlite');
+  const app = createApp(path);
+  const signup = async email => {
+    const db = openDatabase(path); const inviteCode = createInvite(db); db.close();
+    const cookie = (await app.inject({ method: 'POST', url: '/auth/signup', payload: { inviteCode, email, password: 'correct horse battery' } })).headers['set-cookie'].split(';')[0];
+    await app.inject({ method: 'PUT', url: '/documents/resume', headers: { cookie, 'content-type': 'application/pdf', 'x-filename': 'r.pdf' }, payload: readFileSync(new URL('./fixtures/resume-text.pdf', import.meta.url)) });
+    await app.inject({ method: 'PUT', url: '/profile', headers: { cookie }, payload: { jobFamilies: ['프론트엔드'], experiences: [{ jobFamily: '프론트엔드', years: 3 }], regions: ['서울'], remoteOk: true, employmentTypes: ['정규직'], skills: ['React'], summary: '' } });
+    return cookie;
+  };
+  return { dir, path, app, signup, done: async () => { await app.close(); rmSync(dir, { recursive: true, force: true }); } };
+}
+
+test('갱신 작업: 서비스 모드는 잡코리아만 수집하고 원문 없이 조건·판정을 저장하며 중복 작업을 합친다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const first = (await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } })).json();
+    const again = (await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } })).json();
+    assert.equal(first.id, again.id);
+    assert.equal(first.status, '대기');
+    const db = openDatabase(s.path);
+    const calls = [];
+    try {
+      assert.equal(await runNext(db, createHandler(db, fakeDeps(calls))), true);
+      assert.equal(await runNext(db, createHandler(db, fakeDeps(calls))), false);
+    } finally { db.close(); }
+    assert.deepEqual(calls, ['jobkorea:프론트엔드', 'extract:프론트엔드 개발자', 'judge:프론트엔드 개발자']);
+    const job = (await s.app.inject({ url: `/jobs/${first.id}`, headers: { cookie: a } })).json();
+    assert.equal(job.status, '성공');
+    const list = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json();
+    assert.equal(list.items.length, 1);
+    assert.equal(list.items[0].classification, '기본');
+    assert.equal(list.items[0].postingStatus, '모집중');
+    assert.equal(list.items[0].companyType, null);
+    assert.equal(list.lastJob.id, first.id);
+    const raw = new DatabaseSync(s.path);
+    assert.equal(JSON.stringify(raw.prepare('SELECT * FROM postings').all()).includes('필수: React 3년'), false);
+    raw.close();
+  } finally { await s.done(); }
+});
+
+test('개인 모드는 원티드도 수집하고, 서비스 모드로 바꾸면 개인 모드 원티드 공고를 숨긴다. 판정 기준이 같으면 다시 판정하지 않는다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    let db = openDatabase(s.path); writeCollectionMode(db, 'personal'); db.close();
+    await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+    const calls = [];
+    db = openDatabase(s.path);
+    try { await runNext(db, createHandler(db, fakeDeps(calls))); } finally { db.close(); }
+    assert.ok(calls.includes('wanted:프론트엔드') && calls.includes('jasoseol'));
+    let list = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json();
+    assert.equal(list.items.length, 2);
+    assert.equal(list.lastJob.status, '일부 실패');
+    db = openDatabase(s.path); writeCollectionMode(db, 'service'); db.close();
+    list = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json();
+    assert.deepEqual(list.items.map(i => i.source), ['jobkorea']);
+    // 같은 기준으로 다시 실행하면 판정 호출이 없다.
+    await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+    const again = [];
+    db = openDatabase(s.path);
+    try { await runNext(db, createHandler(db, fakeDeps(again))); } finally { db.close(); }
+    assert.equal(again.filter(c => c.startsWith('judge')).length, 0);
+  } finally { await s.done(); }
+});
+
+test('링크 판정은 그 사용자 전용이고, 숨김·작업 조회는 본인 것만 된다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const b = await s.signup('b@example.com');
+    assert.equal((await s.app.inject({ method: 'POST', url: '/postings/link', headers: { cookie: a }, payload: { url: 'https://www.saramin.co.kr/x' } })).statusCode, 400);
+    const job = (await s.app.inject({ method: 'POST', url: '/postings/link', headers: { cookie: a }, payload: { url: 'https://www.wanted.co.kr/wd/123?utm=x' } })).json();
+    const db = openDatabase(s.path);
+    try { await runNext(db, createHandler(db, fakeDeps([]))); } finally { db.close(); }
+    assert.equal((await s.app.inject({ url: `/jobs/${job.id}`, headers: { cookie: b } })).statusCode, 404);
+    const listA = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json();
+    assert.equal(listA.items.length, 1);
+    assert.equal(listA.items[0].linkOnly, true);
+    assert.deepEqual((await s.app.inject({ url: '/recommendations', headers: { cookie: b } })).json().items, []);
+    const id = listA.items[0].postingId;
+    assert.equal((await s.app.inject({ method: 'PUT', url: `/recommendations/${id}/hide`, headers: { cookie: b }, payload: { hidden: true } })).statusCode, 404);
+    assert.equal((await s.app.inject({ method: 'PUT', url: `/recommendations/${id}/hide`, headers: { cookie: a }, payload: { hidden: true } })).statusCode, 200);
+    assert.equal((await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items[0].hidden, true);
+    // 계정 삭제 시 개인 링크 공고·추천·작업이 함께 지워진다.
+    await s.app.inject({ method: 'DELETE', url: '/account', headers: { cookie: a } });
+    const raw = new DatabaseSync(s.path);
+    assert.equal(raw.prepare('SELECT count(*) n FROM postings WHERE owner_user_id IS NOT NULL').get().n, 0);
+    assert.equal(raw.prepare('SELECT count(*) n FROM jobs').get().n, 0);
+    raw.close();
+  } finally { await s.done(); }
+});
+
+test('프로필·이력서가 없으면 작업이 실패로 끝나고, 실행 만료 작업은 재시작 후 다시 대기로 돌아간다', async () => {
+  const s = await setup();
+  try {
+    const db0 = openDatabase(s.path); const inviteCode = createInvite(db0); db0.close();
+    const c = (await s.app.inject({ method: 'POST', url: '/auth/signup', payload: { inviteCode, email: 'c@example.com', password: 'correct horse battery' } })).headers['set-cookie'].split(';')[0];
+    const job = (await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: c } })).json();
+    const db = openDatabase(s.path);
+    try {
+      await runNext(db, createHandler(db, fakeDeps([])));
+      assert.equal((await s.app.inject({ url: `/jobs/${job.id}`, headers: { cookie: c } })).json().errorCode, 'profile_or_resume_missing');
+      const next = (await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: c } })).json();
+      assert.notEqual(next.id, job.id);
+      claim(db);
+      db.prepare("UPDATE jobs SET lease_until = '2000-01-01T00:00:00.000Z' WHERE id = ?").run(next.id);
+      recoverExpired(db);
+      assert.equal(db.prepare('SELECT status FROM jobs WHERE id = ?').get(next.id).status, '대기');
+    } finally { db.close(); }
+  } finally { await s.done(); }
+});
+
+test('공고 링크 해석은 세 출처 상세만 받는다', () => {
+  assert.deepEqual(parsePostingLink('https://www.jobkorea.co.kr/Recruit/GI_Read/50050518?Oem_Code=C1'), { source: 'jobkorea', id: '50050518' });
+  assert.deepEqual(parsePostingLink('https://www.wanted.co.kr/wd/397013'), { source: 'wanted', id: '397013' });
+  assert.deepEqual(parsePostingLink('https://jasoseol.com/recruit/107128'), { source: 'jasoseol', id: '107128' });
+  for (const bad of ['http://www.wanted.co.kr/wd/1', 'https://evil.example/wd/1', 'https://www.wanted.co.kr.evil.example/wd/1', 'https://jasoseol.com/career/1', 'not a url']) assert.equal(parsePostingLink(bad), undefined);
+});

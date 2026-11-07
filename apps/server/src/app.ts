@@ -8,14 +8,16 @@ import { registerUserSettings } from './user-settings.js';
 import { registerProfile } from './profile.js';
 import { registerDocuments, removeUserFiles } from './documents/routes.js';
 import { dirname, join } from 'node:path';
+import { registerRecommendations } from './recommend/routes.js';
+import { createHandler, type PipelineDeps } from './recommend/pipeline.js';
+import { startWorker } from './recommend/jobs.js';
 
-export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string } = {}) {
+export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; deps?: PipelineDeps } = {}) {
   const db = openDatabase(databasePath);
   // 원본 파일은 DB 옆 비공개 디렉터리에 둔다(Git 제외 경로).
   const filesDir = options.filesDir ?? join(dirname(databasePath), 'files');
   // 개인 자료를 로그에 남기지 않는다. 관측 이벤트는 별도 허용 목록으로 추가한다.
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 });
-  app.addHook('onClose', async () => { db.close(); });
   app.get('/health', async () => {
     const version = db.prepare('PRAGMA user_version').get() as { user_version: number };
     return healthSchema.parse({ service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: version.user_version });
@@ -34,10 +36,18 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
   registerUserSettings(app, db);
   registerProfile(app, db);
   registerDocuments(app, db, filesDir);
+  registerRecommendations(app, db);
+  // 수집·추천 작업은 요청 경로 밖의 작업자가 처리한다. 테스트는 worker:false로 끄고 직접 실행한다.
+  if (options.worker) {
+    const stop = startWorker(db, createHandler(db, options.deps));
+    app.addHook('onClose', async () => { stop(); });
+  }
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     // 4xx는 Fastify가 판정한 클라이언트 오류이므로 상태를 유지한다. 내부 메시지는 노출하지 않는다.
     const status = error.statusCode !== undefined && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
     void reply.status(status).send({ message: status === 500 ? '요청을 처리하지 못했습니다.' : '요청을 확인하세요.' });
   });
+  // 작업자를 먼저 멈춘 뒤 DB를 닫는다(onClose는 등록 순서대로 실행).
+  app.addHook('onClose', async () => { db.close(); });
   return app;
 }

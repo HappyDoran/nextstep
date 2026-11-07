@@ -7,6 +7,7 @@ export type BodyFailure = 'body_missing' | 'body_image_only';
 
 // 한 번 차단 응답을 준 호스트에는 같은 프로세스에서 다시 요청하지 않는다.
 const blockedHosts = new Set<string>();
+export const resetBlockedHosts = () => blockedHosts.clear();
 
 export async function politeGet(url: string, options: { referer?: string; accept?: string } = {}): Promise<{ text: string } | { code: FetchFailure; status?: number }> {
   const host = new URL(url).host;
