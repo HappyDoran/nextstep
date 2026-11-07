@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { enqueue } from './recommend/jobs.js';
+import { purgeExpired } from './retention.js';
 
 // 서버 예약 실행: 앱이 꺼져 있어도 서버 프로세스가 하루 한 번 수집·추천과 메일 조회 작업을 만든다.
 // 조건: 자동화 권한(1차는 초대 테스트 권한) AND 자동 ON AND 필요한 연결 정상. 수동 요청과 같은 작업 경로를 쓴다.
@@ -43,7 +44,10 @@ export function runSchedule(db: DatabaseSync, at: Date, hour: number) {
 }
 
 export function startScheduler(db: DatabaseSync, hour: number, intervalMs = 60_000) {
-  const tick = () => { try { runSchedule(db, new Date(), hour); } catch { /* 다음 검사에서 다시 시도 */ } };
+  const tick = () => {
+    try { runSchedule(db, new Date(), hour); } catch { /* 다음 검사에서 다시 시도 */ }
+    try { purgeExpired(db); } catch { /* 다음 검사에서 다시 시도 */ }
+  };
   tick();
   const timer = setInterval(tick, intervalMs);
   return () => clearInterval(timer);
