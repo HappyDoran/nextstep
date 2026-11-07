@@ -49,3 +49,19 @@ test('데이터 구분자 닫기 위조를 무력화한다', () => {
   assert.equal(block.match(/<\/posting>/g).length, 1);
   assert.ok(block.endsWith('</posting>'));
 });
+
+test('NEXTSTEP_AI_API=chat이면 Chat Completions 호환 서버(로컬 모델)로 같은 스키마를 요청한다', async () => {
+  let seen;
+  const valid = { classification: '기본', met: [], unmet: [], unknown: [], reason: '조건 충족' };
+  await withServer((req, res) => {
+    let body = '';
+    req.on('data', c => { body += c; }).on('end', () => { seen = { url: req.url, body: JSON.parse(body) }; reply(res, 200, { choices: [{ message: { content: JSON.stringify(valid) } }] }); });
+  }, async () => {
+    process.env.NEXTSTEP_AI_API = 'chat';
+    assert.deepEqual(await structured('judgement', judgementSchema, '지시', '입력'), valid);
+    assert.equal(seen.url, '/chat/completions');
+    assert.equal(seen.body.messages[0].content, '지시');
+    assert.equal(seen.body.response_format.type, 'json_schema');
+    assert.equal(seen.body.response_format.json_schema.strict, true);
+  });
+});

@@ -54,6 +54,7 @@ mise exec -- pnpm dev
 | NEXTSTEP_WEB_URL | Electron main | 개발 기본 http://127.0.0.1:3100. 패키징 실행은 소유 HTTPS 주소 필수 |
 | NEXTSTEP_SECURE_COOKIE | 서버 | `1`이면 세션 쿠키에 Secure 지정. HTTPS 배포에서 필수, 로컬 HTTP 개발은 미지정 |
 | OPENAI_API_KEY·NEXTSTEP_OPENAI_MODEL | 서버·`eval:recommend` | OpenAI 키와 모델 이름. 둘 다 있어야 AI 처리(프로필 초안·공고 조건 추출·추천 판정)가 동작. 없으면 AI 기능은 미설정 오류 |
+| NEXTSTEP_OPENAI_BASE_URL·NEXTSTEP_AI_API·NEXTSTEP_AI_TIMEOUT_MS | 서버·`eval:recommend` | 기본 OpenAI·Responses API·60초. 로컬 모델(무료 개발용): `brew install ollama`, `ollama serve`, `ollama pull qwen3:14b` 후 `OPENAI_API_KEY=ollama NEXTSTEP_OPENAI_MODEL=qwen3:14b NEXTSTEP_OPENAI_BASE_URL=http://127.0.0.1:11434/v1 NEXTSTEP_AI_API=chat NEXTSTEP_AI_TIMEOUT_MS=300000`. 판정 품질은 백로그 검증 기록 참고 |
 | NEXTSTEP_SCHEDULE_HOUR | 서버 | 21. 한국 시간 기준 예약 실행 시작 시각(0~23) |
 | NEXTSTEP_SECRET_KEY | 서버 | 선택. base64 32바이트 연결 비밀정보 암호화 키. 없으면 DB 옆 `secret.key`를 만들어 씀 |
 | NAVER_IMAP_USER·NAVER_IMAP_PASSWORD | `verify:naver` | 동의한 계정의 주소·앱 비밀번호. 실행 셸에서만 지정하고 파일·로그에 남기지 않음 |
