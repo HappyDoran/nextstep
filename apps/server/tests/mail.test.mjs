@@ -11,6 +11,7 @@ import { runNext } from '../dist/recommend/jobs.js';
 import { createMailHandler } from '../dist/mail/sync.js';
 import { MailSourceError } from '../dist/mail/naver.js';
 import { loadSecretKey } from '../dist/secrets.js';
+import { AiError } from '../dist/ai/openai.js';
 import { classifyMail, postingKey } from '../dist/mail/classify.js';
 
 // 합성 메일. 실제 사용자 메일 원문이 아니다.
@@ -178,5 +179,24 @@ test('AI 해석: 회사·직무가 명확하면 지원 건을 만들고, 회사�
     assert.equal(raw.prepare("SELECT count(*) n FROM mail_messages WHERE outcome = 'ignored'").get().n, 1);
     raw.close();
     assert.equal(seenBodies.length, 4);
+  } finally { await s.done(); }
+});
+
+test('AI 일시 실패(크레딧·연결)는 해석 시도 횟수를 쓰지 않고 멈춘다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    s.state.mails = [mail(1, 'hr@x.example', '서류 전형 결과 안내', '아쉽게도 함께하기 어렵습니다'), mail(2, 'hr@y.example', '서류 전형 결과 안내', '아쉽지만 함께하지 못하게 되었습니다')];
+    await s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 'tester@naver.com', appPassword: 'app-password', consent: true } });
+    let calls = 0;
+    const interpret = async () => { calls++; throw new AiError('ai_http', 429); };
+    const db = openDatabase(s.path);
+    try {
+      await runNext(db, createMailHandler(db, loadSecretKey(join(s.dir, 'secret.key')), async () => [{ mailbox: 'INBOX', uidValidity: '7', messages: s.state.mails, oldestDate: null, complete: true }], { interpret, bodies: async () => new Map() }));
+    } finally { db.close(); }
+    assert.equal(calls, 1);
+    const raw = new DatabaseSync(s.path);
+    assert.equal(raw.prepare("SELECT max(interpret_attempts) n FROM mail_messages").get().n, 0);
+    raw.close();
   } finally { await s.done(); }
 });

@@ -95,8 +95,10 @@ async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpr
     let interp: MailInterpretation;
     try {
       interp = await ai.interpret({ subject: row.subject, senderDomain: body.fromAddress.split('@')[1] ?? '', ruleStatus: row.classification, body: body.text });
-    } catch {
+    } catch (error) {
       counts.aiFailures = (counts.aiFailures ?? 0) + 1;
+      // 시도 횟수는 잘못된 출력에만 쓴다. 크레딧·연결 같은 일시 실패는 남은 메일도 실패하므로 멈추고 다음 실행에서 다시 해석한다.
+      if ((error as { code?: string }).code !== 'ai_invalid_output') break;
       db.prepare('UPDATE mail_messages SET interpret_attempts = interpret_attempts + 1 WHERE id = ?').run(row.id);
       continue;
     }
