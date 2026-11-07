@@ -29,9 +29,9 @@ const colorTokens = [
   'warning-foreground', 'warning-muted', 'info', 'info-muted', 'highlight', 'highlight-muted',
 ];
 function ColorPalette({ theme }: { theme: 'light' | 'dark' }) {
-  return <article className="foundation foundation-theme" data-ns-theme={theme}><h1>{theme === 'light' ? 'Light' : 'Dark'} 색상 역할</h1><p>브랜드 색상은 인디고입니다. 피드백·브랜드·개인 상태의 의미를 구분합니다.</p>
+  return <div className="foundation-theme min-h-screen" data-ns-theme={theme}><article className="foundation"><h1>{theme === 'light' ? 'Light' : 'Dark'} 색상 역할</h1><p>브랜드 색상은 인디고입니다. 피드백·브랜드·개인 상태의 의미를 구분합니다.</p>
     <div className="foundation-palette">{colorTokens.map(name => <div className="foundation-swatch" key={name}><div data-color-swatch={name} style={{ background: `var(--ns-color-${name})` }} /><strong>{name}</strong><code>--ns-color-{name}</code><TokenValue tokens={[`--ns-color-${name}`]} /></div>)}</div>
-  </article>;
+  </article></div>;
 }
 export const Colors: Story = { name: 'Light 색상', render: () => <ColorPalette theme="light" /> };
 export const DarkColors: Story = { name: 'Dark 색상', render: () => <ColorPalette theme="dark" /> };
@@ -66,14 +66,14 @@ export const Icons: Story = {
   name: 'Lucide 아이콘',
   render: () => <article className="foundation"><h1>Lucide React</h1><p>12/14/16/20/24px·currentColor. 기본 선 두께 1.5, 작은 크기와 강조는 2를 사용합니다.</p>
     <div className="foundation-row">{icons.map((Icon, index) => <div className="foundation-sample" key={index}><Icon className="size-icon-md shrink-0 stroke-icon" aria-hidden="true" focusable="false" /></div>)}</div>
-    <h2>크기</h2><div className="foundation-row">{iconSizes.map(([size, classes]) => <span key={size}><Search className={`shrink-0 ${classes}`} aria-hidden="true" focusable="false" /> {size}</span>)}</div>
-    <h2>동작·접근성</h2><p><LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" focusable="false" /> 처리중 — 동작 감소 설정에서는 회전을 멈춥니다.</p><p>텍스트 옆 아이콘은 장식으로 숨기고, 아이콘만 있는 버튼에는 버튼의 aria-label을 제공합니다.</p>
+    <h2>크기</h2><div className="foundation-row">{iconSizes.map(([size, classes]) => <span className="inline-flex items-center gap-1" key={size}><Search className={`shrink-0 ${classes}`} aria-hidden="true" focusable="false" />{size}</span>)}</div>
+    <h2>동작·접근성</h2><p className="flex items-center gap-2"><LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" focusable="false" /> 처리중 — 동작 감소 설정에서는 회전을 멈춥니다.</p><p>텍스트 옆 아이콘은 장식으로 숨기고, 아이콘만 있는 버튼에는 버튼의 aria-label을 제공합니다.</p>
   </article>,
 };
 
 export const ElevationAndMotion: Story = {
   name: '그림자·모션',
-  render: () => <article className="foundation"><h1>그림자·모션</h1><div className="foundation-row">{['sm', 'md', 'lg'].map(size => <div key={size} className="foundation-sample" style={{ boxShadow: `var(--ns-shadow-${size})`, borderRadius: 'var(--ns-radius-surface)' }}>shadow-{size}<br /><TokenValue tokens={[`--ns-shadow-${size}`]} /></div>)}</div><p>상태 변화 120ms, 일반 전환 200ms, 큰 전환 320ms. 진입·피드백은 ease-out, 위치 전환은 ease-in-out을 사용합니다.</p><p>동작 감소 설정에서는 회전과 버튼 전환을 멈춥니다. 제스처용 spring은 제스처 구현 시 정의합니다.</p><LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" focusable="false" /> 처리중</article>,
+  render: () => <article className="foundation"><h1>그림자·모션</h1><div className="foundation-row">{['sm', 'md', 'lg'].map(size => <div key={size} className="foundation-sample" style={{ boxShadow: `var(--ns-shadow-${size})`, borderRadius: 'var(--ns-radius-surface)' }}>shadow-{size}<br /><TokenValue tokens={[`--ns-shadow-${size}`]} /></div>)}</div><p>상태 변화 120ms, 일반 전환 200ms, 큰 전환 320ms. 진입·피드백은 ease-out, 위치 전환은 ease-in-out을 사용합니다.</p><p>동작 감소 설정에서는 회전과 버튼 전환을 멈춥니다. 제스처용 spring은 제스처 구현 시 정의합니다.</p><p className="flex items-center gap-2"><LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" focusable="false" />처리중</p></article>,
 };
 export const Themes: Story = {
   name: 'Light·Dark',
