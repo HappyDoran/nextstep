@@ -12,6 +12,8 @@ last_verified: 2026-11-07
 
 서버는 Fastify 5, 로컬 관계형 DB는 SQLite와 Node 내장 `node:sqlite`를 사용한다. 단일 서버·작업자, 트랜잭션·고유 제약을 사용할 수 있는 초기 로컬 개발 선택이다. 내장 SQLite API의 안정성 상태는 Node 버전에 종속되며 현재 실행 시 실험적 경고가 발생할 수 있다. 작은 동기 쿼리용으로 한정하고 수집·추출처럼 오래 걸리는 처리는 요청 경로에 넣지 않는다. 운영 DB·배포 환경은 아직 결정하지 않았다.
 
+메일 조회는 imapflow, PDF 본문 추출은 pdfjs-dist legacy 빌드를 서버에서만 사용한다. IMAP은 읽기 전용(EXAMINE)으로 열고 플래그를 바꾸지 않는다. PDF는 크기·처리 시간 제한 안에서 텍스트 레이어만 읽으며 OCR을 하지 않는다. 공고 수집은 사람 속도로 요청하고 로그인·차단 우회를 하지 않는다. 출처별 자동 수집 여부는 수집 모드와 공통 계약의 `SOURCE_POLICY`를 따르며 근거는 기술 설계 부록 D절이 소유한다.
+
 Fastify의 [Node 지원 정책](https://fastify.dev/docs/latest/Reference/LTS/), Node의 [SQLite API](https://nodejs.org/docs/latest-v24.x/api/sqlite.html), Electron의 [보안 권고](https://www.electronjs.org/docs/latest/tutorial/security)를 기준으로 설치·타입·실행 호환성을 검증한다. 버전 문자열만으로 호환성을 보장하지 않는다.
 
 Next.js App Router·React·Tailwind CSS로 웹을 구현한다. 화면과 공통 UI는 공유 Tailwind preset의 유틸리티로 작성하며 styled-components 등 CSS-in-JS를 도입하지 않는다. CSS 변수는 토큰·테마 값의 정본이고 preset은 값 복제 없이 색상·타입·크기·포커스·모션 유틸리티에 연결한다. 공통 UI·토큰은 design-system과 Storybook에서 관리한다. 아이콘은 Lucide React를 정적 import로 사용한다. 토큰·타입·아이콘의 사용법은 packages/design-system/README.md가 소유한다. 브랜드 색상 선택은 디자인 기초 소유 문서를 따른다. 화면·타입·테마의 세부 디자인은 개발 초기안이다. 서버 상태는 TanStack Query, 화면 간 공유하는 클라이언트 상태는 Jotai를 사용한다. 서버 응답을 atom에 복제하지 않고 컴포넌트 안에서만 필요한 상태는 React 로컬 상태로 둔다. QueryClient는 서버 요청 사이에 공유하지 않으며 Jotai는 첫 공유 상태가 생길 때 추가하고 앱의 Provider 범위에 격리한다. 개인 데이터 도입 시 query key의 사용자 구분과 로그아웃·계정 전환 시 캐시 및 atom 초기화를 함께 구현한다.
@@ -30,7 +32,7 @@ Next.js App Router·React·Tailwind CSS로 웹을 구현한다. 화면과 공통
 
 ## 신뢰 경계
 
-API는 기본 loopback에만 바인딩하고 개인 데이터를 제공하는 엔드포인트는 인증·사용자 범위와 삭제 경합 검증을 갖춘 뒤 추가한다. 현재 공개 준비 확인 외 개인 API가 없다. SQLite 파일은 서버의 무시된 비공개 경로에 두고 외래키·WAL·busy timeout을 적용한다. DB 스키마 버전은 트랜잭션으로 전진하며 미래 버전은 거부한다.
+API는 기본 loopback에만 바인딩하고 개인 데이터를 제공하는 엔드포인트는 인증·사용자 범위와 삭제 경합 검증을 갖춘 뒤 추가한다. 현재 공개 준비 확인 외 개인 API가 없다. 수집 모드 조회·변경(`/settings/collection`)은 인증 없이 열려 있으며 P1-02에서 관리자 전용으로 제한한다. SQLite 파일은 서버의 무시된 비공개 경로에 두고 외래키·WAL·busy timeout을 적용한다. DB 스키마 버전은 트랜잭션으로 전진하며 미래 버전은 거부한다.
 
 Electron은 nodeIntegration=false, contextIsolation=true, sandbox=true, webSecurity=true를 명시한다. preload·IPC는 현재 필요 없어 제공하지 않는다. 서비스 origin 밖 이동·리다이렉트와 webview를 막고 권한 요청을 거부한다. 외부 HTTPS 링크는 사용자 확인 후 기본 브라우저로 연다. 개발 모드에만 loopback HTTP를 허용한다. 배포용 서비스 origin은 소유한 HTTPS 주소를 설정해야 한다. 자격정보가 포함된 URL·file/javascript 등 스킴은 거부한다.
 

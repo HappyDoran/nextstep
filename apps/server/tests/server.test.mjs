@@ -44,3 +44,30 @@ test('알 수 없는 미래 DB를 변경하지 않는다', () => {
     original.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+test('수집 모드는 기본 서비스, 변경 후 재시작에도 유지되고 잘못된 값을 거부한다', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-mode-'));
+  try {
+    const path = join(dir, 'service.sqlite');
+    let app = createApp(path);
+    try {
+      const initial = await app.inject('/settings/collection');
+      assert.deepEqual(initial.json(), { mode: 'service', sources: { jobkorea: 'auto', wanted: 'link_only', jasoseol: 'link_only' } });
+      for (const payload of [{ mode: 'admin' }, { mode: 'personal', sources: { wanted: 'auto' } }, {}]) {
+        assert.equal((await app.inject({ method: 'PUT', url: '/settings/collection', payload })).statusCode, 400);
+      }
+      const changed = await app.inject({ method: 'PUT', url: '/settings/collection', payload: { mode: 'personal' } });
+      assert.equal(changed.json().sources.wanted, 'auto');
+    } finally { await app.close(); }
+    app = createApp(path);
+    try {
+      assert.equal((await app.inject('/settings/collection')).json().mode, 'personal');
+    } finally { await app.close(); }
+    const db = new DatabaseSync(path);
+    db.prepare("UPDATE service_metadata SET value = 'broken' WHERE key = 'collection_mode'").run();
+    db.close();
+    app = createApp(path);
+    try {
+      assert.equal((await app.inject('/settings/collection')).json().mode, 'service');
+    } finally { await app.close(); }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

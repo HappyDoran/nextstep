@@ -8,11 +8,15 @@
     "build": "tsc",
     "start": "node dist/main.js",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs tests/prompts/*.test.mjs",
+    "verify:naver": "tsx src/verify/naver-imap.ts",
+    "verify:jobkorea": "tsx src/verify/jobkorea.ts"
   },
   "dependencies": {
     "@nextstep/contracts": "workspace:*",
-    "fastify": "5.12.8"
+    "fastify": "5.12.8",
+    "imapflow": "2.9.1",
+    "pdfjs-dist": "6.4.299"
   },
   "devDependencies": {
     "tsx": "^4.21.0"
