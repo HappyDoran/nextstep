@@ -29,7 +29,8 @@ export const defaultDeps: PipelineDeps = {
 const PER_FAMILY = 5;
 // 자소설닷컴은 직무별 목록에서 직무당 이 수만큼 상세를 읽는다.
 const JASOSEOL_PER_FAMILY = 5;
-const JUDGE_CAP = 40;
+// 개발 중에는 NEXTSTEP_JUDGE_CAP으로 줄여 요금을 아낀다.
+const JUDGE_CAP = Number(process.env.NEXTSTEP_JUDGE_CAP ?? 40);
 // 채용이 아닌 교육·부트캠프 모집은 공고로 받지 않는다(자소설닷컴 직무별 목록에 섞여 나온다).
 const NOT_HIRING = /교육생|수강생|훈련생|부트캠프|클래스메이트|국비\s*(?:지원|교육)|\d+기\s*모집/;
 export const isNotHiring = (title: string) => NOT_HIRING.test(title);

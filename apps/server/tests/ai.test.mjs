@@ -49,3 +49,35 @@ test('데이터 구분자 닫기 위조를 무력화한다', () => {
   assert.equal(block.match(/<\/posting>/g).length, 1);
   assert.ok(block.endsWith('</posting>'));
 });
+
+test('개발용 가짜 AI는 네트워크 없이 각 프롬프트 스키마에 맞는 응답을 준다', async () => {
+  const { requirementsSchema } = await import('../dist/prompts/requirements.js');
+  const { mailInterpretationSchema } = await import('../dist/prompts/mail.js');
+  const { profileSchema } = await import('@nextstep/contracts');
+  const env = { ...process.env };
+  process.env.NEXTSTEP_AI_FAKE = '1';
+  process.env.NEXTSTEP_OPENAI_BASE_URL = 'http://127.0.0.1:9';
+  try {
+    for (const schema of [judgementSchema, requirementsSchema, mailInterpretationSchema, profileSchema]) await structured('x', schema, 'i', 'x');
+  } finally { process.env = env; }
+});
+
+test('응답 캐시는 같은 입력이면 다시 요청하지 않고 소유자만 읽게 저장한다', async () => {
+  const { mkdtempSync, readdirSync, statSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = join(mkdtempSync(join(tmpdir(), 'ai-cache-')), 'cache');
+  let calls = 0;
+  const valid = { classification: '기본', met: [], unmet: [], unknown: [], reason: 'r' };
+  try {
+    await withServer((_req, res) => { calls++; reply(res, 200, output(JSON.stringify(valid))); }, async () => {
+      process.env.NEXTSTEP_AI_CACHE_DIR = dir;
+      assert.deepEqual(await structured('j', judgementSchema, 'i', 'same'), valid);
+      assert.deepEqual(await structured('j', judgementSchema, 'i', 'same'), valid);
+      await structured('j', judgementSchema, 'i', 'other');
+    });
+    assert.equal(calls, 2);
+    const [file] = readdirSync(dir);
+    assert.equal(statSync(join(dir, file)).mode & 0o777, 0o600);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
