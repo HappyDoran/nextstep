@@ -78,6 +78,7 @@ export const resumeSchema = z.object({ id: z.string(), filename: z.string(), siz
 export type Resume = z.infer<typeof resumeSchema>;
 
 // 프로필·필터: 사용자가 확인한 사실만 저장한다. 직무는 1차 네 직무, 복수 선택은 OR.
+// 선호(지역·원격·고용 형태·요구 경력)는 사용자만 고른다. 빈 목록·null은 제한 없음(전국·전체)이다.
 export const jobFamilySchema = z.enum(['프론트엔드', '앱 개발', '디자인', '기획']);
 export type JobFamily = z.infer<typeof jobFamilySchema>;
 export const profileSchema = z.object({
@@ -86,6 +87,8 @@ export const profileSchema = z.object({
   regions: z.array(z.string().trim().min(1).max(40)).max(10),
   remoteOk: z.boolean(),
   employmentTypes: z.array(z.enum(['정규직', '계약직', '인턴', '프리랜서'])).max(4),
+  // 공고 요구 경력 상한(년). null이면 제한 없음. 이전 저장분 호환을 위해 기본값 null.
+  careerMax: z.number().int().min(0).max(30).nullable().default(null),
   skills: z.array(z.string().trim().min(1).max(60)).max(60),
   summary: z.string().trim().max(2000),
 }).strict();

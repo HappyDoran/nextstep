@@ -67,7 +67,8 @@ test('프로필은 검증한 값만 저장하고 사용자별로 분리된다', 
     assert.equal((await app.inject({ method: 'PUT', url: '/profile', headers: { cookie: a }, payload: { ...profile, jobFamilies: ['백엔드'] } })).statusCode, 400);
     assert.equal((await app.inject({ method: 'PUT', url: '/profile', headers: { cookie: a }, payload: { ...profile, jobFamilies: [] } })).statusCode, 400);
     assert.equal((await app.inject({ method: 'PUT', url: '/profile', headers: { cookie: a }, payload: profile })).statusCode, 200);
-    assert.deepEqual((await app.inject({ url: '/profile', headers: { cookie: a } })).json().profile, profile);
+    // 이전 저장 형식(요구 경력 상한 없음)은 제한 없음(null)으로 읽힌다.
+    assert.deepEqual((await app.inject({ url: '/profile', headers: { cookie: a } })).json().profile, { ...profile, careerMax: null });
     assert.equal((await app.inject({ url: '/profile', headers: { cookie: b } })).statusCode, 404);
   } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
 });

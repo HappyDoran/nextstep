@@ -1,7 +1,8 @@
 // jobkorea 공개 페이지 해석. 수집 정책(모드)은 호출하는 쪽이 확인한다.
-import type { JobFamily } from '@nextstep/contracts';
+import type { JobFamily, Profile } from '@nextstep/contracts';
 import type { CollectedPosting, CollectFailure } from './types.js';
 import { htmlText, politeGet } from './http.js';
+import { careerOk, regionOk } from './filter.js';
 export const ORIGIN = 'https://www.jobkorea.co.kr';
 // 사람 속도의 소량 요청: 직무당 목록 1회·상세 3건.
 export const PER_ROLE = 3;
@@ -124,14 +125,24 @@ export async function fetchJobkorea(id: string): Promise<CollectedPosting | Coll
 
 const KEYWORDS: Record<JobFamily, string> = { 프론트엔드: '프론트엔드', '앱 개발': '앱 개발', 디자인: 'UI/UX 디자이너', 기획: '서비스 기획' };
 
-export async function collectJobkorea(family: JobFamily, limit: number) {
+// 검색이 받는 조건(실제 확인): 경력 범위(careerType=1,2&careerMin&careerMax), 정규직(jobtype=1). 지역은 받지 않아 수집 후 거른다.
+export function jobkoreaSearchUrl(family: JobFamily, f: Profile) {
+  const q = new URLSearchParams({ stext: KEYWORDS[family], tabType: 'recruit' });
+  if (f.careerMax !== null) { q.set('careerType', '1,2'); q.set('careerMin', '0'); q.set('careerMax', String(f.careerMax)); }
+  if (f.employmentTypes.length === 1 && f.employmentTypes[0] === '정규직') q.set('jobtype', '1');
+  return `${ORIGIN}/Search/?${q}`;
+}
+
+export async function collectJobkorea(family: JobFamily, limit: number, f: Profile) {
   const postings: CollectedPosting[] = [];
   const failures: CollectFailure[] = [];
-  const list = await politeGet(`${ORIGIN}/Search/?stext=${encodeURIComponent(KEYWORDS[family])}&tabType=recruit`);
+  const list = await politeGet(jobkoreaSearchUrl(family, f));
   if ('code' in list) return { postings, failures: [{ source: 'jobkorea' as const, code: list.code }] };
-  for (const id of listPostingIds(list.text).slice(0, limit)) {
+  // 지역은 상세에서만 알 수 있어 목록을 세 배까지 본다.
+  for (const id of listPostingIds(list.text).slice(0, limit * 3)) {
+    if (postings.length >= limit) break;
     const r = await fetchJobkorea(id);
-    if ('code' in r) failures.push(r); else postings.push(r);
+    if ('code' in r) failures.push(r); else if (regionOk(r, f) && careerOk(r, f)) postings.push(r);
   }
   return { postings, failures };
 }

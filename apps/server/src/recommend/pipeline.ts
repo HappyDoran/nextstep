@@ -10,10 +10,11 @@ import { collectJasoseol, fetchJasoseol } from '../sources/jasoseol.js';
 import { extractRequirements, REQUIREMENTS_PROMPT_VERSION, type Requirements } from '../prompts/requirements.js';
 import { judge, RECOMMEND_PROMPT_VERSION, type Judgement } from '../prompts/recommend.js';
 import type { ClaimedJob, JobOutcome } from './jobs.js';
+import { passesFilter } from '../sources/filter.js';
 
 type Collected = { postings: CollectedPosting[]; failures: CollectFailure[] };
 export type PipelineDeps = {
-  collect: { jobkorea: (f: JobFamily, n: number) => Promise<Collected>; wanted: (f: JobFamily, n: number) => Promise<Collected>; jasoseol: (f: JobFamily[], cap: number) => Promise<Collected> };
+  collect: { jobkorea: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; wanted: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jasoseol: (f: JobFamily[], cap: number) => Promise<Collected> };
   fetchOne: Record<SourceId, (id: string) => Promise<CollectedPosting | CollectFailure>>;
   extract: (posting: { title: string; company: string; body: string }) => Promise<Requirements>;
   judge: (evaluatedAt: string, candidate: unknown, posting: unknown) => Promise<Judgement>;
@@ -94,6 +95,12 @@ function loadUserBasis(db: DatabaseSync, userId: string) {
   return { profile, resume, basis: `${profileRow.updated_at}|${resume.id}|${RECOMMEND_PROMPT_VERSION}` };
 }
 
+// 필터용 공고 사실(저장된 값만 쓴다).
+export function rowFacts(row: Pick<PostingRow, 'location' | 'remote' | 'careers' | 'requirements'>) {
+  const req = row.requirements ? JSON.parse(row.requirements) as Partial<Requirements> : null;
+  return { location: row.location, remote: row.remote === null ? (req?.remote === '전면' ? true : null) : row.remote === 1, careers: JSON.parse(row.careers), employmentTypes: req?.employmentTypes };
+}
+
 function postingFacts(row: PostingRow) {
   const req = row.requirements ? JSON.parse(row.requirements) as Requirements : null;
   return {
@@ -108,7 +115,8 @@ function postingFacts(row: PostingRow) {
 
 async function judgeFor(db: DatabaseSync, deps: PipelineDeps, userId: string, basis: { profile: Profile; resume: { text: string }; basis: string }, rows: PostingRow[], counts: Counts & { judged: number }) {
   const at = new Date().toISOString();
-  const candidate = { profile: basis.profile, resumeExcerpt: basis.resume.text.slice(0, 8000) };
+  // 지역을 고르지 않았으면 전국으로 알린다(빈 목록을 '희망 지역 없음'으로 오해하지 않게).
+  const candidate = { profile: { ...basis.profile, regions: basis.profile.regions.length ? basis.profile.regions : ['전국'] }, resumeExcerpt: basis.resume.text.slice(0, 8000) };
   for (const row of rows.slice(0, JUDGE_CAP)) {
     const prior = db.prepare('SELECT basis FROM recommendations WHERE user_id = ? AND posting_id = ?').get(userId, row.id) as { basis: string } | undefined;
     if (prior?.basis === basis.basis) continue;
@@ -134,7 +142,7 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     const mode = readCollectionMode(db);
     // 차단 기록은 실행 단위로 둔다. 다음 실행에서는 다시 한 번 시도한다.
     resetBlockedHosts();
-    const counts = { collected: 0, judged: 0, notHiring: 0, aiFailures: 0, aiFailureCodes: {} as Record<string, number>, sourceFailures: [] as CollectFailure[] };
+    const counts = { collected: 0, judged: 0, notHiring: 0, filteredOut: 0, aiFailures: 0, aiFailureCodes: {} as Record<string, number>, sourceFailures: [] as CollectFailure[] };
 
     if (job.kind === 'link') {
       const link = parsePostingLink((job.payload as { url: string }).url);
@@ -151,8 +159,8 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     const families = basis.profile.jobFamilies;
     const runs: (() => Promise<Collected>)[] = [];
     for (const family of families) {
-      if (SOURCE_POLICY[mode].jobkorea === 'auto') runs.push(() => deps.collect.jobkorea(family, PER_FAMILY));
-      if (SOURCE_POLICY[mode].wanted === 'auto') runs.push(() => deps.collect.wanted(family, PER_FAMILY));
+      if (SOURCE_POLICY[mode].jobkorea === 'auto') runs.push(() => deps.collect.jobkorea(family, PER_FAMILY, basis.profile));
+      if (SOURCE_POLICY[mode].wanted === 'auto') runs.push(() => deps.collect.wanted(family, PER_FAMILY, basis.profile));
     }
     if (SOURCE_POLICY[mode].jasoseol === 'auto') runs.push(() => deps.collect.jasoseol(families, JASOSEOL_PER_FAMILY));
     // 출처끼리는 순서대로 요청한다(같은 출처에 동시 요청을 만들지 않는다).
@@ -167,9 +175,12 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
       }
     }
     const rows = db.prepare(`SELECT p.* FROM postings p WHERE (p.owner_user_id IS NULL OR p.owner_user_id = ?) ${visiblePostingsSql(mode)} ORDER BY p.checked_at DESC`).all(job.userId) as PostingRow[];
-    await judgeFor(db, deps, job.userId, basis, rows, counts);
+    // 사용자 필터에 맞지 않는 공용 공고는 판정하지 않는다(요금 절감). 사용자가 넣은 링크 공고는 거르지 않는다. 고용 형태는 본문 추출 결과로 거른다.
+    const matching = rows.filter(row => row.owner_user_id || passesFilter(rowFacts(row), basis.profile));
+    counts.filteredOut = rows.length - matching.length;
+    await judgeFor(db, deps, job.userId, basis, matching, counts);
     const failed = counts.sourceFailures.length > 0 || counts.aiFailures > 0;
-    const result = { mode, collected: counts.collected, judged: counts.judged, notHiring: counts.notHiring, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes, sourceFailures: counts.sourceFailures.map(f => `${f.source}:${f.code}`) };
+    const result = { mode, collected: counts.collected, judged: counts.judged, notHiring: counts.notHiring, filteredOut: counts.filteredOut, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes, sourceFailures: counts.sourceFailures.map(f => `${f.source}:${f.code}`) };
     if (counts.collected === 0 && failed) return { status: '실패', errorCode: 'collect_failed', result };
     return { status: failed ? '일부 실패' : '성공', result };
   };

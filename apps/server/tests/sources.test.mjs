@@ -53,3 +53,33 @@ test('자소설닷컴 직무별 목록에서 공고 ID를 읽는다', () => {
   assert.deepEqual(jasoseol.dutyListIds('{"error":"x"}'), []);
   assert.deepEqual(jasoseol.DUTY_GROUPS['앱 개발'], [161, 172, 173]);
 });
+
+test('사용자 선호 필터: 출처 요청 조건과 수집 후 지역·경력·고용 형태 거르기', async () => {
+  const { regionOk, careerOk, employmentOk } = await import('../dist/sources/filter.js');
+  const { wantedListQuery } = await import('../dist/sources/wanted.js');
+  const { jobkoreaSearchUrl } = await import('../dist/sources/jobkorea.js');
+  const base = { jobFamilies: ['프론트엔드'], experiences: [], regions: [], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '' };
+  const f = { ...base, regions: ['서울', '경기 성남시'], careerMax: 2, employmentTypes: ['정규직'] };
+  // 지역: 비우면 전국, 시·군·구까지 앞부분 일치, 근무지 미기재는 통과, 원격 허용이면 전면 원격 통과.
+  assert.equal(regionOk({ location: '경기 하남시', remote: false, careers: [] }, base), true);
+  assert.equal(regionOk({ location: '서울특별시 강남구', remote: false, careers: [] }, f), true);
+  assert.equal(regionOk({ location: '경기 성남시 분당구', remote: false, careers: [] }, f), true);
+  assert.equal(regionOk({ location: '경기 하남시', remote: false, careers: [] }, f), false);
+  assert.equal(regionOk({ location: null, remote: null, careers: [] }, f), true);
+  assert.equal(regionOk({ location: '부산', remote: true, careers: [] }, { ...f, remoteOk: true }), true);
+  // 경력: 요구 하한이 상한을 넘는 경력직만 제외.
+  assert.equal(careerOk({ location: null, remote: null, careers: [{ type: 'EXPERIENCED', fromYears: 3, toYears: null }] }, f), false);
+  assert.equal(careerOk({ location: null, remote: null, careers: [{ type: 'EXPERIENCED', fromYears: 1, toYears: 5 }] }, f), true);
+  assert.equal(careerOk({ location: null, remote: null, careers: [{ type: 'NEWBIE', fromYears: null, toYears: null }] }, f), true);
+  // 고용 형태: 미기재는 통과.
+  assert.equal(employmentOk({ location: null, remote: null, careers: [], employmentTypes: ['프리랜서'] }, f), false);
+  assert.equal(employmentOk({ location: null, remote: null, careers: [], employmentTypes: ['미기재'] }, f), true);
+  // 출처 요청: 원티드는 시·도와 연차 범위, 잡코리아는 경력 범위·정규직.
+  const q = wantedListQuery('프론트엔드', 15, f);
+  assert.deepEqual(q.getAll('locations'), ['seoul.all', 'gyeonggi.all']);
+  assert.deepEqual(q.getAll('years'), ['0', '2']);
+  assert.deepEqual(wantedListQuery('프론트엔드', 15, { ...f, remoteOk: true }).getAll('locations'), ['all']);
+  const u = new URL(jobkoreaSearchUrl('프론트엔드', f));
+  assert.equal(u.searchParams.get('careerMax'), '2');
+  assert.equal(u.searchParams.get('jobtype'), '1');
+});

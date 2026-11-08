@@ -151,3 +151,22 @@ test('교육생·부트캠프 모집은 채용 공고로 받지 않는다', () =
   for (const t of ['청년취업사관학교 성북캠퍼스 6기 교육생 모집', '[취업·인턴 연계] SeSAC AI 서비스 기획·PM 부트캠프', '모빌리티 SW 스쿨 5기 클래스메이트 모집']) assert.equal(isNotHiring(t), true, t);
   for (const t of ['2026년 하반기 신입사원 채용', '2027 엔키업 채용연계형 인턴십', 'AI 영상 콘텐츠 크리에이터 (기획·제작)', '시니어 React Native 개발자']) assert.equal(isNotHiring(t), false, t);
 });
+
+test('사용자 필터에 맞지 않는 공고는 판정하지 않고, 필터를 바꾸면 기존 결과도 현재 필터로 거른다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+    const calls = [];
+    const deps = fakeDeps(calls);
+    deps.collect.jobkorea = async () => ({ postings: [posting('jobkorea', '1', '서울 공고'), { ...posting('jobkorea', '2', '하남 공고'), location: '경기 하남시' }, posting('jobkorea', '3', '프리랜서 공고')], failures: [] });
+    deps.extract = async p => ({ jobFamilies: ['프론트엔드'], required: [], preferred: [], remote: '없음', portfolioRequired: false, employmentTypes: p.title.includes('프리랜서') ? ['프리랜서'] : ['정규직'] });
+    const db = openDatabase(s.path);
+    try { await runNext(db, createHandler(db, deps)); } finally { db.close(); }
+    assert.deepEqual(calls.filter(c => c.startsWith('judge:')), ['judge:서울 공고']);
+    assert.equal((await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items.length, 1);
+    // 지역을 하남으로 바꾸면 다시 가져오기 전에도 서울 공고는 목록에서 빠진다.
+    await s.app.inject({ method: 'PUT', url: '/profile', headers: { cookie: a }, payload: { jobFamilies: ['프론트엔드'], experiences: [], regions: ['경기 하남시'], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '' } });
+    assert.equal((await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items.length, 0);
+  } finally { await s.done(); }
+});

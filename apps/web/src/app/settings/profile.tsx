@@ -7,7 +7,8 @@ import { call, fieldClass, RequestError } from '../api-client';
 
 const FAMILIES = jobFamilySchema.options;
 const EMPLOYMENT = ['정규직', '계약직', '인턴', '프리랜서'] as const;
-const EMPTY: Profile = { jobFamilies: ['프론트엔드'], experiences: [], regions: ['서울'], remoteOk: true, employmentTypes: ['정규직'], skills: [], summary: '' };
+// 선호(지역·원격·고용 형태·요구 경력)는 기본값 없이 비워 둔다. 비어 있으면 제한 없음.
+const EMPTY: Profile = { jobFamilies: ['프론트엔드'], experiences: [], regions: [], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '' };
 const list = (text: string) => text.split(',').map(s => s.trim()).filter(Boolean);
 
 // 저장한 값만 추천 기준이 된다. AI 초안은 화면에만 채우고 사용자가 확인해 저장한다.
@@ -31,7 +32,8 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
   const [form, setForm] = useState<Profile>(initial);
   const [regions, setRegions] = useState(initial.regions.join(', '));
   const [skills, setSkills] = useState(initial.skills.join(', '));
-  const load = (p: Profile) => { setForm(p); setRegions(p.regions.join(', ')); setSkills(p.skills.join(', ')); };
+  // AI 초안은 이력서 사실(직무·경력·기술·요약)만 채우고 사용자가 고른 선호는 건드리지 않는다.
+  const load = (p: Profile) => { setForm({ ...form, jobFamilies: p.jobFamilies, experiences: p.experiences, skills: p.skills, summary: p.summary }); setSkills(p.skills.join(', ')); };
   const save = useMutation({
     mutationFn: async () => (await call('profile', { method: 'PUT', body: JSON.stringify(profileSchema.parse({ ...form, regions: list(regions), skills: list(skills) })) })) as { profile: Profile; updatedAt: string },
     onSuccess: data => client.setQueryData(key, data),
@@ -53,15 +55,19 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
         <label className="flex items-center gap-2 text-body-sm">관련 경력(년)<input type="number" min={0} max={50} step={0.5} value={years(family)} onChange={e => setYears(family, e.target.value)} className={`${fieldClass} !w-24`} /></label>
       </div>)}
     </fieldset>
-    <label className="flex flex-col gap-2 text-body-sm">근무 지역 (쉼표로 구분)<input value={regions} onChange={e => setRegions(e.target.value)} className={fieldClass} /></label>
-    <label className="flex items-center gap-2"><input type="checkbox" checked={form.remoteOk} onChange={e => setForm({ ...form, remoteOk: e.target.checked })} className="size-icon-md accent-primary" />원격 근무 가능</label>
-    <fieldset className="flex flex-wrap gap-4"><legend className="mb-2 text-body-sm">고용 형태</legend>
-      {EMPLOYMENT.map(type => <label key={type} className="flex items-center gap-2"><input type="checkbox" checked={form.employmentTypes.includes(type)} onChange={() => setForm({ ...form, employmentTypes: toggle(form.employmentTypes, type) })} className="size-icon-md accent-primary" />{type}</label>)}
+    <fieldset className="flex flex-col gap-4 rounded-control border border-border p-4"><legend className="px-1 text-body font-semibold">공고 필터 (직접 고르는 선호)</legend>
+      <p className="text-body-sm text-muted-foreground">공고를 가져올 때와 추천 목록에 그대로 적용합니다. NextStep이 대신 정하지 않으며, 비워 두면 제한하지 않습니다.</p>
+      <label className="flex flex-col gap-2 text-body-sm">근무 지역 (쉼표로 구분, 예: 서울, 경기 성남시 · 비우면 전국)<input value={regions} onChange={e => setRegions(e.target.value)} placeholder="전국" className={fieldClass} /></label>
+      <label className="flex items-center gap-2"><input type="checkbox" checked={form.remoteOk} onChange={e => setForm({ ...form, remoteOk: e.target.checked })} className="size-icon-md accent-primary" />지역 밖이라도 전면 원격 공고 포함</label>
+      <fieldset className="flex flex-wrap gap-4"><legend className="mb-2 text-body-sm">고용 형태 (모두 해제하면 전체)</legend>
+        {EMPLOYMENT.map(type => <label key={type} className="flex items-center gap-2"><input type="checkbox" checked={form.employmentTypes.includes(type)} onChange={() => setForm({ ...form, employmentTypes: toggle(form.employmentTypes, type) })} className="size-icon-md accent-primary" />{type}</label>)}
+      </fieldset>
+      <label className="flex flex-col gap-2 text-body-sm">요구 경력 상한(년) · 이 연차를 넘게 요구하는 경력직 공고는 빼고 가져옵니다. 비우면 제한 없음<input type="number" min={0} max={30} step={1} value={form.careerMax ?? ''} onChange={e => setForm({ ...form, careerMax: e.target.value === '' ? null : Number(e.target.value) })} placeholder="제한 없음" className={`${fieldClass} !w-32`} /></label>
     </fieldset>
     <label className="flex flex-col gap-2 text-body-sm">업무·도구·기술 (쉼표로 구분)<input value={skills} onChange={e => setSkills(e.target.value)} className={fieldClass} /></label>
     <label className="flex flex-col gap-2 text-body-sm">경력 요약<textarea value={form.summary} maxLength={2000} rows={3} onChange={e => setForm({ ...form, summary: e.target.value })} className={`${fieldClass} py-3`} /></label>
     <div><Button type="submit" disabled={save.isPending || form.jobFamilies.length === 0}>프로필 저장</Button></div>
     <p role="status" className="text-body-sm text-muted-foreground">{updatedAt ? `마지막 저장: ${new Date(updatedAt).toLocaleString('ko-KR')}` : '아직 저장한 프로필이 없습니다.'}{suggest.isSuccess && !save.isSuccess ? ' · 초안을 채웠습니다. 확인 후 저장하세요.' : ''}</p>
-    {(save.isError || suggest.isError) && <p role="alert" className="text-body-sm text-destructive">{save.isError && save.error instanceof Error && !(save.error instanceof RequestError) ? '입력값을 확인하세요(희망 직무 1개 이상, 경력 0~50년).' : (save.error ?? suggest.error)?.message}</p>}
+    {(save.isError || suggest.isError) && <p role="alert" className="text-body-sm text-destructive">{save.isError && save.error instanceof Error && !(save.error instanceof RequestError) ? '입력값을 확인하세요(희망 직무 1개 이상, 경력 0~50년, 요구 경력 상한 0~30년).' : (save.error ?? suggest.error)?.message}</p>}
   </form>;
 }

@@ -18,13 +18,14 @@ const INSTRUCTIONS = `너는 이력서에서 확인되는 사실만 뽑는다. �
 
 export async function suggestProfile(resumeText: string) {
   const draft = await structured('profile_draft', draftSchema, INSTRUCTIONS, dataBlock('resume', resumeText.slice(0, 20_000)));
-  // 계약 범위로 정리한다(지역·고용형태는 사용자가 정한다).
+  // 계약 범위로 정리한다. 선호(지역·원격·고용 형태·요구 경력)는 사용자만 고르므로 비워 둔다(제한 없음).
   return profileSchema.parse({
     jobFamilies: draft.jobFamilies.length ? [...new Set(draft.jobFamilies)] : ['프론트엔드'],
     experiences: draft.experiences.filter(e => e.years >= 0 && e.years <= 50).slice(0, 4),
-    regions: ['서울'],
-    remoteOk: true,
-    employmentTypes: ['정규직'],
+    regions: [],
+    remoteOk: false,
+    employmentTypes: [],
+    careerMax: null,
     skills: [...new Set(draft.skills.map(s => s.trim()).filter(s => s && s.length <= 60))].slice(0, 60),
     summary: draft.summary.slice(0, 2000),
   });

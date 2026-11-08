@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@nextstep/design-system';
-import { jobSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
+import { jobSchema, profileSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
 import { call, fieldClass, useMe } from '../api-client';
 import { Account } from '../account';
 
@@ -66,6 +66,7 @@ function RecommendationList({ me }: { me: Me }) {
     <section aria-labelledby="refresh-heading" className="flex flex-col gap-3">
       <h1 id="refresh-heading" className="text-title-lg">추천</h1>
       <p className="text-body-sm text-muted-foreground">판정을 위해 저장한 프로필·이력서 일부와 공고 정보를 OpenAI로 보냅니다. 마감·기업 규모는 출처에 적힌 값만 보여 주고 없으면 미확인으로 둡니다.</p>
+      <FilterSummary me={me} />
       <div><Button disabled={busy} onClick={() => refresh.mutate()}>{busy ? <LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" /> : <RefreshCw className="size-icon-md shrink-0 stroke-icon" aria-hidden="true" />}새로 가져오기</Button></div>
       <JobStatus job={currentJob} />
       {(refresh.isError || link.isError) && <p role="alert" className="text-body-sm text-destructive">{(refresh.error ?? link.error)?.message}</p>}
@@ -119,4 +120,25 @@ function RecommendationItem({ item, me, listKey }: { item: Recommendation; me: M
     </div>
     {(hide.isError || track.isError) && <p role="alert" className="mt-2 text-body-sm text-destructive">{(hide.error ?? track.error)?.message}</p>}
   </li>;
+}
+
+// 지금 적용 중인 공고 필터. 사용자가 고른 값만 보여 주고 바꾸는 곳(설정)으로 안내한다.
+function FilterSummary({ me }: { me: Me }) {
+  const profile = useQuery({
+    queryKey: ['profile', me.id], retry: false,
+    queryFn: async () => { try { return (await call('profile')) as { profile: unknown; updatedAt: string }; } catch { return null; } },
+  });
+  const p = profile.data ? profileSchema.safeParse(profile.data.profile) : null;
+  if (!p?.success) return <p className="text-body-sm text-muted-foreground">공고 필터가 없습니다. <a href="/settings" className="text-primary underline">설정</a>에서 프로필과 필터를 저장하세요.</p>;
+  const f = p.data;
+  const chips = [
+    `직무: ${f.jobFamilies.join('·')}`,
+    `지역: ${f.regions.length ? f.regions.join('·') : '전국'}${f.remoteOk ? ' (+전면 원격)' : ''}`,
+    `고용 형태: ${f.employmentTypes.length ? f.employmentTypes.join('·') : '전체'}`,
+    `요구 경력: ${f.careerMax === null ? '제한 없음' : `${f.careerMax}년 이하`}`,
+  ];
+  return <div className="flex flex-wrap items-center gap-2 text-body-sm" aria-label="적용 중인 공고 필터">
+    {chips.map(c => <span key={c} className="rounded-control bg-muted px-3 py-1">{c}</span>)}
+    <a href="/settings" className="text-primary underline">필터 바꾸기</a>
+  </div>;
 }
