@@ -6,6 +6,10 @@
       "persistent": true,
       "dependsOn": [
         "^build"
+      ],
+      "passThroughEnv": [
+        "NEXTSTEP_*",
+        "OPENAI_API_KEY"
       ]
     },
     "build": {
