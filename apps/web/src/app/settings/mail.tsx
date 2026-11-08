@@ -7,6 +7,12 @@ import { call, fieldClass, RequestError } from '../api-client';
 
 const ERRORS: Record<string, string> = { auth_failed: '인증 실패: 네이버 애플리케이션 비밀번호와 IMAP 사용 설정을 확인하세요.', network: '네트워크 오류', tls: '보안 연결 오류', protocol: '메일 서버 응답 오류', not_connected: '연결 정보 없음', disconnected: '조회 중 연결이 해제됨' };
 const ACTIVE = ['대기', '실행중'];
+const CONNECT_ERRORS: Record<number, string> = {
+  400: '네이버 주소·비밀번호와 조회 동의를 확인하세요.',
+  422: '로그인하지 못했습니다. ① IMAP/SMTP 사용이 켜져 있는지 ② 네이버 비밀번호가 아니라 애플리케이션 비밀번호를 넣었는지 ③ 주소가 맞는지 확인하세요. 해외 로그인 차단을 켜 두었다면 국외에서 실행되는 서버는 접속할 수 없습니다.',
+  503: '네이버 메일 서버에 닿지 못했습니다. 인터넷 연결을 확인하고 다시 시도하세요.',
+  502: '네이버 메일 서버와 보안 연결 또는 응답 처리에 실패했습니다. 잠시 후 다시 시도하세요.',
+};
 
 export function MailSetting({ me }: { me: Me }) {
   const client = useQueryClient();
@@ -19,7 +25,7 @@ export function MailSetting({ me }: { me: Me }) {
   });
   const refresh = () => client.invalidateQueries({ queryKey: key });
   const connect = useMutation({
-    mutationFn: async (form: FormData) => jobSchema.parse(await call('mail/connection', { method: 'PUT', body: JSON.stringify({ account: form.get('account'), appPassword: form.get('appPassword'), consent: form.get('consent') === 'on' }), messages: { 422: ERRORS.auth_failed!, 400: '네이버 주소·비밀번호와 조회 동의를 확인하세요.', 502: '네이버 메일에 연결하지 못했습니다. 잠시 후 다시 시도하세요.' } })),
+    mutationFn: async (form: FormData) => jobSchema.parse(await call('mail/connection', { method: 'PUT', body: JSON.stringify({ account: form.get('account'), appPassword: form.get('appPassword'), consent: form.get('consent') === 'on' }), messages: CONNECT_ERRORS })),
     onSuccess: refresh,
   });
   const sync = useMutation({ mutationFn: async () => jobSchema.parse(await call('mail/sync', { method: 'POST' })), onSuccess: refresh });
@@ -32,7 +38,25 @@ export function MailSetting({ me }: { me: Me }) {
   if (!conn) {
     const submit = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); connect.mutate(new FormData(e.currentTarget)); };
     return <form onSubmit={submit} className="flex flex-col gap-4">
-      <p className="text-body-sm text-muted-foreground">네이버 메일 환경설정에서 IMAP을 켜고 애플리케이션 비밀번호를 만들어 넣으세요. 메일을 읽음 처리·이동·삭제하지 않으며, 채용 메일의 제목 앞부분·짧은 근거·수신 시각만 저장합니다. 비밀번호는 암호화해 서버에만 둡니다. 연결하지 않아도 지원 건을 직접 관리할 수 있습니다.</p>
+      <p className="text-body-sm text-muted-foreground">채용 메일로 지원 상태를 자동으로 반영합니다. 연결하지 않아도 지원 건을 직접 관리할 수 있습니다.</p>
+      <section aria-labelledby="mail-steps" className="rounded-control border border-border p-4">
+        <h3 id="mail-steps" className="mb-2 text-body font-semibold">연결 준비 (네이버에서 한 번만)</h3>
+        <ol className="flex list-decimal flex-col gap-1 pl-5 text-body-sm">
+          <li>네이버 메일 &gt; 환경설정 &gt; POP3/IMAP 설정 &gt; IMAP/SMTP 설정에서 &lsquo;IMAP/SMTP 사용&rsquo;을 사용함으로 저장합니다.</li>
+          <li>네이버 내정보 &gt; 보안설정에서 2단계 인증을 켭니다.</li>
+          <li>2단계 인증 관리 &gt; 애플리케이션 비밀번호 관리에서 새 비밀번호를 만들어 아래에 붙여 넣습니다. 네이버 로그인 비밀번호는 넣지 마세요.</li>
+        </ol>
+      </section>
+      <section aria-labelledby="mail-scope" className="rounded-control border border-border p-4">
+        <h3 id="mail-scope" className="mb-2 text-body font-semibold">NextStep이 하는 일과 하지 않는 일</h3>
+        <ul className="flex list-disc flex-col gap-1 pl-5 text-body-sm">
+          <li>받은 메일을 읽기만 합니다. 읽음 처리·이동·삭제·발송을 하지 않습니다.</li>
+          <li>채용 메일의 제목 앞부분·짧은 근거·수신 시각만 저장하고 본문은 저장하지 않습니다.</li>
+          <li>규칙으로 지원 건을 찾지 못한 채용 메일은 본문을 OpenAI로 보내 회사·직무·결과를 해석합니다(응답 저장 요청 안 함).</li>
+          <li>애플리케이션 비밀번호는 암호화해 서버에만 둡니다. 연결 해제 시 비밀번호와 조회 위치를 지웁니다.</li>
+          <li>네이버에서 애플리케이션 비밀번호를 삭제하면 그 즉시 NextStep의 접근도 끊깁니다.</li>
+        </ul>
+      </section>
       <label className="flex flex-col gap-2 text-body-sm">네이버 메일 주소<input name="account" type="email" required autoComplete="off" className={fieldClass} /></label>
       <label className="flex flex-col gap-2 text-body-sm">애플리케이션 비밀번호<input name="appPassword" type="password" required autoComplete="off" className={fieldClass} /></label>
       <label className="flex items-start gap-2 text-body-sm"><input name="consent" type="checkbox" required className="mt-1 size-icon-md accent-primary" />최근 3개월 받은 메일(보낸·임시·휴지통·스팸 제외)을 읽기 전용으로 조회하는 데 동의합니다.</label>

@@ -30,7 +30,8 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
       await source(body.data.account, body.data.appPassword, new Map(), new Date(Date.now() + 86_400_000));
     } catch (error) {
       const code = error instanceof MailSourceError ? error.code : 'protocol';
-      return reply.status(code === 'auth_failed' ? 422 : 502).send({ message: code === 'auth_failed' ? '네이버 계정 또는 애플리케이션 비밀번호를 확인하세요. IMAP 사용 설정이 켜져 있어야 합니다.' : '네이버 메일에 연결하지 못했습니다. 잠시 후 다시 시도하세요.', code });
+      // 원인별 상태: 인증 422, 네트워크 503, 보안 연결·서버 응답 502. 화면이 원인별 안내를 보여 준다.
+      return reply.status(code === 'auth_failed' ? 422 : code === 'network' ? 503 : 502).send({ message: code === 'auth_failed' ? '네이버 계정 또는 애플리케이션 비밀번호를 확인하세요. IMAP 사용 설정이 켜져 있어야 합니다.' : '네이버 메일에 연결하지 못했습니다. 잠시 후 다시 시도하세요.', code });
     }
     const at = new Date().toISOString();
     db.prepare(`INSERT INTO mail_connections (user_id, provider, account, secret, status, consent_at, created_at) VALUES (?, 'naver', ?, ?, '정상', ?, ?)
