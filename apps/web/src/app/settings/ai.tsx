@@ -13,6 +13,25 @@ async function save(body: { apiKey?: string; model: string }) {
   return aiSettingsSchema.parse(await response.json());
 }
 
+// 개발자가 아닌 사용자를 위한 발급 안내. OpenAI 화면 이름은 자주 바뀌므로 링크와 함께 단계만 적는다(2026-11-10 기준).
+const GUIDE = [
+  { text: 'OpenAI 플랫폼에 가입하거나 로그인합니다. ChatGPT 계정으로도 로그인되지만, ChatGPT Plus 구독과 API 요금은 별개입니다.', href: 'https://platform.openai.com/', link: 'OpenAI 플랫폼 열기' },
+  { text: '결제(Billing)에서 카드를 등록하고 크레딧을 충전합니다. 충전하지 않으면 키를 만들어도 “잔액 부족”으로 실패합니다.', href: 'https://platform.openai.com/settings/organization/billing/overview', link: '결제 화면 열기' },
+  { text: '사용 한도(Limits)에서 월 한도를 정해 두면 예상보다 많이 청구되는 일을 막을 수 있습니다.', href: 'https://platform.openai.com/settings/organization/limits', link: '사용 한도 열기' },
+  { text: 'API 키 화면에서 “Create new secret key”를 눌러 키를 만들고 바로 복사합니다. 키는 만들 때 한 번만 보입니다.', href: 'https://platform.openai.com/api-keys', link: 'API 키 화면 열기' },
+  { text: '복사한 키(sk-로 시작)를 아래 칸에 붙여 넣고 모델을 고른 뒤 “확인 후 저장”을 누릅니다. 키는 다른 사람에게 보여 주지 마세요.' },
+];
+
+function KeyGuide() {
+  return <details className="rounded-control border border-border p-4">
+    <summary className="cursor-pointer text-body-sm font-semibold">키가 없나요? 발급 방법 (5단계)</summary>
+    <ol className="mt-3 flex list-decimal flex-col gap-2 pl-5 text-body-sm">
+      {GUIDE.map(step => <li key={step.text}>{step.text}{step.href && <> <a href={step.href} target="_blank" rel="noreferrer" className="text-primary underline">{step.link}</a></>}</li>)}
+    </ol>
+    <p className="mt-3 text-body-sm text-muted-foreground">한 번 새로 가져오기에 OpenAI 호출이 수십 번 일어납니다. 자동 갱신을 켜면 매일 한 번 호출되니 한도를 정해 두는 것을 권합니다. 요금이 부담되면 gpt-5.4-mini를 고를 수 있지만 판정이 덜 정확합니다.</p>
+  </details>;
+}
+
 export function AiSetting({ me }: { me: Me }) {
   const client = useQueryClient();
   const key = ['settings', 'ai', me.id];
@@ -31,6 +50,7 @@ export function AiSetting({ me }: { me: Me }) {
       {query.isPending ? 'AI 설정을 불러오고 있습니다.' : query.isError ? 'AI 설정을 불러오지 못했습니다.'
         : current?.configured ? `등록된 키: …${current.keyHint} · 모델 ${current.model} · 확인 ${new Date(current.verifiedAt ?? '').toLocaleString('ko-KR')}` : '등록한 키가 없습니다. 키를 등록해야 AI 기능을 쓸 수 있습니다.'}
     </p>
+    {!current?.configured && <KeyGuide />}
     <label className="flex flex-col gap-2 text-body-sm">OpenAI API 키 {current?.configured ? '(바꿀 때만 입력)' : ''}
       <input type="password" autoComplete="off" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="sk-…" className={fieldClass} />
     </label>

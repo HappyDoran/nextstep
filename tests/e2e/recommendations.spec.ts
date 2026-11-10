@@ -24,6 +24,8 @@ test('이력서 등록·실패 시 유지·프로필 저장과 AI 미설정 표�
     // 본인 OpenAI 키가 없으면 설정에 미등록으로 보이고, 키 없이 저장할 수 없다(실제 OpenAI 호출은 하지 않음).
     await expect(page.getByRole('status').filter({ hasText: '등록한 키가 없습니다' })).toBeVisible();
     await expect(page.getByRole('button', { name: '확인 후 저장' })).toBeDisabled();
+    await page.getByText('키가 없나요? 발급 방법').click();
+    await expect(page.getByRole('link', { name: 'API 키 화면 열기' })).toHaveAttribute('href', 'https://platform.openai.com/api-keys');
     await page.getByRole('checkbox', { name: '앱 개발' }).check();
     await page.getByLabel('업무·도구·기술 (쉼표로 구분)').fill('React, Swift');
     await page.getByRole('button', { name: '프로필 저장' }).click();
