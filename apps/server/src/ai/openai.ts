@@ -1,11 +1,12 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 
 // OpenAI Responses API 호출. SDK 없이 fetch로 JSON Schema 구조화 출력을 받고 zod로 다시 검증한다.
-// 키·모델은 환경 변수로만 받는다. 요청 본문(이력서·공고·메일)은 로그에 남기지 않는다.
-export type AiFailure = 'ai_unconfigured' | 'ai_http' | 'ai_invalid_output' | 'ai_network';
+// 요청 본문(이력서·공고·메일)은 로그에 남기지 않는다.
+export type AiFailure = 'ai_unconfigured' | 'ai_key_invalid' | 'ai_quota' | 'ai_model_unavailable' | 'ai_http' | 'ai_invalid_output' | 'ai_network';
 export class AiError extends Error {
   constructor(readonly code: AiFailure, readonly status?: number) { super(code); }
 }
@@ -17,20 +18,36 @@ export const usageTotals = { calls: 0, inputTokens: 0, outputTokens: 0 };
 // NEXTSTEP_AI_FAKE=1: 네트워크 없이 스키마에 맞는 고정 응답. NEXTSTEP_AI_CACHE_DIR: 같은 모델·지시·입력의 응답을 파일로 재사용.
 const fake = () => process.env.NEXTSTEP_AI_FAKE === '1';
 
+// 서버 요청·작업은 사용자 본인 키·모델로만 AI를 부른다(기획서 3절). runWithAi로 감싼 안에서는 환경 변수 키로 대신하지 않는다.
+// 감싸지 않은 호출(평가·검증 명령)만 OPENAI_API_KEY·NEXTSTEP_OPENAI_MODEL을 쓴다.
+export type AiConfig = { apiKey: string; model: string };
+const userAi = new AsyncLocalStorage<AiConfig | null>();
+export const runWithAi = <T>(config: AiConfig | null, fn: () => T) => userAi.run(config, fn);
+function currentAi(): AiConfig | null {
+  const scoped = userAi.getStore();
+  if (scoped !== undefined) return scoped;
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model = process.env.NEXTSTEP_OPENAI_MODEL;
+  return apiKey && model ? { apiKey, model } : null;
+}
+export const aiBaseUrl = () => process.env.NEXTSTEP_OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
+
 export function aiConfigured() {
-  return fake() || Boolean(process.env.OPENAI_API_KEY && process.env.NEXTSTEP_OPENAI_MODEL);
+  return fake() || currentAi() !== null;
 }
 
 export async function structured<T extends z.ZodType>(name: string, schema: T, instructions: string, input: string): Promise<z.infer<T>> {
   if (fake()) {
     try { return schema.parse(fakeValue(jsonSchema(schema))); } catch { throw new AiError('ai_invalid_output'); }
   }
+  const ai = currentAi();
+  if (!ai) throw new AiError('ai_unconfigured');
   const dir = process.env.NEXTSTEP_AI_CACHE_DIR;
-  const file = dir && join(dir, `${createHash('sha256').update(JSON.stringify([process.env.NEXTSTEP_OPENAI_MODEL, name, instructions, input])).digest('hex')}.json`);
+  const file = dir && join(dir, `${createHash('sha256').update(JSON.stringify([ai.model, name, instructions, input])).digest('hex')}.json`);
   if (file) {
     try { return schema.parse(JSON.parse(readFileSync(file, 'utf8'))); } catch { /* 없거나 스키마가 바뀌면 새로 요청 */ }
   }
-  const value = await request(name, schema, instructions, input);
+  const value = await request(ai, name, schema, instructions, input);
   if (file) {
     // 응답에 개인 자료(회사명 등)가 있을 수 있어 소유자만 읽게 둔다.
     mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -52,16 +69,12 @@ function fakeValue(s: Record<string, unknown>): unknown {
   return null;
 }
 
-async function request<T extends z.ZodType>(name: string, schema: T, instructions: string, input: string): Promise<z.infer<T>> {
-  const key = process.env.OPENAI_API_KEY;
-  const model = process.env.NEXTSTEP_OPENAI_MODEL;
-  if (!key || !model) throw new AiError('ai_unconfigured');
-  const base = process.env.NEXTSTEP_OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
+async function request<T extends z.ZodType>({ apiKey, model }: AiConfig, name: string, schema: T, instructions: string, input: string): Promise<z.infer<T>> {
   let res: Response;
   try {
-    res = await fetch(`${base}/responses`, {
+    res = await fetch(`${aiBaseUrl()}/responses`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
       body: JSON.stringify({
         model,
         instructions,
@@ -75,7 +88,7 @@ async function request<T extends z.ZodType>(name: string, schema: T, instruction
   } catch {
     throw new AiError('ai_network');
   }
-  if (!res.ok) throw new AiError('ai_http', res.status);
+  if (!res.ok) throw await httpError(res);
   const body = await res.json() as { output?: { type?: string; content?: { type?: string; text?: string }[] }[]; usage?: { input_tokens?: number; output_tokens?: number } };
   usageTotals.calls++;
   usageTotals.inputTokens += body.usage?.input_tokens ?? 0;
@@ -86,6 +99,15 @@ async function request<T extends z.ZodType>(name: string, schema: T, instruction
   } catch {
     throw new AiError('ai_invalid_output');
   }
+}
+
+// 사용자가 고칠 수 있는 원인(키·잔액·모델 권한)을 일반 HTTP 오류와 구분한다.
+export async function httpError(res: Response) {
+  if (res.status === 401) return new AiError('ai_key_invalid', 401);
+  const code = await res.json().then(b => (b as { error?: { code?: string } }).error?.code, () => undefined);
+  if (res.status === 429 && code === 'insufficient_quota') return new AiError('ai_quota', 429);
+  if (res.status === 404 || code === 'model_not_found') return new AiError('ai_model_unavailable', res.status);
+  return new AiError('ai_http', res.status);
 }
 
 function jsonSchema(schema: z.ZodType) {

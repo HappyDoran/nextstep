@@ -39,7 +39,7 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
     onSuccess: data => client.setQueryData(key, data),
   });
   const suggest = useMutation({
-    mutationFn: async () => profileSchema.parse(((await call('profile/suggest', { method: 'POST', messages: { 409: '이력서를 먼저 등록하세요.', 503: 'AI 처리가 설정되지 않았습니다(서버 OPENAI_API_KEY·NEXTSTEP_OPENAI_MODEL).', 502: 'AI 처리에 실패했습니다. 잠시 후 다시 시도하세요.' } })) as { profile: unknown }).profile),
+    mutationFn: async () => profileSchema.parse(((await call('profile/suggest', { method: 'POST', messages: { 409: '이력서를 먼저 등록하세요.', 503: 'AI 처리가 설정되지 않았습니다. 위 OpenAI 키·모델에서 본인 키를 등록하세요.', 502: 'AI 처리에 실패했습니다. 키·잔액·모델을 확인하고 다시 시도하세요.' } })) as { profile: unknown }).profile),
     onSuccess: load,
   });
   const toggle = <T,>(items: T[], item: T) => items.includes(item) ? items.filter(i => i !== item) : [...items, item];

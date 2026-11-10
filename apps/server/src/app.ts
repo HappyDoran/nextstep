@@ -15,7 +15,8 @@ import { loadSecretKey } from './secrets.js';
 import { registerMail } from './mail/routes.js';
 import { createMailHandler } from './mail/sync.js';
 import { naverBodies, naverSource, type MailSource } from './mail/naver.js';
-import { aiConfigured } from './ai/openai.js';
+import { aiConfigured, runWithAi } from './ai/openai.js';
+import { loadUserAi, registerAiSettings } from './ai/settings.js';
 import { interpretMail } from './prompts/mail.js';
 
 export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; scheduleHour?: number; deps?: PipelineDeps; mailSource?: MailSource } = {}) {
@@ -33,17 +34,21 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
   registerUserSettings(app, db);
   registerProfile(app, db);
   registerDocuments(app, db, filesDir);
-  registerRecommendations(app, db);
   // 연결 비밀정보 키는 DB와 다른 파일(또는 환경 변수)에 둔다.
   const secretKey = loadSecretKey(join(dirname(databasePath), 'secret.key'));
+  // AI는 요청·작업마다 그 사용자 본인 키·모델로만 부른다.
+  const withUserAi = <T>(userId: string, fn: () => T) => runWithAi(loadUserAi(db, secretKey, userId), fn);
+  registerRecommendations(app, db, withUserAi);
+  registerAiSettings(app, db, secretKey);
   const mailSource = options.mailSource ?? naverSource;
   registerMail(app, db, secretKey, mailSource);
   // 수집·추천 작업은 요청 경로 밖의 작업자가 처리한다. 테스트는 worker:false로 끄고 직접 실행한다.
   if (options.worker) {
     const recommend = createHandler(db, options.deps);
     // AI가 설정된 경우에만 보관 메일 해석 단계를 켠다.
-    const mail = createMailHandler(db, secretKey, mailSource, aiConfigured() ? { interpret: interpretMail, bodies: naverBodies } : undefined);
-    const stop = startWorker(db, (job: ClaimedJob) => (job.kind === 'mail' ? mail(job) : recommend(job)));
+    // 메일 해석은 그 사용자 키가 있을 때만 켠다(키 없이 시도해 재시도 횟수를 쓰지 않는다).
+    const mail = (job: ClaimedJob) => createMailHandler(db, secretKey, mailSource, aiConfigured() ? { interpret: interpretMail, bodies: naverBodies } : undefined)(job);
+    const stop = startWorker(db, (job: ClaimedJob) => withUserAi(job.userId, () => (job.kind === 'mail' ? mail(job) : recommend(job))));
     // 예약 실행은 작업자와 같은 서버 프로세스에서 돈다. 앱(Electron) 종료와 무관하다.
     const stopSchedule = startScheduler(db, options.scheduleHour ?? 21);
     app.addHook('onClose', async () => { stop(); stopSchedule(); });

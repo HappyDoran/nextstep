@@ -162,3 +162,15 @@ export const automationStatusSchema = z.object({
   enabled: z.boolean(),
   lastScheduled: z.array(z.object({ kind: z.string(), status: jobStatusSchema.nullable(), finishedAt: z.string().nullable(), runDate: z.string() })),
 });
+
+// 사용자 본인 OpenAI 키·모델(기획서 3절 4-1). 목록은 정답 사례로 판정 정확도를 잰 모델만 둔다.
+// ponytail: 측정한 두 모델만 고정 목록. 새 모델은 eval:recommend로 잰 뒤 추가한다.
+export const AI_MODELS = [
+  { id: 'gpt-5.5', label: 'gpt-5.5 (권장)', note: '정답 사례 55/57 (2026-11-08). 정확하지만 요금이 더 듭니다.' },
+  { id: 'gpt-5.4-mini', label: 'gpt-5.4-mini (저렴)', note: '정답 사례 39/57 (2026-11-07). 요금은 적지만 오판이 많습니다.' },
+] as const;
+export const aiModelSchema = z.enum(['gpt-5.5', 'gpt-5.4-mini']);
+export const aiSettingsSchema = z.object({ configured: z.boolean(), keyHint: z.string().nullable(), model: aiModelSchema, verifiedAt: z.string().nullable() });
+export type AiSettings = z.infer<typeof aiSettingsSchema>;
+// 키를 비우면 저장된 키를 그대로 두고 모델만 바꾼다.
+export const aiSettingsUpdateSchema = z.object({ apiKey: z.string().trim().min(20).max(300).regex(/^\S+$/).optional(), model: aiModelSchema }).strict();

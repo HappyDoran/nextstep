@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -232,6 +232,17 @@ export function openDatabase(filename: string) {
         ALTER TABLE postings RENAME COLUMN collected_mode TO acquired_by;
         UPDATE postings SET acquired_by = 'link';
         PRAGMA user_version = 10;`);
+    }
+    if (version < 11) {
+      // P1-08: 사용자 본인 OpenAI 키(DB와 다른 키로 암호화)·끝 4자리·선택 모델.
+      db.exec(`CREATE TABLE ai_settings (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          key_enc TEXT NOT NULL,
+          key_hint TEXT NOT NULL,
+          model TEXT NOT NULL,
+          verified_at TEXT NOT NULL
+        ) STRICT;
+        PRAGMA user_version = 11;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

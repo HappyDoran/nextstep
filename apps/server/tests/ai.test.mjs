@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { structured, dataBlock, AiError } from '../dist/ai/openai.js';
+import { structured, dataBlock, AiError, runWithAi } from '../dist/ai/openai.js';
 import { judgementSchema } from '../dist/prompts/recommend.js';
 
 // 실제 OpenAI 대신 로컬 모의 서버로 요청 형식·응답 검증만 확인한다(실제 연동 검증이 아님).
@@ -39,9 +39,28 @@ test('스키마 밖 출력·HTTP 오류·미설정을 구분한다', async () =>
   await withServer((_req, res) => reply(res, 429, {}), async () => {
     await assert.rejects(structured('j', judgementSchema, 'i', 'x'), e => e.code === 'ai_http' && e.status === 429);
   });
+  // 사용자가 고칠 수 있는 원인(키·잔액·모델)을 구분한다.
+  for (const [status, body, code] of [[401, {}, 'ai_key_invalid'], [429, { error: { code: 'insufficient_quota' } }, 'ai_quota'], [404, { error: { code: 'model_not_found' } }, 'ai_model_unavailable']]) {
+    await withServer((_req, res) => reply(res, status, body), async () => {
+      await assert.rejects(structured('j', judgementSchema, 'i', 'x'), e => e.code === code);
+    });
+  }
   const env = { ...process.env };
   delete process.env.OPENAI_API_KEY;
   try { await assert.rejects(structured('j', judgementSchema, 'i', 'x'), e => e.code === 'ai_unconfigured'); } finally { process.env = env; }
+});
+
+test('사용자 범위 안에서는 그 사용자 키·모델만 쓰고 환경 변수 키로 대신하지 않는다', async () => {
+  let seen;
+  await withServer((req, res) => {
+    let body = '';
+    req.on('data', c => { body += c; }).on('end', () => { seen = { auth: req.headers.authorization, model: JSON.parse(body).model }; reply(res, 200, output(JSON.stringify({ classification: '기본', met: [], unmet: [], unknown: [], reason: 'r' }))); });
+  }, async () => {
+    await runWithAi({ apiKey: 'user-key', model: 'gpt-5.4-mini' }, () => structured('j', judgementSchema, 'i', 'x'));
+    assert.deepEqual(seen, { auth: 'Bearer user-key', model: 'gpt-5.4-mini' });
+    // 서버 환경 변수에 키가 있어도 키 없는 사용자는 미설정이다.
+    await assert.rejects(runWithAi(null, () => structured('j', judgementSchema, 'i', 'x')), e => e.code === 'ai_unconfigured');
+  });
 });
 
 test('데이터 구분자 닫기 위조를 무력화한다', () => {

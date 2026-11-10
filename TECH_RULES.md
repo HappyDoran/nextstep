@@ -12,7 +12,7 @@ last_verified: 2026-11-10
 
 서버는 Fastify 5, 로컬 관계형 DB는 SQLite와 Node 내장 `node:sqlite`를 사용한다. 단일 서버·작업자, 트랜잭션·고유 제약을 사용할 수 있는 초기 로컬 개발 선택이다. 내장 SQLite API의 안정성 상태는 Node 버전에 종속되며 현재 실행 시 실험적 경고가 발생할 수 있다. 작은 동기 쿼리용으로 한정하고 수집·추출처럼 오래 걸리는 처리는 요청 경로에 넣지 않는다. 운영 DB·배포 환경은 아직 결정하지 않았다.
 
-AI 처리는 OpenAI API(사용자 결정 2026-11-07)를 서버에서만 호출한다. SDK 없이 fetch로 Responses API의 JSON Schema 구조화 출력을 쓰고, 응답은 공통 계약 schema로 다시 검증한다. 모델 이름과 키는 환경 변수(`OPENAI_API_KEY`, `NEXTSTEP_OPENAI_MODEL`)로 주입하며 키를 로그·DB·클라이언트에 두지 않는다. 이력서·공고·메일 본문은 구분자 안의 데이터로만 전달하고, 외부 전달 범위는 사용자에게 안내한다. 메일 조회는 imapflow, PDF 본문 추출은 pdfjs-dist legacy 빌드를 서버에서만 사용한다. IMAP은 읽기 전용(EXAMINE)으로 열고 플래그를 바꾸지 않는다. PDF는 크기·처리 시간 제한 안에서 텍스트 레이어만 읽으며 OCR을 하지 않는다. 공고 수집은 사람 속도로 요청하고 로그인·차단 우회를 하지 않는다. 1차 세 출처는 자동 수집하며 약관 위험과 결정 근거는 기술 설계 부록 D절이 소유한다.
+AI 처리는 OpenAI API(사용자 결정 2026-11-07)를 서버에서만 호출한다. SDK 없이 fetch로 Responses API의 JSON Schema 구조화 출력을 쓰고, 응답은 공통 계약 schema로 다시 검증한다. 서버의 사용자 요청·작업은 그 사용자가 등록한 본인 키·모델로만 호출한다(`AsyncLocalStorage` 범위, 사용자 결정 2026-11-10). 키는 등록 시 OpenAI 모델 조회로 확인한 뒤 연결 비밀정보와 같은 키로 암호화해 `ai_settings`에 저장하고 끝 4자리만 응답한다. 키가 없으면 미설정이며 환경 변수 키(`OPENAI_API_KEY`, `NEXTSTEP_OPENAI_MODEL`)로 대신하지 않는다. 환경 변수 키는 평가·검증 명령에서만 쓴다. 키를 로그·클라이언트에 두지 않는다. 이력서·공고·메일 본문은 구분자 안의 데이터로만 전달하고, 외부 전달 범위는 사용자에게 안내한다. 메일 조회는 imapflow, PDF 본문 추출은 pdfjs-dist legacy 빌드를 서버에서만 사용한다. IMAP은 읽기 전용(EXAMINE)으로 열고 플래그를 바꾸지 않는다. PDF는 크기·처리 시간 제한 안에서 텍스트 레이어만 읽으며 OCR을 하지 않는다. 공고 수집은 사람 속도로 요청하고 로그인·차단 우회를 하지 않는다. 1차 세 출처는 자동 수집하며 약관 위험과 결정 근거는 기술 설계 부록 D절이 소유한다.
 
 Fastify의 [Node 지원 정책](https://fastify.dev/docs/latest/Reference/LTS/), Node의 [SQLite API](https://nodejs.org/docs/latest-v24.x/api/sqlite.html), Electron의 [보안 권고](https://www.electronjs.org/docs/latest/tutorial/security)를 기준으로 설치·타입·실행 호환성을 검증한다. 버전 문자열만으로 호환성을 보장하지 않는다.
 

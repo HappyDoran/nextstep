@@ -15,15 +15,18 @@ const ERRORS: Record<string, string> = {
   unsupported_link: '지원하지 않는 링크입니다.',
   lease_expired: '처리 시간이 초과되었습니다. 다시 시도하세요.',
 };
+// 사용자가 고칠 수 있는 AI 실패 원인(설정의 OpenAI 키·모델에서 해결).
+const AI_CAUSES: Record<string, string> = { ai_unconfigured: '설정에서 OpenAI 키 등록 필요', ai_key_invalid: 'OpenAI 키 거부됨', ai_quota: 'OpenAI 잔액 부족', ai_model_unavailable: '선택한 모델 사용 불가' };
 const ACTIVE: string[] = ['대기', '실행중'];
 const date = (iso: string) => new Date(iso).toLocaleString('ko-KR');
 
 function JobStatus({ job }: { job: Job | null }) {
   if (!job) return <p role="status" className="text-body-sm text-muted-foreground">아직 공고를 가져온 적이 없습니다.</p>;
-  const result = job.result as { collected?: number; judged?: number; sourceFailures?: string[]; aiFailures?: number } | null;
+  const result = job.result as { collected?: number; judged?: number; sourceFailures?: string[]; aiFailures?: number; aiFailureCodes?: Record<string, number> } | null;
+  const aiCauses = Object.keys(result?.aiFailureCodes ?? {}).map(c => AI_CAUSES[c]).filter(Boolean);
   const text = job.status === '대기' || job.status === '실행중' ? '공고를 가져와 판정하고 있습니다. 몇 분 걸릴 수 있습니다.'
     : job.status === '실패' ? `실패: ${ERRORS[job.errorCode ?? ''] ?? job.errorCode ?? '알 수 없는 오류'}`
-      : `${job.status}: 공고 ${result?.collected ?? 0}건 확인, ${result?.judged ?? 0}건 판정${result?.sourceFailures?.length ? ` · 출처 실패 ${result.sourceFailures.length}건(${[...new Set(result.sourceFailures.map(f => f.split(':')[0]))].join(', ')})` : ''}${result?.aiFailures ? ` · AI 실패 ${result.aiFailures}건` : ''}`;
+      : `${job.status}: 공고 ${result?.collected ?? 0}건 확인, ${result?.judged ?? 0}건 판정${result?.sourceFailures?.length ? ` · 출처 실패 ${result.sourceFailures.length}건(${[...new Set(result.sourceFailures.map(f => f.split(':')[0]))].join(', ')})` : ''}${result?.aiFailures ? ` · AI 실패 ${result.aiFailures}건${aiCauses.length ? `(${aiCauses.join(', ')})` : ''}` : ''}`;
   return <p role="status" className="text-body-sm text-muted-foreground">{text}{job.finishedAt ? ` (${date(job.finishedAt)})` : ''}</p>;
 }
 
@@ -65,7 +68,7 @@ function RecommendationList({ me }: { me: Me }) {
   return <div className="flex flex-col gap-8">
     <section aria-labelledby="refresh-heading" className="flex flex-col gap-3">
       <h1 id="refresh-heading" className="text-title-lg">추천</h1>
-      <p className="text-body-sm text-muted-foreground">판정을 위해 저장한 프로필·이력서 일부와 공고 정보를 OpenAI로 보냅니다. 마감·기업 규모는 출처에 적힌 값만 보여 주고 없으면 미확인으로 둡니다.</p>
+      <p className="text-body-sm text-muted-foreground">판정을 위해 저장한 프로필·이력서 일부와 공고 정보를 본인 OpenAI 키로 보냅니다. 마감·기업 규모는 출처에 적힌 값만 보여 주고 없으면 미확인으로 둡니다.</p>
       <FilterSummary me={me} />
       <div><Button disabled={busy} onClick={() => refresh.mutate()}>{busy ? <LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" /> : <RefreshCw className="size-icon-md shrink-0 stroke-icon" aria-hidden="true" />}새로 가져오기</Button></div>
       <JobStatus job={currentJob} />

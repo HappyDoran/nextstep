@@ -18,7 +18,7 @@ test('HTTP 준비 응답과 파일 DB 재시작·마이그레이션 재실행', 
     try {
       const res = await app.inject({ method: 'GET', url: '/health' });
       assert.equal(res.statusCode, 200);
-      assert.deepEqual(res.json(), { service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: 10 });
+      assert.deepEqual(res.json(), { service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: 11 });
       assert.equal((await app.inject('/users')).statusCode, 404);
       const malformed = await app.inject({ method: 'POST', url: '/echo', headers: { 'content-type': 'application/json' }, payload: '{' });
       assert.equal(malformed.statusCode, 400);
@@ -51,7 +51,7 @@ test('DB 버전 10은 공용 공고를 지우고 링크 공고를 사용자 자�
     openDatabase(path).close();
     // 버전 9 상태(공용 공고 owner NULL·collected_mode)를 재현한다.
     const raw = new DatabaseSync(path);
-    raw.exec("ALTER TABLE postings RENAME COLUMN acquired_by TO collected_mode; PRAGMA user_version = 9;");
+    raw.exec("DROP TABLE ai_settings; ALTER TABLE postings RENAME COLUMN acquired_by TO collected_mode; PRAGMA user_version = 9;");
     raw.exec("INSERT INTO users (id, email, password_hash, created_at) VALUES ('u1', 'a@example.com', 'x', '2026-01-01')");
     const insert = raw.prepare("INSERT INTO postings (id, source, source_id, owner_user_id, url, title, company, always_hire, careers, collected_mode, checked_at) VALUES (?, 'wanted', ?, ?, 'https://x', 't', 'c', 0, '[]', 'personal', '2026-01-01')");
     insert.run('shared', '1', null);

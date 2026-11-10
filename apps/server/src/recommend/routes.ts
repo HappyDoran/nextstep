@@ -22,7 +22,14 @@ function postingStatus(row: Row, now: string) {
   return new Date(row.deadline).toISOString() < now ? '마감' : '모집중';
 }
 
-export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) {
+const AI_MESSAGES: Record<string, string> = {
+  ai_unconfigured: '설정에서 본인 OpenAI API 키를 등록하세요.',
+  ai_key_invalid: 'OpenAI가 등록한 키를 거부했습니다. 설정에서 키를 다시 등록하세요.',
+  ai_quota: 'OpenAI 계정 잔액이 부족합니다. OpenAI에서 충전한 뒤 다시 시도하세요.',
+  ai_model_unavailable: '이 키로는 선택한 모델을 쓸 수 없습니다. 설정에서 모델을 바꾸세요.',
+};
+
+export function registerRecommendations(app: FastifyInstance, db: DatabaseSync, withUserAi: <T>(userId: string, fn: () => T) => T = (_userId, fn) => fn()) {
   app.post('/postings/refresh', async (request, reply) => {
     const user = requireUser(db, request, reply);
     if (!user) return reply;
@@ -85,9 +92,9 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     const resume = db.prepare("SELECT text FROM documents WHERE user_id = ? AND kind = 'resume'").get(user.id) as { text: string } | undefined;
     if (!resume) return reply.status(409).send({ message: '이력서를 먼저 등록하세요.' });
     try {
-      return { profile: await suggestProfile(resume.text) };
+      return { profile: await withUserAi(user.id, () => suggestProfile(resume.text)) };
     } catch (error) {
-      if (error instanceof AiError) return reply.status(error.code === 'ai_unconfigured' ? 503 : 502).send({ message: error.code === 'ai_unconfigured' ? 'AI 처리가 설정되지 않았습니다.' : 'AI 처리에 실패했습니다. 잠시 후 다시 시도하세요.', code: error.code });
+      if (error instanceof AiError) return reply.status(error.code === 'ai_unconfigured' ? 503 : 502).send({ message: AI_MESSAGES[error.code] ?? 'AI 처리에 실패했습니다. 잠시 후 다시 시도하세요.', code: error.code });
       throw error;
     }
   });
