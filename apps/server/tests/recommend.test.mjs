@@ -16,10 +16,10 @@ function fakeDeps(calls) {
   return {
     collect: {
       jobkorea: async family => { calls.push(`jobkorea:${family}`); return { postings: [posting('jobkorea', '1', '프론트엔드 개발자')], failures: [] }; },
-      wanted: async family => { calls.push(`wanted:${family}`); return { postings: [posting('wanted', '2', '프론트엔드')], failures: [{ source: 'wanted', id: '9', code: 'blocked' }] }; },
+      saramin: async family => { calls.push(`saramin:${family}`); return { postings: [posting('saramin', '2', '프론트엔드')], failures: [{ source: 'saramin', id: '9', code: 'blocked' }] }; },
       jasoseol: async () => { calls.push('jasoseol'); return { postings: [], failures: [] }; },
     },
-    fetchOne: { jobkorea: async () => ({ source: 'jobkorea', code: 'not_found' }), wanted: async id => posting('wanted', id, '링크 공고'), jasoseol: async id => posting('jasoseol', id, '링크') },
+    fetchOne: { saramin: async id => posting('saramin', id, '링크'), jobkorea: async () => ({ source: 'jobkorea', code: 'not_found' }), wanted: async id => posting('wanted', id, '링크 공고'), jasoseol: async id => posting('jasoseol', id, '링크') },
     extract: async p => { calls.push(`extract:${p.title}`); return { jobFamilies: ['프론트엔드'], required: ['React 3년'], preferred: [], remote: '없음', portfolioRequired: false }; },
     judge: async (_at, candidate, facts) => { calls.push(`judge:${facts.title}`); assert.equal('body' in facts, false); return { classification: '기본', met: ['React'], unmet: [], unknown: ['기업 유형·규모 미기재'], reason: '조건 충족' }; },
   };
@@ -53,13 +53,13 @@ test('갱신 작업: 세 출처를 수집하고 원문 없이 조건·판정을 
       assert.equal(await runNext(db, createHandler(db, fakeDeps(calls))), false);
     } finally { db.close(); }
     // 출처는 순서대로 수집하고, 판정 순서는 확인 시각이 같으면 정해지지 않는다.
-    assert.deepEqual(calls.slice(0, 5), ['jobkorea:프론트엔드', 'extract:프론트엔드 개발자', 'wanted:프론트엔드', 'extract:프론트엔드', 'jasoseol']);
+    assert.deepEqual(calls.slice(0, 5), ['saramin:프론트엔드', 'extract:프론트엔드', 'jobkorea:프론트엔드', 'extract:프론트엔드 개발자', 'jasoseol']);
     assert.deepEqual(calls.slice(5).sort(), ['judge:프론트엔드', 'judge:프론트엔드 개발자']);
     const job = (await s.app.inject({ url: `/jobs/${first.id}`, headers: { cookie: a } })).json();
-    // 가짜 원티드가 상세 한 건 실패를 돌려주므로 일부 실패다.
+    // 가짜 사람인이 상세 한 건 실패를 돌려주므로 일부 실패다.
     assert.equal(job.status, '일부 실패');
     const list = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json();
-    assert.deepEqual(list.items.map(i => i.source).sort(), ['jobkorea', 'wanted']);
+    assert.deepEqual(list.items.map(i => i.source).sort(), ['jobkorea', 'saramin']);
     assert.equal(list.items[0].classification, '기본');
     assert.equal(list.items[0].postingStatus, '모집중');
     assert.equal(list.items[0].companyType, null);
@@ -149,11 +149,13 @@ test('프로필·이력서가 없으면 작업이 실패로 끝나고, 실행 �
   } finally { await s.done(); }
 });
 
-test('공고 링크 해석은 세 출처 상세만 받는다', () => {
+test('공고 링크 해석은 지원 출처 상세만 받는다', () => {
+  assert.deepEqual(parsePostingLink('https://www.saramin.co.kr/zf_user/jobs/relay/view?view_type=search&rec_idx=55484655&location=ts'), { source: 'saramin', id: '55484655' });
+  assert.deepEqual(parsePostingLink('https://www.saramin.co.kr/zf_user/jobs/view?rec_idx=55484655'), { source: 'saramin', id: '55484655' });
   assert.deepEqual(parsePostingLink('https://www.jobkorea.co.kr/Recruit/GI_Read/50050518?Oem_Code=C1'), { source: 'jobkorea', id: '50050518' });
   assert.deepEqual(parsePostingLink('https://www.wanted.co.kr/wd/397013'), { source: 'wanted', id: '397013' });
   assert.deepEqual(parsePostingLink('https://jasoseol.com/recruit/107128'), { source: 'jasoseol', id: '107128' });
-  for (const bad of ['http://www.wanted.co.kr/wd/1', 'https://evil.example/wd/1', 'https://www.wanted.co.kr.evil.example/wd/1', 'https://jasoseol.com/career/1', 'not a url']) assert.equal(parsePostingLink(bad), undefined);
+  for (const bad of ['http://www.wanted.co.kr/wd/1', 'https://evil.example/wd/1', 'https://www.wanted.co.kr.evil.example/wd/1', 'https://jasoseol.com/career/1', 'https://www.saramin.co.kr/zf_user/company-info/view?rec_idx=1', 'https://www.saramin.co.kr/zf_user/jobs/view?rec_idx=1x', 'not a url']) assert.equal(parsePostingLink(bad), undefined);
 });
 
 test('교육생·부트캠프 모집은 채용 공고로 받지 않는다', () => {
@@ -169,7 +171,7 @@ test('사용자 필터에 맞지 않는 공고는 판정하지 않고, 필터를
     const calls = [];
     const deps = fakeDeps(calls);
     deps.collect.jobkorea = async () => ({ postings: [posting('jobkorea', '1', '서울 공고'), { ...posting('jobkorea', '2', '하남 공고'), location: '경기 하남시' }, posting('jobkorea', '3', '프리랜서 공고')], failures: [] });
-    deps.collect.wanted = async () => ({ postings: [], failures: [] });
+    deps.collect.saramin = async () => ({ postings: [], failures: [] });
     deps.extract = async p => ({ jobFamilies: ['프론트엔드'], required: [], preferred: [], remote: '없음', portfolioRequired: false, employmentTypes: p.title.includes('프리랜서') ? ['프리랜서'] : ['정규직'] });
     const db = openDatabase(s.path);
     try { await runNext(db, createHandler(db, deps)); } finally { db.close(); }

@@ -41,7 +41,7 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync, 
     if (!user) return reply;
     const body = linkRequestSchema.safeParse(request.body);
     const link = body.success ? parsePostingLink(body.data.url) : undefined;
-    if (!body.success || !link) return reply.status(400).send({ message: '잡코리아·원티드·자소설닷컴 공고 상세 링크를 넣으세요.' });
+    if (!body.success || !link) return reply.status(400).send({ message: '사람인·잡코리아·자소설닷컴·원티드 공고 상세 링크를 넣으세요.' });
     return reply.status(202).send(enqueue(db, user.id, 'link', { url: body.data.url }));
   });
 

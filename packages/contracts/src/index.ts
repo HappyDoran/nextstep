@@ -6,7 +6,7 @@ export const healthSchema = z.object({ service: z.literal('nextstep'), status: z
 export type Health = z.infer<typeof healthSchema>;
 export type ApplicationStatus = z.infer<typeof applicationStatusSchema>;
 
-export const sourceIdSchema = z.enum(['jobkorea', 'wanted', 'jasoseol']);
+export const sourceIdSchema = z.enum(['saramin', 'jobkorea', 'jasoseol', 'wanted']);
 export type SourceId = z.infer<typeof sourceIdSchema>;
 
 // 초대 계정 인증: 초대 코드로 가입하고 이메일·비밀번호로 로그인한다.

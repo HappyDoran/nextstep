@@ -4,7 +4,8 @@ import { profileSchema, type JobFamily, type Profile, type SourceId } from '@nex
 import { resetBlockedHosts } from '../sources/http.js';
 import type { CollectedPosting, CollectFailure } from '../sources/types.js';
 import { collectJobkorea, fetchJobkorea } from '../sources/jobkorea.js';
-import { collectWanted, fetchWanted } from '../sources/wanted.js';
+import { fetchWanted } from '../sources/wanted.js';
+import { collectSaramin, fetchSaramin } from '../sources/saramin.js';
 import { collectJasoseol, fetchJasoseol } from '../sources/jasoseol.js';
 import { extractRequirements, REQUIREMENTS_PROMPT_VERSION, type Requirements } from '../prompts/requirements.js';
 import { judge, RECOMMEND_PROMPT_VERSION, type Judgement } from '../prompts/recommend.js';
@@ -13,14 +14,15 @@ import { passesFilter } from '../sources/filter.js';
 
 type Collected = { postings: CollectedPosting[]; failures: CollectFailure[] };
 export type PipelineDeps = {
-  collect: { jobkorea: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; wanted: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jasoseol: (f: JobFamily[], cap: number) => Promise<Collected> };
+  collect: { saramin: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jobkorea: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jasoseol: (f: JobFamily[], cap: number) => Promise<Collected> };
   fetchOne: Record<SourceId, (id: string) => Promise<CollectedPosting | CollectFailure>>;
   extract: (posting: { title: string; company: string; body: string }) => Promise<Requirements>;
   judge: (evaluatedAt: string, candidate: unknown, posting: unknown) => Promise<Judgement>;
 };
 export const defaultDeps: PipelineDeps = {
-  collect: { jobkorea: collectJobkorea, wanted: collectWanted, jasoseol: collectJasoseol },
-  fetchOne: { jobkorea: fetchJobkorea, wanted: fetchWanted, jasoseol: fetchJasoseol },
+  // 1차 자동 수집은 사람인·잡코리아·자소설닷컴(2026-11-10 결정). 원티드는 2차 출처라 사용자 링크 판정만 받는다.
+  collect: { saramin: collectSaramin, jobkorea: collectJobkorea, jasoseol: collectJasoseol },
+  fetchOne: { saramin: fetchSaramin, jobkorea: fetchJobkorea, wanted: fetchWanted, jasoseol: fetchJasoseol },
   extract: extractRequirements,
   judge,
 };
@@ -50,6 +52,7 @@ export function parsePostingLink(raw: string): { source: SourceId; id: string } 
   if (url.protocol !== 'https:') return undefined;
   const host = url.hostname.toLowerCase();
   const match = (re: RegExp) => url.pathname.match(re)?.[1];
+  if (host === 'www.saramin.co.kr' || host === 'm.saramin.co.kr') { const id = url.searchParams.get('rec_idx'); return id && /^\d+$/.test(id) && url.pathname.startsWith('/zf_user/jobs/') ? { source: 'saramin', id } : undefined; }
   if (host === 'www.jobkorea.co.kr' || host === 'm.jobkorea.co.kr') { const id = match(/^\/Recruit\/GI_Read\/(\d+)/i); return id ? { source: 'jobkorea', id } : undefined; }
   if (host === 'www.wanted.co.kr' || host === 'wanted.co.kr') { const id = match(/^\/wd\/(\d+)/); return id ? { source: 'wanted', id } : undefined; }
   if (host === 'jasoseol.com' || host === 'www.jasoseol.com') { const id = match(/^\/recruit\/(\d+)/); return id ? { source: 'jasoseol', id } : undefined; }
@@ -153,8 +156,8 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     const families = basis.profile.jobFamilies;
     const runs: (() => Promise<Collected>)[] = [];
     for (const family of families) {
+      runs.push(() => deps.collect.saramin(family, PER_FAMILY, basis.profile));
       runs.push(() => deps.collect.jobkorea(family, PER_FAMILY, basis.profile));
-      runs.push(() => deps.collect.wanted(family, PER_FAMILY, basis.profile));
     }
     runs.push(() => deps.collect.jasoseol(families, JASOSEOL_PER_FAMILY));
     // 출처끼리는 순서대로 요청한다(같은 출처에 동시 요청을 만들지 않는다).

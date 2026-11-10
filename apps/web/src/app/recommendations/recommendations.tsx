@@ -8,7 +8,7 @@ import { call, fieldClass, useMe } from '../api-client';
 import { Account } from '../account';
 
 const CLASSES = recommendationClassSchema.options;
-const SOURCE_NAMES = { jobkorea: '잡코리아', wanted: '원티드', jasoseol: '자소설닷컴' } as const;
+const SOURCE_NAMES = { saramin: '사람인', jobkorea: '잡코리아', jasoseol: '자소설닷컴', wanted: '원티드' } as const;
 const ERRORS: Record<string, string> = {
   profile_or_resume_missing: '설정에서 이력서와 프로필을 먼저 저장하세요.',
   collect_failed: '공고를 가져오지 못했습니다. 잠시 후 다시 시도하세요.',
@@ -55,7 +55,7 @@ function RecommendationList({ me }: { me: Me }) {
   const running = Boolean(jobId) && (!job.data || ACTIVE.includes(job.data.status));
   const refresh = useMutation({ mutationFn: async () => jobSchema.parse(await call('postings/refresh', { method: 'POST' })), onSuccess: j => setJobId(j.id) });
   const link = useMutation({
-    mutationFn: async (url: string) => jobSchema.parse(await call('postings/link', { method: 'POST', body: JSON.stringify({ url }), messages: { 400: '잡코리아·원티드·자소설닷컴 공고 상세 링크(https)를 넣으세요.' } })),
+    mutationFn: async (url: string) => jobSchema.parse(await call('postings/link', { method: 'POST', body: JSON.stringify({ url }), messages: { 400: '사람인·잡코리아·자소설닷컴·원티드 공고 상세 링크(https)를 넣으세요.' } })),
     onSuccess: j => setJobId(j.id),
   });
   const [filter, setFilter] = useState<(typeof CLASSES)[number] | '전체'>('전체');
@@ -74,7 +74,7 @@ function RecommendationList({ me }: { me: Me }) {
       <JobStatus job={currentJob} />
       {(refresh.isError || link.isError) && <p role="alert" className="text-body-sm text-destructive">{(refresh.error ?? link.error)?.message}</p>}
       <form onSubmit={submitLink} className="flex flex-col gap-2 md:flex-row md:items-end">
-        <label className="flex flex-1 flex-col gap-2 text-body-sm">공고 링크로 판정<input name="url" type="url" required pattern="https://.*" placeholder="https://www.wanted.co.kr/wd/…" className={fieldClass} /></label>
+        <label className="flex flex-1 flex-col gap-2 text-body-sm">공고 링크로 판정<input name="url" type="url" required pattern="https://.*" placeholder="https://www.saramin.co.kr/zf_user/jobs/view?rec_idx=…" className={fieldClass} /></label>
         <Button type="submit" disabled={busy}>판정</Button>
       </form>
     </section>
