@@ -26,3 +26,4 @@ uploads/
 *.tsbuildinfo
 storybook-static/
 **/next-env.d.ts
+.claude/settings.local.json
