@@ -62,7 +62,7 @@ export function applyMessage(db: DatabaseSync, msg: StoredMessage): Outcome {
   // 지원 건은 없지만 공고 식별자가 수집한 공고와 일치하면 회사·직무가 명확하므로 지원 건을 만든다. 지원일은 만들지 않는다.
   if (keys.size === 1 && msg.verdict.status !== '모호' && msg.verdict.status !== '열람') {
     const [source, id] = [...keys][0]!.split(':');
-    const posting = db.prepare('SELECT url, title, company FROM postings WHERE source = ? AND source_id = ? AND (owner_user_id IS NULL OR owner_user_id = ?) LIMIT 1').get(source!, id!, msg.userId) as { url: string; title: string; company: string } | undefined;
+    const posting = db.prepare('SELECT url, title, company FROM postings WHERE source = ? AND source_id = ? AND owner_user_id = ? LIMIT 1').get(source!, id!, msg.userId) as { url: string; title: string; company: string } | undefined;
     if (posting) {
       const appId = randomUUID();
       const at = now();

@@ -4,10 +4,8 @@
 import { pathToFileURL } from 'node:url';
 import { htmlText, politeGet } from '../sources/http.js';
 import { ORIGIN, PER_ROLE, ROLES, listPostingIds, parsePosting } from '../sources/jobkorea.js';
-import { requireAutoCollect } from './mode.js';
 
 async function main() {
-  if (!requireAutoCollect('jobkorea')) return;
   const report: Record<string, unknown> = {};
   for (const [role, keyword] of Object.entries(ROLES)) {
     const list = await politeGet(`${ORIGIN}/Search/?stext=${encodeURIComponent(keyword)}&tabType=recruit`);

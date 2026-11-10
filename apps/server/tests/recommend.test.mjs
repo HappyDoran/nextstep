@@ -9,9 +9,8 @@ import { openDatabase } from '../dist/database.js';
 import { createInvite } from '../dist/auth.js';
 import { runNext, claim, recoverExpired } from '../dist/recommend/jobs.js';
 import { createHandler, isNotHiring, parsePostingLink } from '../dist/recommend/pipeline.js';
-import { writeCollectionMode } from '../dist/sources/policy.js';
 
-// 출처·AI를 가짜로 바꿔 작업·저장·격리·모드 규칙만 확인한다(실제 수집·OpenAI 검증이 아님).
+// 출처·AI를 가짜로 바꿔 작업·저장·격리 규칙만 확인한다(실제 수집·OpenAI 검증이 아님).
 const posting = (source, sourceId, title, body = '필수: React 3년') => ({ source, sourceId, url: `https://example.com/${source}/${sourceId}`, title, company: '가상회사', deadline: '2099-01-01T00:00:00+09:00', alwaysHire: false, location: '서울', remote: false, careers: [], companyType: null, employeeCount: null, externalApplyUrl: null, body, bodyFailure: null });
 function fakeDeps(calls) {
   return {
@@ -39,7 +38,7 @@ async function setup() {
   return { dir, path, app, signup, done: async () => { await app.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
 
-test('갱신 작업: 서비스 모드는 잡코리아만 수집하고 원문 없이 조건·판정을 저장하며 중복 작업을 합친다', async () => {
+test('갱신 작업: 세 출처를 수집하고 원문 없이 조건·판정을 저장하며 중복 작업을 합친다', async () => {
   const s = await setup();
   try {
     const a = await s.signup('a@example.com');
@@ -53,11 +52,14 @@ test('갱신 작업: 서비스 모드는 잡코리아만 수집하고 원문 없
       assert.equal(await runNext(db, createHandler(db, fakeDeps(calls))), true);
       assert.equal(await runNext(db, createHandler(db, fakeDeps(calls))), false);
     } finally { db.close(); }
-    assert.deepEqual(calls, ['jobkorea:프론트엔드', 'extract:프론트엔드 개발자', 'judge:프론트엔드 개발자']);
+    // 출처는 순서대로 수집하고, 판정 순서는 확인 시각이 같으면 정해지지 않는다.
+    assert.deepEqual(calls.slice(0, 5), ['jobkorea:프론트엔드', 'extract:프론트엔드 개발자', 'wanted:프론트엔드', 'extract:프론트엔드', 'jasoseol']);
+    assert.deepEqual(calls.slice(5).sort(), ['judge:프론트엔드', 'judge:프론트엔드 개발자']);
     const job = (await s.app.inject({ url: `/jobs/${first.id}`, headers: { cookie: a } })).json();
-    assert.equal(job.status, '성공');
+    // 가짜 원티드가 상세 한 건 실패를 돌려주므로 일부 실패다.
+    assert.equal(job.status, '일부 실패');
     const list = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json();
-    assert.equal(list.items.length, 1);
+    assert.deepEqual(list.items.map(i => i.source).sort(), ['jobkorea', 'wanted']);
     assert.equal(list.items[0].classification, '기본');
     assert.equal(list.items[0].postingStatus, '모집중');
     assert.equal(list.items[0].companyType, null);
@@ -68,22 +70,29 @@ test('갱신 작업: 서비스 모드는 잡코리아만 수집하고 원문 없
   } finally { await s.done(); }
 });
 
-test('개인 모드는 원티드도 수집하고, 서비스 모드로 바꾸면 개인 모드 원티드 공고를 숨긴다. 판정 기준이 같으면 다시 판정하지 않는다', async () => {
+test('수집한 공고는 갱신한 사용자 자료로만 저장되고 다른 사용자와 공유하지 않는다. 판정 기준이 같으면 다시 판정하지 않는다', async () => {
   const s = await setup();
   try {
     const a = await s.signup('a@example.com');
-    let db = openDatabase(s.path); writeCollectionMode(db, 'personal'); db.close();
+    const b = await s.signup('b@example.com');
     await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
     const calls = [];
-    db = openDatabase(s.path);
+    let db = openDatabase(s.path);
     try { await runNext(db, createHandler(db, fakeDeps(calls))); } finally { db.close(); }
-    assert.ok(calls.includes('wanted:프론트엔드') && calls.includes('jasoseol'));
     let list = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json();
     assert.equal(list.items.length, 2);
     assert.equal(list.lastJob.status, '일부 실패');
-    db = openDatabase(s.path); writeCollectionMode(db, 'service'); db.close();
-    list = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json();
-    assert.deepEqual(list.items.map(i => i.source), ['jobkorea']);
+    // B는 A가 모은 공고를 받지 않고, 자기 갱신에서 따로 수집·저장한다.
+    assert.deepEqual((await s.app.inject({ url: '/recommendations', headers: { cookie: b } })).json().items, []);
+    await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: b } });
+    const callsB = [];
+    db = openDatabase(s.path);
+    try { await runNext(db, createHandler(db, fakeDeps(callsB))); } finally { db.close(); }
+    assert.ok(callsB.includes('jobkorea:프론트엔드') && callsB.includes('extract:프론트엔드 개발자'));
+    const raw = new DatabaseSync(s.path);
+    assert.equal(raw.prepare('SELECT count(*) n FROM postings').get().n, 4);
+    assert.equal(raw.prepare('SELECT count(DISTINCT owner_user_id) n FROM postings').get().n, 2);
+    raw.close();
     // 같은 기준으로 다시 실행하면 판정 호출이 없다.
     await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
     const again = [];
@@ -114,7 +123,7 @@ test('링크 판정은 그 사용자 전용이고, 숨김·작업 조회는 본�
     // 계정 삭제 시 개인 링크 공고·추천·작업이 함께 지워진다.
     await s.app.inject({ method: 'DELETE', url: '/account', headers: { cookie: a } });
     const raw = new DatabaseSync(s.path);
-    assert.equal(raw.prepare('SELECT count(*) n FROM postings WHERE owner_user_id IS NOT NULL').get().n, 0);
+    assert.equal(raw.prepare('SELECT count(*) n FROM postings').get().n, 0);
     assert.equal(raw.prepare('SELECT count(*) n FROM jobs').get().n, 0);
     raw.close();
   } finally { await s.done(); }
@@ -160,6 +169,7 @@ test('사용자 필터에 맞지 않는 공고는 판정하지 않고, 필터를
     const calls = [];
     const deps = fakeDeps(calls);
     deps.collect.jobkorea = async () => ({ postings: [posting('jobkorea', '1', '서울 공고'), { ...posting('jobkorea', '2', '하남 공고'), location: '경기 하남시' }, posting('jobkorea', '3', '프리랜서 공고')], failures: [] });
+    deps.collect.wanted = async () => ({ postings: [], failures: [] });
     deps.extract = async p => ({ jobFamilies: ['프론트엔드'], required: [], preferred: [], remote: '없음', portfolioRequired: false, employmentTypes: p.title.includes('프리랜서') ? ['프리랜서'] : ['정규직'] });
     const db = openDatabase(s.path);
     try { await runNext(db, createHandler(db, deps)); } finally { db.close(); }

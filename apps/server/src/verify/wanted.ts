@@ -4,10 +4,8 @@
 import { pathToFileURL } from 'node:url';
 import { politeGet } from '../sources/http.js';
 import { ORIGIN, PER_ROLE, ROLES, listIds, parseDetail } from '../sources/wanted.js';
-import { requireAutoCollect } from './mode.js';
 
 async function main() {
-  if (!requireAutoCollect('wanted')) return;
   const report: Record<string, unknown> = {};
   // 차단 응답을 받으면 이 출처 요청을 모두 멈춘다.
   let blocked = false;

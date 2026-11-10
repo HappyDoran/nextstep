@@ -3,10 +3,8 @@
 // 실행: pnpm --filter @nextstep/server verify:jasoseol
 import { pathToFileURL } from 'node:url';
 import { collectJasoseol } from '../sources/jasoseol.js';
-import { requireAutoCollect } from './mode.js';
 
 async function main() {
-  if (!requireAutoCollect('jasoseol')) return;
   const { postings, failures } = await collectJasoseol(['프론트엔드', '앱 개발', '디자인', '기획'], 2);
   console.log(JSON.stringify({
     failures,

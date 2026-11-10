@@ -1,7 +1,6 @@
 import Fastify, { type FastifyError } from 'fastify';
-import { healthSchema, collectionModeUpdateSchema, collectionSettingsSchema, SOURCE_POLICY, type CollectionMode } from '@nextstep/contracts';
+import { healthSchema } from '@nextstep/contracts';
 import { openDatabase } from './database.js';
-import { readCollectionMode, writeCollectionMode } from './sources/policy.js';
 import { registerAuth } from './auth.js';
 import { registerApplications } from './applications.js';
 import { registerUserSettings } from './user-settings.js';
@@ -28,15 +27,6 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
   app.get('/health', async () => {
     const version = db.prepare('PRAGMA user_version').get() as { user_version: number };
     return healthSchema.parse({ service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: version.user_version });
-  });
-  // 수집 모드는 서버 전체 설정이다. ponytail: 인증이 없어 누구나 바꿀 수 있다. P1-02에서 관리자 전용으로 제한한다.
-  const settings = (mode: CollectionMode) => collectionSettingsSchema.parse({ mode, sources: SOURCE_POLICY[mode] });
-  app.get('/settings/collection', async () => settings(readCollectionMode(db)));
-  app.put('/settings/collection', async (request, reply) => {
-    const body = collectionModeUpdateSchema.safeParse(request.body);
-    if (!body.success) return reply.status(400).send({ message: '요청을 확인하세요.' });
-    writeCollectionMode(db, body.data.mode);
-    return settings(body.data.mode);
   });
   registerAuth(app, db, { secureCookie: options.secureCookie ?? false, onAccountDeleted: userId => removeUserFiles(filesDir, userId) });
   registerApplications(app, db);

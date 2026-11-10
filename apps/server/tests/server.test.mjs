@@ -18,7 +18,7 @@ test('HTTP 준비 응답과 파일 DB 재시작·마이그레이션 재실행', 
     try {
       const res = await app.inject({ method: 'GET', url: '/health' });
       assert.equal(res.statusCode, 200);
-      assert.deepEqual(res.json(), { service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: 9 });
+      assert.deepEqual(res.json(), { service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: 10 });
       assert.equal((await app.inject('/users')).statusCode, 404);
       const malformed = await app.inject({ method: 'POST', url: '/echo', headers: { 'content-type': 'application/json' }, payload: '{' });
       assert.equal(malformed.statusCode, 400);
@@ -44,30 +44,22 @@ test('알 수 없는 미래 DB를 변경하지 않는다', () => {
     original.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
-test('수집 모드는 기본 서비스, 변경 후 재시작에도 유지되고 잘못된 값을 거부한다', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'nextstep-mode-'));
+test('DB 버전 10은 공용 공고를 지우고 링크 공고를 사용자 자료로 남긴다', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-v10-'));
   try {
-    const path = join(dir, 'service.sqlite');
-    let app = createApp(path);
+    const path = join(dir, 'db.sqlite');
+    openDatabase(path).close();
+    // 버전 9 상태(공용 공고 owner NULL·collected_mode)를 재현한다.
+    const raw = new DatabaseSync(path);
+    raw.exec("ALTER TABLE postings RENAME COLUMN acquired_by TO collected_mode; PRAGMA user_version = 9;");
+    raw.exec("INSERT INTO users (id, email, password_hash, created_at) VALUES ('u1', 'a@example.com', 'x', '2026-01-01')");
+    const insert = raw.prepare("INSERT INTO postings (id, source, source_id, owner_user_id, url, title, company, always_hire, careers, collected_mode, checked_at) VALUES (?, 'wanted', ?, ?, 'https://x', 't', 'c', 0, '[]', 'personal', '2026-01-01')");
+    insert.run('shared', '1', null);
+    insert.run('mine', '2', 'u1');
+    raw.close();
+    const db = openDatabase(path);
     try {
-      const initial = await app.inject('/settings/collection');
-      assert.deepEqual(initial.json(), { mode: 'service', sources: { jobkorea: 'auto', wanted: 'link_only', jasoseol: 'link_only' } });
-      for (const payload of [{ mode: 'admin' }, { mode: 'personal', sources: { wanted: 'auto' } }, {}]) {
-        assert.equal((await app.inject({ method: 'PUT', url: '/settings/collection', payload })).statusCode, 400);
-      }
-      const changed = await app.inject({ method: 'PUT', url: '/settings/collection', payload: { mode: 'personal' } });
-      assert.equal(changed.json().sources.wanted, 'auto');
-    } finally { await app.close(); }
-    app = createApp(path);
-    try {
-      assert.equal((await app.inject('/settings/collection')).json().mode, 'personal');
-    } finally { await app.close(); }
-    const db = new DatabaseSync(path);
-    db.prepare("UPDATE service_metadata SET value = 'broken' WHERE key = 'collection_mode'").run();
-    db.close();
-    app = createApp(path);
-    try {
-      assert.equal((await app.inject('/settings/collection')).json().mode, 'service');
-    } finally { await app.close(); }
+      assert.deepEqual(db.prepare('SELECT id, acquired_by FROM postings').all().map(r => ({ ...r })), [{ id: 'mine', acquired_by: 'link' }]);
+    } finally { db.close(); }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

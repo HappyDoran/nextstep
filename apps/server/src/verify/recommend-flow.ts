@@ -11,17 +11,15 @@ import { extractResumeText } from '../documents/extract-resume.js';
 import { enqueue, runNext } from '../recommend/jobs.js';
 import { createHandler } from '../recommend/pipeline.js';
 import { aiConfigured, usageTotals } from '../ai/openai.js';
-import { writeCollectionMode } from '../sources/policy.js';
 
 async function main() {
   if (!aiConfigured()) { console.log(JSON.stringify({ ok: false, code: 'ai_unconfigured' })); process.exitCode = 1; return; }
   const links = process.argv.slice(2).filter(a => a.startsWith('https://'));
-  // --personal: 개인 모드(세 출처 자동 수집)와 네 직무 전체로 실행한다.
-  const personal = process.argv.includes('--personal');
+  // --all-families: 네 직무 전체로 실행한다(기본은 프론트엔드·앱 개발).
+  const personal = process.argv.includes('--all-families');
   const dir = mkdtempSync(join(tmpdir(), 'nextstep-rec-verify-'));
   try {
     const db = openDatabase(join(dir, 'db.sqlite'));
-    if (personal) writeCollectionMode(db, 'personal');
     const userId = randomUUID();
     const at = new Date().toISOString();
     db.prepare('INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)').run(userId, 'verify@example.com', 'x', at);
@@ -41,7 +39,7 @@ async function main() {
       await runNext(db, handler);
       jobs.push(db.prepare("SELECT kind, status, error_code, result FROM jobs WHERE kind = 'link' ORDER BY created_at DESC LIMIT 1").get());
     }
-    const recs = db.prepare(`SELECT p.source, p.owner_user_id IS NOT NULL AS link_only, p.title, p.company, p.deadline, p.always_hire, p.company_type, p.employee_count, p.requirements IS NOT NULL AS has_req, r.classification, r.judgement
+    const recs = db.prepare(`SELECT p.source, p.acquired_by = 'link' AS link_only, p.title, p.company, p.deadline, p.always_hire, p.company_type, p.employee_count, p.requirements IS NOT NULL AS has_req, r.classification, r.judgement
       FROM recommendations r JOIN postings p ON p.id = r.posting_id ORDER BY r.classification`).all() as { source: string; link_only: number; title: string; company: string; deadline: string | null; always_hire: number; company_type: string | null; employee_count: number | null; has_req: number; classification: string; judgement: string }[];
     const bodyStored = (db.prepare("SELECT count(*) AS n FROM postings WHERE requirements LIKE '%[주요업무]%'").get() as { n: number }).n;
     console.log(JSON.stringify({

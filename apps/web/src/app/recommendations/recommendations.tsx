@@ -71,7 +71,7 @@ function RecommendationList({ me }: { me: Me }) {
       <JobStatus job={currentJob} />
       {(refresh.isError || link.isError) && <p role="alert" className="text-body-sm text-destructive">{(refresh.error ?? link.error)?.message}</p>}
       <form onSubmit={submitLink} className="flex flex-col gap-2 md:flex-row md:items-end">
-        <label className="flex flex-1 flex-col gap-2 text-body-sm">공고 링크로 판정 (원티드·자소설닷컴은 서비스 모드에서 이 방법만 사용)<input name="url" type="url" required pattern="https://.*" placeholder="https://www.wanted.co.kr/wd/…" className={fieldClass} /></label>
+        <label className="flex flex-1 flex-col gap-2 text-body-sm">공고 링크로 판정<input name="url" type="url" required pattern="https://.*" placeholder="https://www.wanted.co.kr/wd/…" className={fieldClass} /></label>
         <Button type="submit" disabled={busy}>판정</Button>
       </form>
     </section>

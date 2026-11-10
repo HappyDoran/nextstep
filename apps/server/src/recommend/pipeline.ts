@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
-import { profileSchema, SOURCE_POLICY, type JobFamily, type Profile, type SourceId } from '@nextstep/contracts';
-import { readCollectionMode } from '../sources/policy.js';
+import { profileSchema, type JobFamily, type Profile, type SourceId } from '@nextstep/contracts';
 import { resetBlockedHosts } from '../sources/http.js';
 import type { CollectedPosting, CollectFailure } from '../sources/types.js';
 import { collectJobkorea, fetchJobkorea } from '../sources/jobkorea.js';
@@ -57,18 +56,20 @@ export function parsePostingLink(raw: string): { source: SourceId; id: string } 
   return undefined;
 }
 
-type PostingRow = { id: string; source: SourceId; title: string; company: string; deadline: string | null; always_hire: number; location: string | null; remote: number | null; careers: string; company_type: string | null; employee_count: number | null; requirements: string | null; body_failure: string | null; collected_mode: string; owner_user_id: string | null };
+type PostingRow = { id: string; source: SourceId; title: string; company: string; deadline: string | null; always_hire: number; location: string | null; remote: number | null; careers: string; company_type: string | null; employee_count: number | null; requirements: string | null; body_failure: string | null; acquired_by: 'auto' | 'link'; owner_user_id: string };
 
-function upsertPosting(db: DatabaseSync, p: CollectedPosting, mode: string, ownerUserId: string | null) {
+// 공고는 갱신을 요청한 사용자의 자료로만 저장한다. 다른 사용자와 공유하지 않는다(사용자 결정 2026-11-10).
+function upsertPosting(db: DatabaseSync, p: CollectedPosting, acquiredBy: 'auto' | 'link', ownerUserId: string) {
   const at = new Date().toISOString();
-  const existing = db.prepare("SELECT id FROM postings WHERE source = ? AND source_id = ? AND ifnull(owner_user_id, '') = ?").get(p.source, p.sourceId, ownerUserId ?? '') as { id: string } | undefined;
-  const values = [p.url, p.title, p.company, p.deadline, p.alwaysHire ? 1 : 0, p.location, p.remote === null ? null : p.remote ? 1 : 0, JSON.stringify(p.careers), p.companyType, p.employeeCount, p.externalApplyUrl, p.bodyFailure, mode, at] as const;
+  const existing = db.prepare('SELECT id FROM postings WHERE source = ? AND source_id = ? AND owner_user_id = ?').get(p.source, p.sourceId, ownerUserId) as { id: string } | undefined;
+  const values = [p.url, p.title, p.company, p.deadline, p.alwaysHire ? 1 : 0, p.location, p.remote === null ? null : p.remote ? 1 : 0, JSON.stringify(p.careers), p.companyType, p.employeeCount, p.externalApplyUrl, p.bodyFailure, acquiredBy, at] as const;
   if (existing) {
-    db.prepare('UPDATE postings SET url = ?, title = ?, company = ?, deadline = ?, always_hire = ?, location = ?, remote = ?, careers = ?, company_type = ?, employee_count = ?, external_apply_url = ?, body_failure = ?, collected_mode = ?, checked_at = ? WHERE id = ?').run(...values, existing.id);
+    // 사용자가 링크로 넣은 공고는 자동 수집에 다시 걸려도 링크 공고로 둔다(필터로 숨기지 않음).
+    db.prepare("UPDATE postings SET url = ?, title = ?, company = ?, deadline = ?, always_hire = ?, location = ?, remote = ?, careers = ?, company_type = ?, employee_count = ?, external_apply_url = ?, body_failure = ?, acquired_by = CASE acquired_by WHEN 'link' THEN 'link' ELSE ? END, checked_at = ? WHERE id = ?").run(...values, existing.id);
     return existing.id;
   }
   const id = randomUUID();
-  db.prepare('INSERT INTO postings (id, source, source_id, owner_user_id, url, title, company, deadline, always_hire, location, remote, careers, company_type, employee_count, external_apply_url, body_failure, collected_mode, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+  db.prepare('INSERT INTO postings (id, source, source_id, owner_user_id, url, title, company, deadline, always_hire, location, remote, careers, company_type, employee_count, external_apply_url, body_failure, acquired_by, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .run(id, p.source, p.sourceId, ownerUserId, ...values);
   return id;
 }
@@ -130,16 +131,10 @@ async function judgeFor(db: DatabaseSync, deps: PipelineDeps, userId: string, ba
   }
 }
 
-// 서비스 모드에서는 개인 모드로 모은 원티드·자소설닷컴 공고를 추천 대상에서 뺀다.
-export function visiblePostingsSql(mode: 'service' | 'personal') {
-  return mode === 'service' ? "AND NOT (p.owner_user_id IS NULL AND p.source IN ('wanted', 'jasoseol') AND p.collected_mode = 'personal')" : '';
-}
-
 export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps) {
   return async (job: ClaimedJob): Promise<JobOutcome> => {
     const basis = loadUserBasis(db, job.userId);
     if (!basis) return { status: '실패', errorCode: 'profile_or_resume_missing', result: {} };
-    const mode = readCollectionMode(db);
     // 차단 기록은 실행 단위로 둔다. 다음 실행에서는 다시 한 번 시도한다.
     resetBlockedHosts();
     const counts = { collected: 0, judged: 0, notHiring: 0, filteredOut: 0, aiFailures: 0, aiFailureCodes: {} as Record<string, number>, sourceFailures: [] as CollectFailure[] };
@@ -149,8 +144,7 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
       if (!link) return { status: '실패', errorCode: 'unsupported_link', result: {} };
       const fetched = await deps.fetchOne[link.source](link.id);
       if ('code' in fetched) return { status: '실패', errorCode: `fetch_${fetched.code}`, result: {} };
-      // 사용자가 넣은 링크로 가져온 공고는 그 사용자 전용이다.
-      const id = upsertPosting(db, fetched, mode, job.userId);
+      const id = upsertPosting(db, fetched, 'link', job.userId);
       await storeRequirements(db, deps, id, fetched, counts);
       await judgeFor(db, deps, job.userId, basis, [db.prepare('SELECT * FROM postings WHERE id = ?').get(id) as PostingRow], counts);
       return { status: counts.aiFailures ? '일부 실패' : '성공', result: { postingId: id, judged: counts.judged, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes } };
@@ -159,28 +153,28 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     const families = basis.profile.jobFamilies;
     const runs: (() => Promise<Collected>)[] = [];
     for (const family of families) {
-      if (SOURCE_POLICY[mode].jobkorea === 'auto') runs.push(() => deps.collect.jobkorea(family, PER_FAMILY, basis.profile));
-      if (SOURCE_POLICY[mode].wanted === 'auto') runs.push(() => deps.collect.wanted(family, PER_FAMILY, basis.profile));
+      runs.push(() => deps.collect.jobkorea(family, PER_FAMILY, basis.profile));
+      runs.push(() => deps.collect.wanted(family, PER_FAMILY, basis.profile));
     }
-    if (SOURCE_POLICY[mode].jasoseol === 'auto') runs.push(() => deps.collect.jasoseol(families, JASOSEOL_PER_FAMILY));
+    runs.push(() => deps.collect.jasoseol(families, JASOSEOL_PER_FAMILY));
     // 출처끼리는 순서대로 요청한다(같은 출처에 동시 요청을 만들지 않는다).
     for (const run of runs) {
       const { postings, failures } = await run();
       counts.sourceFailures.push(...failures);
       for (const p of postings) {
         if (isNotHiring(p.title)) { counts.notHiring++; continue; }
-        const id = upsertPosting(db, p, mode, null);
+        const id = upsertPosting(db, p, 'auto', job.userId);
         await storeRequirements(db, deps, id, p, counts);
         counts.collected++;
       }
     }
-    const rows = db.prepare(`SELECT p.* FROM postings p WHERE (p.owner_user_id IS NULL OR p.owner_user_id = ?) ${visiblePostingsSql(mode)} ORDER BY p.checked_at DESC`).all(job.userId) as PostingRow[];
-    // 사용자 필터에 맞지 않는 공용 공고는 판정하지 않는다(요금 절감). 사용자가 넣은 링크 공고는 거르지 않는다. 고용 형태는 본문 추출 결과로 거른다.
-    const matching = rows.filter(row => row.owner_user_id || passesFilter(rowFacts(row), basis.profile));
+    const rows = db.prepare('SELECT p.* FROM postings p WHERE p.owner_user_id = ? ORDER BY p.checked_at DESC').all(job.userId) as PostingRow[];
+    // 사용자 필터에 맞지 않는 공고는 판정하지 않는다(요금 절감). 사용자가 넣은 링크 공고는 거르지 않는다. 고용 형태는 본문 추출 결과로 거른다.
+    const matching = rows.filter(row => row.acquired_by === 'link' || passesFilter(rowFacts(row), basis.profile));
     counts.filteredOut = rows.length - matching.length;
     await judgeFor(db, deps, job.userId, basis, matching, counts);
     const failed = counts.sourceFailures.length > 0 || counts.aiFailures > 0;
-    const result = { mode, collected: counts.collected, judged: counts.judged, notHiring: counts.notHiring, filteredOut: counts.filteredOut, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes, sourceFailures: counts.sourceFailures.map(f => `${f.source}:${f.code}`) };
+    const result = { collected: counts.collected, judged: counts.judged, notHiring: counts.notHiring, filteredOut: counts.filteredOut, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes, sourceFailures: counts.sourceFailures.map(f => `${f.source}:${f.code}`) };
     if (counts.collected === 0 && failed) return { status: '실패', errorCode: 'collect_failed', result };
     return { status: failed ? '일부 실패' : '성공', result };
   };

@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -224,6 +224,14 @@ export function openDatabase(filename: string) {
       // P1-04: 텍스트가 없는 PDF 쪽 번호(JSON 배열). 이미지 쪽이 섞인 이력서를 사용자에게 경고한다.
       db.exec(`ALTER TABLE documents ADD COLUMN empty_pages TEXT NOT NULL DEFAULT '[]';
         PRAGMA user_version = 9;`);
+    }
+    if (version < 10) {
+      // 공고는 사용자별 갱신으로 그 사용자 자료로만 저장한다(사용자 결정 2026-11-10). 공용 공고와 그 추천은 지우고 다음 갱신에서 다시 모은다.
+      // acquired_by: auto(자동 수집)·link(사용자가 넣은 링크).
+      db.exec(`DELETE FROM postings WHERE owner_user_id IS NULL;
+        ALTER TABLE postings RENAME COLUMN collected_mode TO acquired_by;
+        UPDATE postings SET acquired_by = 'link';
+        PRAGMA user_version = 10;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

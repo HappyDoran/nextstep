@@ -6,7 +6,6 @@ import { AutomationSetting } from '../automation';
 import { ResumeSetting } from './resume';
 import { ProfileSetting } from './profile';
 import { MailSetting } from './mail';
-import { CollectionModeSetting } from '../collection-mode';
 import { ConnectionStatus } from '../status';
 
 export function Settings() {
@@ -19,6 +18,5 @@ export function Settings() {
     {me.data && <Panel><h2 className="mb-3 text-title">프로필·필터</h2><ProfileSetting me={me.data} /></Panel>}
     {me.data && <Panel><h2 className="mb-3 text-title">자동 갱신</h2><AutomationSetting me={me.data} /></Panel>}
     <Panel><h2 className="mb-3 text-title">서비스 연결 확인</h2><ConnectionStatus /></Panel>
-    <Panel><h2 className="mb-1 text-title">관리: 수집 모드</h2><p className="mb-5 text-body-sm text-muted-foreground">개발 중에는 누구나 바꿀 수 있습니다. 배포 전에 관리자 전용으로 제한합니다.</p><CollectionModeSetting /></Panel>
   </div>;
 }
