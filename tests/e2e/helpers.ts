@@ -1,8 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { expect, type Page } from '@playwright/test';
 
-// 운영자 초대 코드 발급 명령으로 e2e 서버와 같은 DB에 코드를 만든다.
-export const invite = () => execFileSync('pnpm', ['--silent', '--filter', '@nextstep/server', 'invite'], { encoding: 'utf8' }).trim();
+// 운영자 초대 링크 발급 명령으로 e2e 서버와 같은 DB에 코드를 만든다.
+export const inviteLink = () => new URL(execFileSync('pnpm', ['--silent', '--filter', '@nextstep/server', 'invite'], { encoding: 'utf8' }).trim());
+export const invite = () => inviteLink().searchParams.get('invite') ?? '';
 export const PASSWORD = 'correct horse battery';
 export const alert = (page: Page) => page.getByRole('alert').filter({ hasText: /\S/ });
 

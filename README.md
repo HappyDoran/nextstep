@@ -30,7 +30,7 @@ mise exec -- pnpm dev
 | `pnpm --filter @nextstep/server start` | 빌드된 API 실행 |
 | `pnpm --filter @nextstep/web start` | 빌드된 웹 실행 |
 | `pnpm --filter @nextstep/server verify:jobkorea` | 잡코리아 네 직무 공개 공고 소량 조회(직무당 목록 1회·상세 3건, 요청 간 2.5초). 원문 없이 추출 결과·실패 구분만 출력. 공고 검증 명령은 403·429를 받은 호스트에는 다시 요청하지 않음 |
-| `pnpm --filter @nextstep/server invite` | 운영자용 초대 코드 발급(14일 유효, 1회용). 서버와 같은 DB에 해시만 저장하고 코드 원문은 이 출력에서만 보임 |
+| `pnpm --filter @nextstep/server invite` | 운영자용 초대 링크 발급(`NEXTSTEP_WEB_URL/?invite=코드`, 14일 유효, 1회용). 서버와 같은 DB에 코드 해시만 저장하고 링크는 이 출력에서만 보임. 링크를 연 사람은 코드 입력 없이 이메일·비밀번호만 정해 가입하고, 가입 후 주소에서 코드를 지움 |
 | `pnpm --filter @nextstep/server eval:recommend` | 추천 판정 프롬프트를 정답 사례 57건(합성)으로 실제 OpenAI에 보내 직무별 일치율·주입 사례 결과를 출력. 요금 발생 |
 | `pnpm --filter @nextstep/server verify:wanted` | 원티드 네 직무 공개 목록·상세 각 3건 조회 |
 | `pnpm --filter @nextstep/server verify:jasoseol` | 자소설닷컴 네 직무 공개 직무별 목록·상세 각 2건 조회 |
@@ -51,7 +51,7 @@ mise exec -- pnpm dev
 | NEXTSTEP_API_PORT | 서버 | 4100 |
 | NEXTSTEP_DB_PATH | 서버 | 서버 실행 cwd의 `.data/nextstep.sqlite`. 공유하려면 절대 경로 지정 |
 | NEXTSTEP_API_URL | 웹 서버 route | http://127.0.0.1:4100. 브라우저로 전달하지 않음 |
-| NEXTSTEP_WEB_URL | Electron main | 개발 기본 http://127.0.0.1:3100. 패키징 실행은 소유 HTTPS 주소 필수 |
+| NEXTSTEP_WEB_URL | Electron main·초대 링크 발급 | 개발 기본 http://127.0.0.1:3100. 초대 링크의 주소로도 쓰므로 홈서버에서는 초대받는 사람이 여는 주소로 지정. 패키징 실행은 소유 HTTPS 주소 필수 |
 | NEXTSTEP_SECURE_COOKIE | 서버 | `1`이면 세션 쿠키에 Secure 지정. HTTPS 배포에서 필수, 로컬 HTTP 개발은 미지정 |
 | OPENAI_API_KEY·NEXTSTEP_OPENAI_MODEL | 평가·검증 명령(`eval:recommend`·`verify:*`) | 운영자 키와 모델. 서버의 사용자 요청·작업에는 쓰지 않는다. 사용자는 설정의 OpenAI 키·모델에서 본인 키를 등록한다 |
 | NEXTSTEP_AI_FAKE·NEXTSTEP_AI_CACHE_DIR·NEXTSTEP_JUDGE_CAP | 서버(개발용, 운영에서 켜지 않음) | 요금 절감. `NEXTSTEP_AI_FAKE=1`은 OpenAI 대신 스키마에 맞는 고정 응답(화면·흐름 개발), `NEXTSTEP_AI_CACHE_DIR`(예: `.data/ai-cache`)은 같은 모델·지시·입력의 응답을 파일(0600)로 재사용, `NEXTSTEP_JUDGE_CAP`은 갱신당 판정 상한(기본 40). 캐시에는 판정 결과(회사명 등)가 남으므로 개발 중에만 쓰고 필요 없으면 폴더를 지운다 |
@@ -77,7 +77,7 @@ pnpm test:e2e
 | `pnpm test:harness` | 구조 검사 자체의 위반 탐지 회귀 |
 | `pnpm test` | harness·공통 계약·파일 DB/API·두 계정 격리·이력서 등록/실패 시 기존 유지/교체/삭제/파일 권한/글자 없는 쪽 경고 저장·프로필 검증·OpenAI 요청 형식과 응답 검증(로컬 모의 서버)·사용자 OpenAI 키 확인·암호화 저장·사용자별 사용·운영자 키 미사용·키 거부/잔액 부족/모델 불가 구분·메일 규칙 판정·연결 검사·비밀번호 암호화 저장·증분 위치·중복 방지·상태 역행 방지·최종 결과 충돌·확인 목록 처리·연결 해제·AI 해석 분기(가짜 메일 소스·모의 AI)·예약 실행 조건·하루 한 번·OFF 정리·결과 표시·작업 중 계정 삭제 경합·30일 보관 기한 정리·수집·추천 작업(가짜 출처·AI로 세 출처 수집, 사용자별 공고 저장·비공유, 원문 미저장, 중복 작업 합치기, 같은 기준 재판정 생략, 링크 공고 사용자 전용, 재시작 복구)·초대 1회 사용/만료·세션 만료·로그인 실패 제한·계정 삭제 후 재생성 차단·이력서 추출(합성 텍스트·일부 이미지 쪽·암호화·스캔·손상 PDF와 MD)·잡코리아 상세 구조 해석(합성 HTML)·메일 알림 공고 링크 추출·추천 정답 사례 구조·DB 버전 10 공용 공고 정리·차단 호스트 재요청 중단·원티드/자소설닷컴 상세 해석(합성)·Electron URL 정책·토큰 참조/색상 대비 |
 | `pnpm build` | 실제 빌드·Storybook 정적 출력 |
-| `pnpm test:e2e` | 빌드된 로컬 웹·API 실행, Chromium에서 연결·503·재시도, 초대 가입·재접속 유지·로그아웃·로그인 실패·계정 삭제, 교차 출처 변경 요청 거부, 지원 건 등록·검색·필터·공고 열기 후 상태 불변·수정 이력·재접속 유지·목록 오류 재시도. 이력서 등록·암호화 PDF 실패 시 유지·프로필 저장 유지·AI 미설정 표시·OpenAI 키 미등록 표시, 갱신 작업 실패 사유 표시(실제 작업자), 링크 오류, 추천 카드 표시 규칙·지원 현황 저장(추천 응답은 모의). 임시 DB와 빈 AI 키로 서버를 띄워 개발 DB·실제 AI와 분리. 한 번에 하나씩 실행 |
+| `pnpm test:e2e` | 빌드된 로컬 웹·API 실행, Chromium에서 연결·503·재시도, 초대 링크 가입(코드 입력 숨김·주소에서 코드 제거)·초대 코드 가입·재접속 유지·로그아웃·로그인 실패·계정 삭제, 교차 출처 변경 요청 거부, 지원 건 등록·검색·필터·공고 열기 후 상태 불변·수정 이력·재접속 유지·목록 오류 재시도. 이력서 등록·암호화 PDF 실패 시 유지·프로필 저장 유지·AI 미설정 표시·OpenAI 키 미등록 표시, 갱신 작업 실패 사유 표시(실제 작업자), 링크 오류, 추천 카드 표시 규칙·지원 현황 저장(추천 응답은 모의). 임시 DB와 빈 AI 키로 서버를 띄워 개발 DB·실제 AI와 분리. 한 번에 하나씩 실행 |
 | `pnpm test:desktop` | macOS Electron 실행·권한 격리·창 닫기·완전 종료, 가입·지원 건 등록 후 앱 완전 종료·재실행 시 로그인·자료 유지. 격리된 임시 프로필 사용, 테스트 계정은 삭제 |
 
 브라우저 테스트는 3100·4100을 독점하며 기존 서버를 재사용하지 않는다. 먼저 `pnpm build`를 완료한다. E2E의 503 응답은 오류 표시 검증을 위한 모의 실패다. DB 영속성 테스트는 임시 파일을 사용하고 종료 후 지운다. 실제 외부 연동을 검증하지 않는다.

@@ -16,7 +16,10 @@ const AUTH_MESSAGES: Record<number, string> = {
 export function Account() {
   const client = useQueryClient();
   const me = useMe();
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  // 초대 링크(/?invite=코드)로 들어오면 가입 탭을 열고 코드를 채운다.
+  // 서버 렌더링 중에는 계정 확인 문구만 그리므로 폼 상태가 서버와 달라도 hydration이 어긋나지 않는다.
+  const [linkCode, setLinkCode] = useState(() => typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('invite'));
+  const [mode, setMode] = useState<'login' | 'signup'>(linkCode ? 'signup' : 'login');
   // 사용자가 바뀌면 이전 사용자의 캐시를 모두 버린다.
   // 계정 조회 쿼리는 화면 여러 곳이 구독하므로 지우지 않고 값만 바꾼다.
   const reset = (next: Me | null) => {
@@ -29,7 +32,11 @@ export function Account() {
       body: JSON.stringify(Object.fromEntries([...form.entries()].filter(([key]) => mode === 'signup' || key !== 'inviteCode'))),
       messages: AUTH_MESSAGES,
     })),
-    onSuccess: reset,
+    onSuccess: next => {
+      // 가입 후 주소창·방문 기록에 코드가 남지 않게 지운다.
+      if (linkCode) { window.history.replaceState(null, '', window.location.pathname); setLinkCode(null); }
+      reset(next);
+    },
   });
   const logout = useMutation({ mutationFn: () => call('auth/logout', { method: 'POST' }), onSuccess: () => reset(null) });
   const remove = useMutation({ mutationFn: () => call('account', { method: 'DELETE' }), onSuccess: () => reset(null) });
@@ -59,7 +66,9 @@ export function Account() {
         onClick={() => { setMode(value); auth.reset(); }}>{value === 'login' ? '로그인' : '초대 코드로 가입'}</button>)}
     </div>
     <form onSubmit={submit} className="flex max-w-md flex-col gap-4">
-      {mode === 'signup' && <label className="flex flex-col gap-2 text-body-sm">초대 코드<input name="inviteCode" required autoComplete="off" className={field} /></label>}
+      {mode === 'signup' && (linkCode
+        ? <p className="text-body-sm text-muted-foreground"><input type="hidden" name="inviteCode" value={linkCode} />초대 링크로 가입합니다. 로그인에 쓸 이메일과 비밀번호를 정하세요.</p>
+        : <label className="flex flex-col gap-2 text-body-sm">초대 코드<input name="inviteCode" required autoComplete="off" className={field} /></label>)}
       <label className="flex flex-col gap-2 text-body-sm">이메일<input name="email" type="email" required autoComplete="email" className={field} /></label>
       <label className="flex flex-col gap-2 text-body-sm">비밀번호<input name="password" type="password" required minLength={10} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} className={field} /></label>
       <Button type="submit" disabled={auth.isPending}>{mode === 'login' ? '로그인' : '가입'}</Button>

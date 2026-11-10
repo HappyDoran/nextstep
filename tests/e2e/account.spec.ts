@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { alert, deleteAccount, invite, PASSWORD, signup } from './helpers';
+import { alert, deleteAccount, invite, inviteLink, PASSWORD, signup } from './helpers';
 
 test('초대 가입·로그아웃·재로그인·계정 삭제와 오류 표시', async ({ page }) => {
   const email = `e2e-${Date.now()}@example.com`;
@@ -37,4 +37,17 @@ test('초대 가입·로그아웃·재로그인·계정 삭제와 오류 표시'
   expect((await page.request.post('/api/auth/logout')).status()).toBe(403);
   expect((await page.request.post('/api/auth/logout', { headers: { origin: 'https://evil.example' } })).status()).toBe(403);
   expect((await page.request.get('/api/internal')).status()).toBe(404);
+});
+
+test('초대 링크로 열면 코드 입력 없이 가입하고 주소에서 코드를 지운다', async ({ page }) => {
+  const link = inviteLink();
+  await page.goto(link.pathname + link.search);
+  await expect(page.getByRole('tab', { name: '초대 코드로 가입' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByLabel('초대 코드')).toHaveCount(0);
+  await page.getByLabel('이메일').fill(`e2e-link-${Date.now()}@example.com`);
+  await page.getByLabel('비밀번호').fill(PASSWORD);
+  await page.getByRole('button', { name: '가입' }).click();
+  await expect(page.getByRole('heading', { name: '지원 현황' })).toBeVisible();
+  expect(new URL(page.url()).search).toBe('');
+  await deleteAccount(page);
 });

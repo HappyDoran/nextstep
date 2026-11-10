@@ -16,7 +16,7 @@ mise install
 mise exec -- pnpm install --frozen-lockfile
 mise exec -- pnpm build
 mise exec -- pnpm dev                                    # API 4100, 웹 3100
-mise exec -- pnpm --filter @nextstep/server invite       # 별도 터미널, 가입용 초대 코드
+mise exec -- pnpm --filter @nextstep/server invite       # 별도 터미널, 가입용 초대 링크
 ```
 
 - 환경 파일 없이 실행된다. DB·`secret.key`·이력서 파일은 `apps/server/.data/`에 새로 생긴다(커밋 제외).
@@ -24,7 +24,7 @@ mise exec -- pnpm --filter @nextstep/server invite       # 별도 터미널, 가
 
 ## 2. 실제 사용 확인 (사용자 수행)
 
-1. 초대 코드로 가입한다.
+1. 발급된 초대 링크를 열어 이메일·비밀번호를 정하고 가입한다.
 2. 설정 → OpenAI 키·모델: 실제 키를 등록한다. 잘못된 키가 원인과 함께 거부되는지도 본다. 확인되면 P1-08이 끝난다.
 3. 설정 → 이력서·프로필·필터를 저장한다.
 4. 추천 → 새로 가져오기: AI 실패 0건인지, 판정 근거가 유용한지 본다(P1-04 남은 확인).
