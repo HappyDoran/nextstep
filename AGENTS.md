@@ -28,6 +28,7 @@ last_verified: 2026-11-07
 | 1차 구현 순서(P1)·현재 상태·미결 결정 | [백로그](docs/spec/gap-analysis.md) | 단계 착수·완료, 결정 확정 |
 | 기술 선택·workspace 책임·의존 경계 | [TECH_RULES.md](TECH_RULES.md) | 의존성 추가·교체, workspace 추가, 금지 패턴 |
 | 실행·검증·환경 변수·현재 구현 범위 | [README.md](README.md) | script·명령·환경 변수·구현 범위 변경 |
+| 다음 세션에 이어서 할 순서(상태는 백로그 소유) | [NEXT_SESSION.md](NEXT_SESSION.md) | 세션 종료 시 다음 할 일 변경 |
 | 디자인 기초의 토큰·타입·아이콘 사용법 | [디자인 기초](packages/design-system/README.md) | 토큰·타입·아이콘·Storybook 변경 |
 | 작업 지원 체계·역할 소유 범위·검사 한계 | [AI_AGENT_HARNESS.md](docs/AI_AGENT_HARNESS.md) | 진입점·skill·역할·검사 흐름 변경 |
 | 웹·서버·데스크톱·공통 패키지 지역 규칙 | 각 workspace의 AGENTS.md | 해당 workspace의 경계·함정 변경 |
