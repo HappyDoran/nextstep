@@ -43,6 +43,10 @@ test('이력서 등록·교체·실패 시 기존 유지·삭제와 사용자별
     assert.equal((await app.inject({ url: '/documents/resume', headers: { cookie: a } })).json().id, first.json().id);
     assert.equal((await upload(app, a, Buffer.from('x'), 'x.pdf', 'image/png')).statusCode, 415);
 
+    // 일부 쪽이 이미지인 PDF는 등록하되 글자 없는 쪽을 저장해 다시 조회해도 알린다.
+    assert.deepEqual((await upload(app, a, fixture('resume-partial.pdf'), 'partial.pdf')).json().emptyPages, [2]);
+    assert.deepEqual((await app.inject({ url: '/documents/resume', headers: { cookie: a } })).json().emptyPages, [2]);
+
     const md = await upload(app, a, Buffer.from('# 가상 지원자\n\n서비스 기획 2년, Figma·Jira 사용 경험', 'utf8'), 'resume.md', 'text/markdown');
     assert.equal(md.statusCode, 200);
     assert.deepEqual(readdirSync(join(files, userA)), [`${md.json().id}.md`]);

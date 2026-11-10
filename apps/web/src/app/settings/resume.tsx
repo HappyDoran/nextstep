@@ -56,6 +56,9 @@ export function ResumeSetting({ me }: { me: Me }) {
       <Button disabled={!file || save.isPending} onClick={() => { if (file) save.mutate(file); }}>{resume ? '교체' : '등록'}</Button>
       {resume && <Button disabled={remove.isPending} className="border-destructive !bg-transparent !text-destructive" onClick={() => { if (window.confirm('이력서 원본과 추출 본문을 삭제합니다.')) remove.mutate(); }}>이력서 삭제</Button>}
     </div>
+    {resume && resume.emptyPages.length > 0 && <p role="status" className="text-body-sm text-warning">
+      {resume.emptyPages.join('·')}쪽에서 글자를 읽지 못했습니다(이미지 쪽). 그 쪽 내용은 추천에 쓰이지 않습니다. 텍스트 PDF나 MD로 교체하세요.
+    </p>}
     {(save.isError || remove.isError) && <p role="alert" className="text-body-sm text-destructive">{(save.error ?? remove.error)?.message}</p>}
     {resume && <details className="rounded-control border border-border p-4">
       <summary className="cursor-pointer text-body-sm">추출된 본문 확인</summary>

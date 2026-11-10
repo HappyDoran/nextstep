@@ -45,7 +45,7 @@ async function setup() {
     if (password !== 'app-password') throw new MailSourceError('auth_failed');
     state.seenCursors.push(new Map(cursors));
     const last = cursors.get('INBOX')?.lastUid ?? 0;
-    return [{ mailbox: 'INBOX', uidValidity: '0', messages: state.mails.filter(m => m.uid > last), oldestDate: '2026-08-12T00:00:00.000Z', complete: true }];
+    return [{ mailbox: 'INBOX', uidValidity: '0', messages: state.mails.filter(m => m.uid > last), oldestDate: new Date(Date.now() - 30 * 86_400_000).toISOString(), complete: true }];
   };
   const app = createApp(path, { mailSource: source });
   const signup = async email => {

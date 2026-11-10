@@ -5,12 +5,12 @@ import { getDocument, PasswordException, InvalidPDFException } from 'pdfjs-dist/
 // 기술 설계 부록 D: 텍스트 PDF·MD 한 개, 파일당 20MB 초기값.
 export const RESUME_MAX_BYTES = 20 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15_000;
-// ponytail: 글자 수 기준 스캔본 판정. 텍스트 레이어가 일부만 있는 PDF는 사용자 확인 단계에서 걸러낸다.
+// ponytail: 글자 수 기준 스캔본 판정. 문서 전체가 기준 미만이면 실패, 일부 쪽만 미만이면 emptyPages로 경고한다.
 const MIN_TEXT_CHARS = 20;
 
 export type ResumeFailure = 'unsupported_type' | 'too_large' | 'encrypted' | 'damaged' | 'scanned_or_empty' | 'timeout';
 export type ResumeExtraction =
-  | { ok: true; kind: 'pdf' | 'md'; text: string; pages?: number }
+  | { ok: true; kind: 'pdf' | 'md'; text: string; pages?: number; emptyPages?: number[] }
   | { ok: false; code: ResumeFailure };
 
 const pdfjsRoot = dirname(createRequire(import.meta.url).resolve('pdfjs-dist/package.json'));
@@ -73,7 +73,10 @@ async function readPdf(loading: Promise<PdfDocument>): Promise<ResumeExtraction>
     pages.push(content.items.map(item => ('str' in item ? item.str + (item.hasEOL ? '\n' : '') : '')).join(''));
   }
   const text = pages.join('\n\n').replace(/[ \t]+\n/g, '\n').trim();
-  return countText(text) < MIN_TEXT_CHARS ? { ok: false, code: 'scanned_or_empty' } : { ok: true, kind: 'pdf', text, pages: doc.numPages };
+  if (countText(text) < MIN_TEXT_CHARS) return { ok: false, code: 'scanned_or_empty' };
+  // 이미지로만 된 쪽은 추천 근거에서 빠지므로 쪽 번호를 알려 사용자가 MD 등으로 보완하게 한다.
+  const emptyPages = pages.flatMap((page, i) => (countText(page) < MIN_TEXT_CHARS ? [i + 1] : []));
+  return { ok: true, kind: 'pdf', text, pages: doc.numPages, emptyPages };
 }
 
 function countText(text: string) {

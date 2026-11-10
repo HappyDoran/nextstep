@@ -15,6 +15,15 @@ test('텍스트 PDF의 한글·영문 본문을 추출한다', async () => {
   assert.match(result.text, /React, TypeScript, Next\.js/);
 });
 
+test('일부 쪽만 이미지인 PDF는 성공하되 글자 없는 쪽 번호를 알린다', async () => {
+  // resume-partial.pdf = resume-text.pdf 1쪽 + resume-scanned.pdf 1쪽(PDFKit으로 합침)
+  const result = await extractResumeText(fixture('resume-partial.pdf'), 'a.pdf');
+  assert.equal(result.ok, true);
+  assert.equal(result.pages, 2);
+  assert.deepEqual(result.emptyPages, [2]);
+  assert.deepEqual((await extractResumeText(fixture('resume-text.pdf'), 'a.pdf')).emptyPages, []);
+});
+
 test('암호화·스캔·손상 PDF를 지원 불가 사유로 구분한다', async () => {
   assert.deepEqual(await extractResumeText(fixture('resume-encrypted.pdf'), 'a.pdf'), { ok: false, code: 'encrypted' });
   assert.deepEqual(await extractResumeText(fixture('resume-scanned.pdf'), 'a.pdf'), { ok: false, code: 'scanned_or_empty' });

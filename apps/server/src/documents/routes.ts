@@ -7,8 +7,8 @@ import { resumeSchema } from '@nextstep/contracts';
 import { requireUser } from '../auth.js';
 import { extractResumeText, RESUME_MAX_BYTES } from './extract-resume.js';
 
-type Row = { id: string; filename: string; size: number; storage_key: string; text: string; created_at: string };
-const toResume = (r: Row) => resumeSchema.parse({ id: r.id, filename: r.filename, size: r.size, createdAt: r.created_at, text: r.text });
+type Row = { id: string; filename: string; size: number; storage_key: string; text: string; empty_pages: string; created_at: string };
+const toResume = (r: Row) => resumeSchema.parse({ id: r.id, filename: r.filename, size: r.size, createdAt: r.created_at, text: r.text, emptyPages: JSON.parse(r.empty_pages) });
 
 // 원본 파일은 사용자별 비공개 디렉터리에 둔다. 경로는 서버가 만든 ID로만 구성해 임의 경로 접근을 막는다.
 export function registerDocuments(app: FastifyInstance, db: DatabaseSync, filesDir: string) {
@@ -52,8 +52,8 @@ export function registerDocuments(app: FastifyInstance, db: DatabaseSync, filesD
       }
       previous = db.prepare("SELECT * FROM documents WHERE user_id = ? AND kind = 'resume'").get(user.id) as Row | undefined;
       if (previous) db.prepare('DELETE FROM documents WHERE id = ?').run(previous.id);
-      db.prepare("INSERT INTO documents (id, user_id, kind, filename, size, storage_key, text, created_at) VALUES (?, ?, 'resume', ?, ?, ?, ?, ?)")
-        .run(id, user.id, filename, request.body.length, key, result.text, new Date().toISOString());
+      db.prepare("INSERT INTO documents (id, user_id, kind, filename, size, storage_key, text, empty_pages, created_at) VALUES (?, ?, 'resume', ?, ?, ?, ?, ?, ?)")
+        .run(id, user.id, filename, request.body.length, key, result.text, JSON.stringify(result.emptyPages ?? []), new Date().toISOString());
       db.exec('COMMIT');
     } catch (error) {
       if (db.isTransaction) db.exec('ROLLBACK');
