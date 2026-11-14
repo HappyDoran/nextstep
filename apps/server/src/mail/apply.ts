@@ -93,11 +93,13 @@ export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp
   if (db.prepare('SELECT 1 FROM evidence_suppressions WHERE user_id = ? AND message_key = ?').get(msg.userId, msg.messageKey)) return 'suppressed';
   const status = interp.status as MailVerdict['status'];
   const verdictMsg: StoredMessage = { ...msg, verdict: { ...msg.verdict, status } };
-  if (interp.confidence !== 'high' || !interp.company || !interp.roleTitle || status === '모호') {
+  // 작은 모델이 플랫폼 이름을 회사로 쓰거나 지시문을 섞어 내는 경우가 있어(2026-11-14 실제 해석) 그런 회사명은 확정하지 않는다.
+  const badCompany = !interp.company || /^(원티드|잡코리아|사람인|점핏|자소설닷컴|wanted|jobkorea|saramin|jumpit)$/i.test(normalizeName(interp.company)) || /[:\n]/.test(interp.company) || interp.company.length > 60;
+  if (interp.confidence !== 'high' || badCompany || !interp.roleTitle || status === '모호') {
     if (status === '열람') return 'no_change';
     return review(db, verdictMsg, status === '모호' ? '모호' : '연결 불명');
   }
-  const company = normalizeName(interp.company);
+  const company = normalizeName(interp.company!);
   const role = normalizeName(interp.roleTitle);
   const apps = (db.prepare('SELECT id, company, role_title, status, read_status, posting_url, locked_fields FROM applications WHERE user_id = ?').all(msg.userId) as (AppRow & { company: string; role_title: string })[])
     .filter(a => normalizeName(a.company) === company);
@@ -109,7 +111,7 @@ export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp
   const appId = randomUUID();
   const at = now();
   db.prepare("INSERT INTO applications (id, user_id, company, role_title, status, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, ?, ?, 'mail')")
-    .run(appId, msg.userId, interp.company.slice(0, 200), interp.roleTitle.slice(0, 200), status, at, at);
+    .run(appId, msg.userId, interp.company!.slice(0, 200), interp.roleTitle.slice(0, 200), status, at, at);
   logEvent(db, appId, 'status', '미지원', status, msg.id);
   db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ?').run(appId, msg.id);
   return 'created';

@@ -298,3 +298,23 @@ test('AI 응답 시간 초과는 그 메일만 시도 횟수를 쓰고 다음 �
     } finally { db.close(); }
   } finally { await s.done(); }
 });
+
+test('AI가 플랫폼 이름이나 지시문이 섞인 문자열을 회사로 내면 지원 건을 만들지 않고 확인받는다', async () => {
+  const { applyInterpretation } = await import('../dist/mail/apply.js');
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const db = openDatabase(s.path);
+    try {
+      const userId = db.prepare('SELECT id FROM users').get().id;
+      for (const [i, company] of [['1', '원티드'], ['2', '(주)가상: 1. 지원한 회사 이름을 정확히 추출']]) {
+        const id = `m${i}`;
+        db.prepare("INSERT INTO mail_messages (id, user_id, provider, message_key, received_at, subject, classification, outcome, processed_at) VALUES (?, ?, 'naver', ?, NULL, '결과 안내', '불합격', 'unlinked', '2026-11-14')").run(id, userId, `<k${i}>`);
+        const out = applyInterpretation(db, { id, userId, messageKey: `<k${i}>`, subject: '결과 안내', receivedAt: null, verdict: { status: '불합격', evidence: null, platform: null, postingKeys: [] } }, { isRecruiting: true, company, roleTitle: '프론트엔드 개발자', status: '불합격', confidence: 'high' });
+        assert.equal(out, 'review', company);
+      }
+      assert.equal(db.prepare('SELECT count(*) n FROM applications').get().n, 0);
+    } finally { db.close(); }
+    void a;
+  } finally { await s.done(); }
+});
