@@ -20,7 +20,7 @@ export function parseCsv(text: string) {
   }
   if (cell || row.length) { row.push(cell); rows.push(row); }
   const [head, ...body] = rows.filter(r => r.some(Boolean));
-  return body.map(r => Object.fromEntries(head!.map((h, i) => [h.replace(/^﻿/, ''), r[i] ?? '']))) as Record<string, string>[];
+  return body.map(r => Object.fromEntries(head!.map((h, i) => [h.replace(/^\uFEFF/, ''), r[i] ?? '']))) as Record<string, string>[];
 }
 
 // 정답 상태 → 우리 상태로 맞다고 볼 값.
