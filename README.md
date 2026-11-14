@@ -23,6 +23,13 @@ mise exec -- pnpm dev
 
 이미 해당 도구가 PATH에 있으면 `mise exec --`를 생략한다. 설치 시 Git hooks가 연결된다. 글로벌 도구 설정은 바꾸지 않는다.
 
+홈서버 전까지 운영자 Mac에서 상시로 쓰려면 빌드한 API·웹을 launchd로 띄운다(로그인 시 자동 시작, 종료되면 재시작, 로그 `~/Library/Logs/nextstep/`). 코드를 고친 뒤에는 `pnpm build` 후 `restart`. Mac이 잠자거나 꺼진 동안에는 예약 처리도 멈추므로, 전원 연결 중 잠자기 방지를 켜 두면 좋다.
+
+```sh
+mise exec -- pnpm build
+mise exec -- sh scripts/mac-service.sh install   # restart · uninstall
+```
+
 서류의 이미지 쪽 글자 인식(OCR)은 시스템 도구를 쓴다. 없으면 OCR 없이 글자 없는 쪽만 경고한다. macOS: `brew install poppler tesseract tesseract-lang`, Ubuntu: `sudo apt install poppler-utils tesseract-ocr tesseract-ocr-kor`.
 
 | 명령 | 동작 |
