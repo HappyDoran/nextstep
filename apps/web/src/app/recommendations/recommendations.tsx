@@ -16,7 +16,7 @@ const ERRORS: Record<string, string> = {
   lease_expired: '처리 시간이 초과되었습니다. 다시 시도하세요.',
 };
 // 사용자가 고칠 수 있는 AI 실패 원인(설정의 OpenAI 키·모델에서 해결).
-const AI_CAUSES: Record<string, string> = { ai_unconfigured: '설정에서 OpenAI 키 등록 필요', ai_key_invalid: 'OpenAI 키 거부됨', ai_quota: 'OpenAI 잔액 부족', ai_model_unavailable: '선택한 모델 사용 불가' };
+const AI_CAUSES: Record<string, string> = { ai_unconfigured: '설정에서 OpenAI 키 등록 필요', ai_key_invalid: 'OpenAI 키 거부됨', ai_quota: 'OpenAI 잔액 부족', ai_model_unavailable: '선택한 모델 사용 불가', ai_network: 'OpenAI 연결 실패(네트워크·컴퓨터 잠자기 확인)', ai_timeout: 'OpenAI 응답 시간 초과' };
 const ACTIVE: string[] = ['대기', '실행중'];
 const date = (iso: string) => new Date(iso).toLocaleString('ko-KR');
 

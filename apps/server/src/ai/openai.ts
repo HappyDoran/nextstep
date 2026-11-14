@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 // OpenAI Responses API 호출. SDK 없이 fetch로 JSON Schema 구조화 출력을 받고 zod로 다시 검증한다.
 // 요청 본문(이력서·공고·메일)은 로그에 남기지 않는다.
-export type AiFailure = 'ai_unconfigured' | 'ai_key_invalid' | 'ai_quota' | 'ai_model_unavailable' | 'ai_http' | 'ai_invalid_output' | 'ai_network';
+export type AiFailure = 'ai_unconfigured' | 'ai_key_invalid' | 'ai_quota' | 'ai_model_unavailable' | 'ai_http' | 'ai_invalid_output' | 'ai_network' | 'ai_timeout';
 export class AiError extends Error {
   constructor(readonly code: AiFailure, readonly status?: number) { super(code); }
 }
@@ -85,8 +85,9 @@ async function request<T extends z.ZodType>({ apiKey, model }: AiConfig, name: s
       }),
       signal: AbortSignal.timeout(60_000),
     });
-  } catch {
-    throw new AiError('ai_network');
+  } catch (error) {
+    // 응답 시간 초과(60초)와 연결 실패를 나눠 기록한다. 컴퓨터 잠자기·느린 모델을 구분하는 근거다.
+    throw new AiError((error as Error).name === 'TimeoutError' ? 'ai_timeout' : 'ai_network');
   }
   if (!res.ok) throw await httpError(res);
   const body = await res.json() as { output?: { type?: string; content?: { type?: string; text?: string }[] }[]; usage?: { input_tokens?: number; output_tokens?: number } };
