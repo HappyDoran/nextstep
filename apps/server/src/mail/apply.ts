@@ -95,14 +95,21 @@ export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp
   const verdictMsg: StoredMessage = { ...msg, verdict: { ...msg.verdict, status } };
   // 작은 모델이 플랫폼 이름을 회사로 쓰거나 지시문을 섞어 내는 경우가 있어(2026-11-14 실제 해석) 그런 회사명은 확정하지 않는다.
   const badCompany = !interp.company || /^(원티드|잡코리아|사람인|점핏|자소설닷컴|wanted|jobkorea|saramin|jumpit)$/i.test(normalizeName(interp.company)) || /[:\n]/.test(interp.company) || interp.company.length > 60;
+  const appsOf = (name: string) => (db.prepare('SELECT id, company, role_title, status, read_status, posting_url, locked_fields FROM applications WHERE user_id = ?').all(msg.userId) as (AppRow & { company: string; role_title: string })[])
+    .filter(a => normalizeName(a.company) === normalizeName(name));
+  if (status === '열람') {
+    // 열람은 지원 상태가 아닌 별도 표시라, 직무명이 없거나 확신이 낮아도 같은 회사 지원 건이 하나뿐이면 붙인다(사용자 결정 2026-11-15).
+    // 같은 회사 지원 건이 여럿이면 직무명이 정확히 같은 건에만 붙이고, 아니면 바꾸지 않는다(열람만으로 확인 요청을 만들지 않음).
+    const same = badCompany ? [] : appsOf(interp.company!);
+    const byRole = interp.roleTitle ? same.filter(a => normalizeName(a.role_title) === normalizeName(interp.roleTitle!)) : [];
+    const target = same.length === 1 ? same[0] : byRole.length === 1 ? byRole[0] : undefined;
+    return target ? applyToApplication(db, verdictMsg, target) : 'no_change';
+  }
   if (interp.confidence !== 'high' || badCompany || !interp.roleTitle || status === '모호') {
-    if (status === '열람') return 'no_change';
     return review(db, verdictMsg, status === '모호' ? '모호' : '연결 불명');
   }
-  const company = normalizeName(interp.company!);
   const role = normalizeName(interp.roleTitle);
-  const apps = (db.prepare('SELECT id, company, role_title, status, read_status, posting_url, locked_fields FROM applications WHERE user_id = ?').all(msg.userId) as (AppRow & { company: string; role_title: string })[])
-    .filter(a => normalizeName(a.company) === company);
+  const apps = appsOf(interp.company!);
   const exact = apps.filter(a => normalizeName(a.role_title) === role);
   if (exact.length === 1) return applyToApplication(db, verdictMsg, exact[0]!);
   // 같은 회사 지원 건이 하나뿐이고 직무명이 한쪽에 포함되면(예: '프론트엔드 개발자' ⊂ '프론트엔드 개발자 (React)') 같은 지원으로 본다.
@@ -111,7 +118,6 @@ export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp
     && (normalizeName(apps[0]!.role_title).includes(role) || role.includes(normalizeName(apps[0]!.role_title)));
   if (contained) return applyToApplication(db, verdictMsg, apps[0]!);
   if (exact.length > 1 || apps.length > 0) return review(db, verdictMsg, '연결 불명');
-  if (status === '열람') return 'no_change';
   // 결과만 있어도 회사·직무·결과가 명확하면 지원 건을 만든다. 실제 지원일은 만들지 않는다.
   const appId = randomUUID();
   const at = now();

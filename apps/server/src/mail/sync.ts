@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { decrypt } from '../secrets.js';
 import type { ClaimedJob, JobOutcome } from '../recommend/jobs.js';
-import { classifyMail } from './classify.js';
+import { classifyMail, type MailStatus } from './classify.js';
 import { applyInterpretation, applyMessage, type Outcome } from './apply.js';
 import { bodyKey, MailSourceError, type BackfillSource, type Cursor, type MailboxBatch, type MailBody, type MailBodySource, type MailSource } from './naver.js';
 import type { MailInterpretation } from '../prompts/mail.js';
@@ -105,6 +105,13 @@ export function createMailHandler(db: DatabaseSync, secretKey: Buffer, source: M
   };
 }
 
+// 상태는 규칙이 명확하면 규칙을 따르고, AI 상태는 규칙이 모호하거나 판정하지 못했을 때만 쓴다.
+// 합격은 규칙 근거(결과 통보 문구)가 있을 때만 인정하고 AI만 합격이라 하면 확인받는다(2026-11-15 실측: qwen3:1.7b가 열람·접수 메일 10건을 합격으로 봄).
+export function mergeMailStatus(rule: MailStatus | null, ai: MailStatus): MailStatus {
+  if (rule && rule !== '모호') return rule;
+  return ai === '합격' ? '모호' : ai;
+}
+
 type Unlinked = { id: string; message_key: string; subject: string; received_at: string | null; classification: string; platform: string | null; mailbox: string | null; uid_validity: string | null; uid: number | null };
 
 // 규칙으로 대상을 찾지 못한 메일을 AI로 해석해 지원 건 생성·연결·확인 요청으로 넘긴다.
@@ -121,8 +128,11 @@ async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpr
     const body = cached.get(key) ?? fetched.get(key);
     if (!body) continue;
     let interp: MailInterpretation;
+    // 저장된 분류는 이전 해석 결과일 수 있어 규칙 판정을 본문으로 다시 한다.
+    const rule = classifyMail({ fromAddress: body.fromAddress, subject: row.subject, text: body.text, links: body.links })?.status ?? null;
     try {
-      interp = await ai.interpret({ subject: row.subject, senderDomain: body.fromAddress.split('@')[1] ?? '', ruleStatus: row.classification, body: body.text });
+      interp = await ai.interpret({ subject: row.subject, senderDomain: body.fromAddress.split('@')[1] ?? '', ruleStatus: rule ?? row.classification, body: body.text });
+      interp = { ...interp, status: mergeMailStatus(rule, interp.status) };
     } catch (error) {
       counts.aiFailures = (counts.aiFailures ?? 0) + 1;
       // 원인 코드별 건수를 남겨 화면·운영자가 키·잔액·연결 문제를 구분하게 한다(본문은 남기지 않음).

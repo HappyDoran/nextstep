@@ -352,3 +352,43 @@ test('AI 해석은 오래된 메일부터 하고, 같은 회사 지원 건이 �
     assert.deepEqual((await s.app.inject({ url: '/reviews', headers: { cookie: a } })).json().map(r => r.reason), ['연결 불명']);
   } finally { await s.done(); }
 });
+
+test('메일 상태는 규칙이 명확하면 규칙을, AI만 합격이라 하면 확인 요청(모호)으로 둔다', async () => {
+  const { mergeMailStatus } = await import('../dist/mail/sync.js');
+  assert.equal(mergeMailStatus('열람', '합격'), '열람');
+  assert.equal(mergeMailStatus('지원 완료', '불합격'), '지원 완료');
+  assert.equal(mergeMailStatus('합격', '지원 완료'), '합격');
+  assert.equal(mergeMailStatus(null, '합격'), '모호');
+  assert.equal(mergeMailStatus('모호', '합격'), '모호');
+  assert.equal(mergeMailStatus('모호', '불합격'), '불합격');
+  assert.equal(mergeMailStatus(null, '전형 진행중'), '전형 진행중');
+});
+
+test('열람은 직무명이 없거나 확신이 낮아도 같은 회사 지원 건이 하나면 붙이고, 여럿이면 직무명이 같은 건에만 붙인다', async () => {
+  const { applyInterpretation } = await import('../dist/mail/apply.js');
+  const s = await setup();
+  try {
+    await s.signup('a@example.com');
+    const db = openDatabase(s.path);
+    try {
+      const userId = db.prepare('SELECT id FROM users').get().id;
+      const app = (id, company, role) => db.prepare("INSERT INTO applications (id, user_id, company, role_title, status, created_at, updated_at, origin) VALUES (?, ?, ?, ?, '지원 완료', '2026-11-15', '2026-11-15', 'mail')").run(id, userId, company, role);
+      app('one', '가상회사', '프론트엔드 개발자');
+      app('two-a', '둘회사', '프론트엔드 개발자');
+      app('two-b', '둘회사', '백엔드 개발자');
+      const read = (i, company, roleTitle, confidence = 'low') => {
+        db.prepare("INSERT INTO mail_messages (id, user_id, provider, message_key, received_at, subject, classification, outcome, processed_at) VALUES (?, ?, 'naver', ?, NULL, '이력서를 열람했습니다', '열람', 'unlinked', '2026-11-15')").run(`r${i}`, userId, `<r${i}>`);
+        return applyInterpretation(db, { id: `r${i}`, userId, messageKey: `<r${i}>`, subject: '이력서를 열람했습니다', receivedAt: null, verdict: { status: '열람', evidence: null, platform: '잡코리아', postingKeys: [] } }, { isRecruiting: true, company, roleTitle, status: '열람', confidence });
+      };
+      assert.equal(read(1, '(주)가상회사', null), 'applied');
+      assert.equal(read(2, '둘회사', null), 'no_change');
+      assert.equal(read(3, '둘회사', '백엔드 개발자'), 'applied');
+      assert.equal(read(4, '없는회사', null), 'no_change');
+      const status = id => db.prepare('SELECT status, read_status FROM applications WHERE id = ?').get(id);
+      assert.deepEqual({ ...status('one') }, { status: '지원 완료', read_status: '열람' });
+      assert.notEqual(status('two-a').read_status, '열람');
+      assert.equal(status('two-b').read_status, '열람');
+      assert.equal(db.prepare('SELECT count(*) n FROM review_requests').get().n, 0);
+    } finally { db.close(); }
+  } finally { await s.done(); }
+});
