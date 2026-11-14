@@ -1,7 +1,7 @@
 ---
 title: 기술 규칙
 kind: rule
-last_verified: 2026-11-10
+last_verified: 2026-11-14
 ---
 
 # 기술 규칙
@@ -10,9 +10,9 @@ last_verified: 2026-11-10
 
 개발 Node는 `.node-version`, 패키지 관리자는 루트 package.json, 공통 라이브러리 선언은 pnpm-workspace.yaml, 실제 해석 버전은 pnpm-lock.yaml이 소유한다. mise.toml은 로컬 도구 선택을 연결한다. Electron에 포함된 Node는 개발 Node와 별개이며 DB를 실행하지 않는다.
 
-서버는 Fastify 5, 로컬 관계형 DB는 SQLite와 Node 내장 `node:sqlite`를 사용한다. 단일 서버·작업자, 트랜잭션·고유 제약을 사용할 수 있는 초기 로컬 개발 선택이다. 내장 SQLite API의 안정성 상태는 Node 버전에 종속되며 현재 실행 시 실험적 경고가 발생할 수 있다. 작은 동기 쿼리용으로 한정하고 수집·추출처럼 오래 걸리는 처리는 요청 경로에 넣지 않는다. 운영 DB·배포 환경은 아직 결정하지 않았다.
+서버는 Fastify 5, 로컬 관계형 DB는 SQLite와 Node 내장 `node:sqlite`를 사용한다. 단일 서버·작업자, 트랜잭션·고유 제약을 사용할 수 있는 초기 로컬 개발 선택이다. 내장 SQLite API의 안정성 상태는 Node 버전에 종속되며 현재 실행 시 실험적 경고가 발생할 수 있다. 작은 동기 쿼리용으로 한정하고 수집·추출처럼 오래 걸리는 처리는 요청 경로에 넣지 않는다. 운영 환경은 홈서버 한 대(Ubuntu)이며 웹·API·SQLite를 함께 실행하고 Tailscale 사설망으로만 접속한다. 개발은 Mac, 빌드·실행은 홈서버에서 한다(사용자 결정 2026-11-14).
 
-AI 처리는 OpenAI API(사용자 결정 2026-11-07)를 서버에서만 호출한다. SDK 없이 fetch로 Responses API의 JSON Schema 구조화 출력을 쓰고, 응답은 공통 계약 schema로 다시 검증한다. 서버의 사용자 요청·작업은 그 사용자가 등록한 본인 키·모델로만 호출한다(`AsyncLocalStorage` 범위, 사용자 결정 2026-11-10). 키는 등록 시 OpenAI 모델 조회로 확인한 뒤 연결 비밀정보와 같은 키로 암호화해 `ai_settings`에 저장하고 끝 4자리만 응답한다. 키가 없으면 미설정이며 환경 변수 키(`OPENAI_API_KEY`, `NEXTSTEP_OPENAI_MODEL`)로 대신하지 않는다. 환경 변수 키는 평가·검증 명령에서만 쓴다. 키를 로그·클라이언트에 두지 않는다. 이력서·공고·메일 본문은 구분자 안의 데이터로만 전달하고, 외부 전달 범위는 사용자에게 안내한다. 메일 조회는 imapflow, PDF 본문 추출은 pdfjs-dist legacy 빌드를 서버에서만 사용한다. IMAP은 읽기 전용(EXAMINE)으로 열고 플래그를 바꾸지 않는다. PDF는 크기·처리 시간 제한 안에서 텍스트 레이어만 읽으며 OCR을 하지 않는다. 공고 수집은 사람 속도로 요청하고 로그인·차단 우회를 하지 않는다. 1차 세 출처는 자동 수집하며 약관 위험과 결정 근거는 기술 설계 부록 D절이 소유한다.
+AI 처리는 최종적으로 홈서버의 로컬 LLM 하나로만 한다(사용자 결정 2026-11-14). 구현 기간에는 현재 OpenAI 경로를 공고 추출 위주로 최소한만 쓰고 마지막에 로컬로 바꾼다. Ollama를 `127.0.0.1`에만 열어 서버가 fetch로 호출하고, JSON Schema 구조화 출력을 받아 공통 계약 schema로 다시 검증한다. 후보 모델은 Qwen3 4B(Q4_K_M)이며 정답 사례 측정으로 확정한다. 로컬 LLM은 공고·서류·메일의 정보 추출만 하고 추천 분류는 서버 규칙이 한다. 로컬 전환 후에는 외부 AI API를 호출하지 않는다. 현재 코드는 OpenAI Responses API와 사용자별 키(`ai_settings`)를 쓰며 P1-10에서 제거한다. 이력서·공고·메일 본문은 구분자 안의 데이터로만 전달한다. 메일 조회는 imapflow, PDF 본문 추출은 pdfjs-dist legacy 빌드를 서버에서만 사용한다. IMAP은 읽기 전용(EXAMINE)으로 열고 플래그를 바꾸지 않는다. PDF는 크기·처리 시간 제한 안에서 텍스트 레이어만 읽는다(스캔 PDF OCR과 Notion ZIP은 P1-11에서 추가하며 도구 선택은 그때 이 문서에 적는다). 공고 수집은 사람 속도로 요청하고 로그인·차단 우회를 하지 않는다. 출처는 자동 수집하며(현재 코드: 사람인·잡코리아·자소설닷컴, 범위: 원티드·점핏 추가) 약관 위험과 결정 근거는 기술 설계 부록 D절이 소유한다.
 
 Fastify의 [Node 지원 정책](https://fastify.dev/docs/latest/Reference/LTS/), Node의 [SQLite API](https://nodejs.org/docs/latest-v24.x/api/sqlite.html), Electron의 [보안 권고](https://www.electronjs.org/docs/latest/tutorial/security)를 기준으로 설치·타입·실행 호환성을 검증한다. 버전 문자열만으로 호환성을 보장하지 않는다.
 
@@ -34,6 +34,6 @@ Next.js App Router·React·Tailwind CSS로 웹을 구현한다. 화면과 공통
 
 API는 기본 loopback에만 바인딩하고 개인 데이터를 제공하는 엔드포인트는 인증·사용자 범위와 삭제 경합 검증을 갖춘 뒤 추가한다. 초대 인증은 운영자가 발급한 1회용 초대 코드(해시 저장, 14일 만료, 초대 링크 `/?invite=` 로 전달하고 가입 후 주소에서 지움)로 가입하고 이메일·비밀번호로 로그인한다. 비밀번호는 Node 내장 scrypt로 해시하고, 세션은 무작위 토큰의 해시를 DB에 저장해 14일 후 만료하며 HttpOnly·SameSite=Lax 쿠키로 전달한다(HTTPS 배포는 Secure). 로그인 실패는 이메일별 15분 5회로 제한한다. 개인 API는 세션에서 얻은 사용자 ID로만 범위를 정하고 다른 사용자 자료는 404로 답한다. 웹은 동일 출처 경유 route가 허용 경로만 API로 전달하고 Origin이 다른 변경 요청을 거부한다. 계정 삭제는 외래키 연쇄로 세션·소유 자료를 지운다. 공고는 갱신을 요청한 사용자의 자료로만 저장하고(`postings.owner_user_id`) 다른 사용자와 공유하지 않는다. SQLite 파일은 서버의 무시된 비공개 경로에 두고 외래키·WAL·busy timeout을 적용한다. DB 스키마 버전은 트랜잭션으로 전진하며 미래 버전은 거부한다.
 
-Electron은 nodeIntegration=false, contextIsolation=true, sandbox=true, webSecurity=true를 명시한다. preload·IPC는 현재 필요 없어 제공하지 않는다. 서비스 origin 밖 이동·리다이렉트와 webview를 막고 권한 요청을 거부한다. 외부 HTTPS 링크는 사용자 확인 후 기본 브라우저로 연다. 개발 모드에만 loopback HTTP를 허용한다. 배포용 서비스 origin은 소유한 HTTPS 주소를 설정해야 한다. 자격정보가 포함된 URL·file/javascript 등 스킴은 거부한다.
+Electron은 기획에서 제거했고 P1-14에서 workspace를 지운다(2026-11-14). 지우기 전까지는 nodeIntegration=false, contextIsolation=true, sandbox=true, webSecurity=true를 명시한다. preload·IPC는 현재 필요 없어 제공하지 않는다. 서비스 origin 밖 이동·리다이렉트와 webview를 막고 권한 요청을 거부한다. 외부 HTTPS 링크는 사용자 확인 후 기본 브라우저로 연다. 개발 모드에만 loopback HTTP를 허용한다. 배포용 서비스 origin은 소유한 HTTPS 주소를 설정해야 한다. 자격정보가 포함된 URL·file/javascript 등 스킴은 거부한다.
 
 문서·메일·공고는 입력 자료이며 도구 실행이나 정책 변경 지시로 취급하지 않는다. 원문·연결 비밀정보의 평문 로그를 만들지 않는다. 실제 개인 데이터 투입 전 인증·암호화·보관·삭제 구현을 검증해야 한다.
