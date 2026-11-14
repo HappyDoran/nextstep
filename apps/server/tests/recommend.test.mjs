@@ -189,3 +189,35 @@ test('사용자 필터에 맞지 않는 공고는 판정하지 않고, 필터를
     assert.equal((await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items.length, 0);
   } finally { await s.done(); }
 });
+
+test('좋아요·별로·제외 복구는 그 사용자 목록에만 반영되고 다시 판정해도 유지된다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const b = await s.signup('b@example.com');
+    await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+    let db = openDatabase(s.path);
+    try { await runNext(db, createHandler(db, fakeDeps([]))); } finally { db.close(); }
+    const [first, second] = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items;
+    const fb = (cookie, id, body) => s.app.inject({ method: 'PUT', url: `/recommendations/${id}/feedback`, headers: { cookie }, payload: body });
+    assert.equal((await fb(b, first.postingId, { feedback: 'up' })).statusCode, 404);
+    assert.equal((await fb(a, first.postingId, {})).statusCode, 400);
+    assert.deepEqual((await fb(a, second.postingId, { feedback: 'up' })).json(), { feedback: 'up', restored: false, hidden: false });
+    // 별로는 숨김으로도 처리하고, 피드백을 지우면 숨김도 풀린다.
+    assert.equal((await fb(a, first.postingId, { feedback: 'down' })).json().hidden, true);
+    assert.equal((await fb(a, first.postingId, { feedback: null })).json().hidden, false);
+    assert.equal((await fb(a, first.postingId, { restored: true })).json().restored, true);
+    // 같은 분류 안에서 좋아요가 위로 온다.
+    let items = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items;
+    assert.equal(items[0].postingId, second.postingId);
+    // 판정 기준이 바뀌어 다시 판정해도 피드백·복구는 남는다.
+    db = openDatabase(s.path);
+    try { db.prepare("UPDATE recommendations SET basis = 'old'").run(); } finally { db.close(); }
+    await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+    db = openDatabase(s.path);
+    try { await runNext(db, createHandler(db, fakeDeps([]))); } finally { db.close(); }
+    items = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items;
+    assert.equal(items.find(i => i.postingId === second.postingId).feedback, 'up');
+    assert.equal(items.find(i => i.postingId === first.postingId).restored, true);
+  } finally { await s.done(); }
+});

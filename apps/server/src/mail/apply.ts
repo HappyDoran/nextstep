@@ -12,7 +12,7 @@ const now = () => new Date().toISOString();
 export type StoredMessage = { id: string; userId: string; messageKey: string; verdict: MailVerdict; subject: string; receivedAt: string | null };
 export type Outcome = 'applied' | 'created' | 'no_change' | 'review' | 'suppressed' | 'unlinked';
 
-type AppRow = { id: string; status: string; read_status: string; posting_url: string | null };
+type AppRow = { id: string; status: string; read_status: string; posting_url: string | null; locked_fields?: string };
 
 function logEvent(db: DatabaseSync, appId: string, field: 'status' | 'readStatus', from: string, to: string, messageId: string) {
   db.prepare("INSERT INTO application_events (id, application_id, field, from_value, to_value, source, at, message_id) VALUES (?, ?, ?, ?, ?, 'mail', ?, ?)")
@@ -29,13 +29,18 @@ function review(db: DatabaseSync, msg: StoredMessage, reason: '연결 불명' | 
 export function applyToApplication(db: DatabaseSync, msg: StoredMessage, app: AppRow, options: { force?: boolean } = {}): Outcome {
   const status = msg.verdict.status;
   db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ?').run(app.id, msg.id);
+  // 사용자가 잠근 필드는 메일로 바꾸지 않는다. 확인 목록에서 사용자가 직접 확정한 경우(force)만 반영한다.
+  const locked = JSON.parse(app.locked_fields ?? '[]') as string[];
   if (status === '열람') {
+    if (!options.force && locked.includes('readStatus')) return 'no_change';
     if (app.read_status === '열람') return 'no_change';
     db.prepare("UPDATE applications SET read_status = '열람', updated_at = ? WHERE id = ?").run(now(), app.id);
     logEvent(db, app.id, 'readStatus', app.read_status, '열람', msg.id);
     return 'applied';
   }
   if (status === '모호') return review(db, msg, '모호');
+  // 모호한 결과는 잠금과 상관없이 확인받는다. 확정된 결과만 잠금을 지킨다.
+  if (!options.force && locked.includes('status')) return 'no_change';
   // 사용자가 확인 목록에서 확정하면 순서 규칙 대신 사용자 선택을 따른다.
   if (options.force) {
     if (app.status === status) return 'no_change';
@@ -55,7 +60,7 @@ export function applyToApplication(db: DatabaseSync, msg: StoredMessage, app: Ap
 export function applyMessage(db: DatabaseSync, msg: StoredMessage): Outcome {
   if (db.prepare('SELECT 1 FROM evidence_suppressions WHERE user_id = ? AND message_key = ?').get(msg.userId, msg.messageKey)) return 'suppressed';
   const keys = new Set(msg.verdict.postingKeys);
-  const apps = db.prepare('SELECT id, status, read_status, posting_url FROM applications WHERE user_id = ?').all(msg.userId) as AppRow[];
+  const apps = db.prepare('SELECT id, status, read_status, posting_url, locked_fields FROM applications WHERE user_id = ?').all(msg.userId) as AppRow[];
   const matches = keys.size ? apps.filter(a => a.posting_url && keys.has(postingKey(a.posting_url) ?? '')) : [];
   if (matches.length === 1) return applyToApplication(db, msg, matches[0]!);
   if (matches.length > 1) return review(db, msg, '연결 불명');
@@ -94,7 +99,7 @@ export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp
   }
   const company = normalizeName(interp.company);
   const role = normalizeName(interp.roleTitle);
-  const apps = (db.prepare('SELECT id, company, role_title, status, read_status, posting_url FROM applications WHERE user_id = ?').all(msg.userId) as (AppRow & { company: string; role_title: string })[])
+  const apps = (db.prepare('SELECT id, company, role_title, status, read_status, posting_url, locked_fields FROM applications WHERE user_id = ?').all(msg.userId) as (AppRow & { company: string; role_title: string })[])
     .filter(a => normalizeName(a.company) === company);
   const exact = apps.filter(a => normalizeName(a.role_title) === role);
   if (exact.length === 1) return applyToApplication(db, verdictMsg, exact[0]!);

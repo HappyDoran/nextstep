@@ -4,8 +4,8 @@ import type { FastifyInstance } from 'fastify';
 import { applicationCreateSchema, applicationDetailSchema, applicationSchema, applicationUpdateSchema } from '@nextstep/contracts';
 import { requireUser } from './auth.js';
 
-type Row = { id: string; company: string; role_title: string; posting_url: string | null; status: string; read_status: string; created_at: string; updated_at: string };
-const toApplication = (r: Row) => applicationSchema.parse({ id: r.id, company: r.company, roleTitle: r.role_title, postingUrl: r.posting_url, status: r.status, readStatus: r.read_status, createdAt: r.created_at, updatedAt: r.updated_at });
+type Row = { id: string; company: string; role_title: string; posting_url: string | null; status: string; read_status: string; locked_fields: string; created_at: string; updated_at: string };
+const toApplication = (r: Row) => applicationSchema.parse({ id: r.id, company: r.company, roleTitle: r.role_title, postingUrl: r.posting_url, status: r.status, readStatus: r.read_status, lockedFields: JSON.parse(r.locked_fields), createdAt: r.created_at, updatedAt: r.updated_at });
 type EventRow = { field: string; from_value: string | null; to_value: string; source: string; at: string };
 
 // 모든 조회·변경·삭제는 세션 사용자 ID 조건을 함께 건다. 다른 사용자의 자료는 존재 여부도 드러내지 않고 404로 답한다.
@@ -65,9 +65,10 @@ export function registerApplications(app: FastifyInstance, db: DatabaseSync) {
         posting_url: patch.postingUrl === undefined ? current.posting_url : patch.postingUrl,
         status: patch.status ?? current.status,
         read_status: patch.readStatus ?? current.read_status,
+        locked_fields: patch.lockedFields ? JSON.stringify([...new Set(patch.lockedFields)]) : current.locked_fields,
       };
-      db.prepare('UPDATE applications SET company = ?, role_title = ?, posting_url = ?, status = ?, read_status = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-        .run(next.company, next.role_title, next.posting_url, next.status, next.read_status, at, current.id, user.id);
+      db.prepare('UPDATE applications SET company = ?, role_title = ?, posting_url = ?, status = ?, read_status = ?, locked_fields = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+        .run(next.company, next.role_title, next.posting_url, next.status, next.read_status, next.locked_fields, at, current.id, user.id);
       const log = db.prepare("INSERT INTO application_events (id, application_id, field, from_value, to_value, source, at) VALUES (?, ?, ?, ?, ?, 'manual', ?)");
       if (next.status !== current.status) log.run(randomUUID(), current.id, 'status', current.status, next.status, at);
       if (next.read_status !== current.read_status) log.run(randomUUID(), current.id, 'readStatus', current.read_status, next.read_status, at);

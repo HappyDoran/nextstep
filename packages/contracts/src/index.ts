@@ -32,6 +32,8 @@ export const applicationSchema = z.object({
   postingUrl: z.string().nullable(),
   status: applicationStatusSchema,
   readStatus: readStatusSchema,
+  // 사용자가 잠근 필드는 메일로 바꾸지 않는다(기획서 5절).
+  lockedFields: z.array(z.enum(['status', 'readStatus'])).default([]),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -42,6 +44,7 @@ export const applicationUpdateSchema = z.object({
   postingUrl: z.url({ protocol: /^https$/ }).max(2000).nullable().optional(),
   status: applicationStatusSchema.optional(),
   readStatus: readStatusSchema.optional(),
+  lockedFields: z.array(z.enum(['status', 'readStatus'])).max(2).optional(),
 }).strict().refine(value => Object.keys(value).length > 0);
 export const applicationEventSchema = z.object({
   field: z.enum(['status', 'readStatus']),
@@ -118,8 +121,12 @@ export const recommendationSchema = z.object({
   unknown: z.array(z.string()),
   reason: z.string(),
   hidden: z.boolean(),
+  // 사용자 피드백(좋아요는 위로, 별로는 숨김)과 제외 복구. 그 사용자 목록에만 쓰고 회사·직무 전체 차단으로 해석하지 않는다.
+  feedback: z.enum(['up', 'down']).nullable().default(null),
+  restored: z.boolean().default(false),
   evaluatedAt: z.string(),
 });
+export const recommendationFeedbackSchema = z.object({ feedback: z.enum(['up', 'down']).nullable().optional(), restored: z.boolean().optional() }).strict().refine(v => Object.keys(v).length > 0);
 export type Recommendation = z.infer<typeof recommendationSchema>;
 export const recommendationListSchema = z.object({ items: z.array(recommendationSchema), lastJob: jobSchema.nullable() });
 
@@ -159,6 +166,8 @@ export const reviewSchema = z.object({
   platform: z.string().nullable(),
   classification: mailStatusSchema,
   evidence: z.string().nullable(),
+  // 보류한 항목은 목록 아래에 따로 두고 언제든 다시 처리한다.
+  held: z.boolean().default(false),
 });
 export type Review = z.infer<typeof reviewSchema>;
 const reviewStatus = z.enum(['지원 완료', '전형 진행중', '합격', '불합격', '열람']).optional();
@@ -166,6 +175,7 @@ export const reviewActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('link'), applicationId: z.string().min(1), status: reviewStatus }).strict(),
   z.object({ action: z.literal('create'), company: z.string().trim().min(1).max(200), roleTitle: z.string().trim().min(1).max(200), status: reviewStatus }).strict(),
   z.object({ action: z.literal('ignore') }).strict(),
+  z.object({ action: z.literal('hold'), held: z.boolean() }).strict(),
 ]);
 
 // 자동 갱신 상태: 최근 예약 실행 결과(앱이 꺼져 있던 동안 처리된 것 포함)를 다음 실행에서 보여 준다.

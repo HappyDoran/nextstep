@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -264,6 +264,14 @@ export function openDatabase(filename: string) {
           PRIMARY KEY (user_id, mailbox)
         ) STRICT;
         PRAGMA user_version = 13;`);
+    }
+    if (version < 14) {
+      // P1-13: 추천 피드백·제외 복구, 지원 건 필드 잠금(JSON 배열), 확인 요청 보류.
+      db.exec(`ALTER TABLE recommendations ADD COLUMN feedback TEXT;
+        ALTER TABLE recommendations ADD COLUMN restored INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE applications ADD COLUMN locked_fields TEXT NOT NULL DEFAULT '[]';
+        ALTER TABLE review_requests ADD COLUMN held INTEGER NOT NULL DEFAULT 0;
+        PRAGMA user_version = 14;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

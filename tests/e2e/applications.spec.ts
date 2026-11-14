@@ -27,8 +27,8 @@ test('지원 직접 등록·검색·필터·공고 열기와 접수 구분·상�
     await expect(apps).toHaveCount(1);
     await page.getByLabel('검색 (회사·직무)').fill('');
     await commerce.getByRole('button', { name: '상세·수정' }).click();
-    await commerce.getByLabel('상태').selectOption('지원 완료');
-    await commerce.getByLabel('열람').selectOption('미열람');
+    await commerce.getByRole('combobox', { name: /^상태/ }).selectOption('지원 완료');
+    await commerce.getByRole('combobox', { name: /^열람/ }).selectOption('미열람');
     await commerce.getByRole('button', { name: '저장' }).click();
     await expect(commerce.getByText('저장했습니다.')).toBeVisible();
     await expect(commerce.getByText(/상태 미지원 → 지원 완료/)).toBeVisible();

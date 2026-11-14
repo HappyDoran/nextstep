@@ -252,3 +252,31 @@ test('조회 기간을 골라 연결하고, 과거 범위 넓히기는 현재 �
     } finally { raw.close(); }
   } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('잠근 상태는 메일로 바뀌지 않고, 확인 요청은 보류했다가 다시 처리할 수 있다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const b = await s.signup('b@example.com');
+    await s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 'tester@naver.com', appPassword: 'app-password', consent: true } });
+    const app1 = (await s.app.inject({ method: 'POST', url: '/applications', headers: { cookie: a }, payload: { company: '가상회사', roleTitle: '프론트엔드', postingUrl: 'https://www.wanted.co.kr/wd/123' } })).json();
+    const locked = (await s.app.inject({ method: 'PATCH', url: `/applications/${app1.id}`, headers: { cookie: a }, payload: { status: '지원 완료', lockedFields: ['status'] } })).json();
+    assert.deepEqual(locked.lockedFields, ['status']);
+    s.state.mails = [
+      mail(1, 'hr@example.com', '서류 합격 및 면접 일정 안내', '', ['https://www.wanted.co.kr/wd/123']),
+      mail(2, 'hr@example.com', '채용 결과 안내', '결과는 채용 홈페이지에서 확인하세요.', ['https://www.wanted.co.kr/wd/123']),
+    ];
+    await s.run();
+    // 잠근 상태는 메일(서류 합격)로 바뀌지 않는다.
+    assert.equal((await s.app.inject({ url: `/applications/${app1.id}`, headers: { cookie: a } })).json().status, '지원 완료');
+    // 모호한 결과는 확인 목록으로. 보류하면 목록 아래로 가고 다른 사용자는 못 바꾼다.
+    const [r] = (await s.app.inject({ url: '/reviews', headers: { cookie: a } })).json();
+    assert.equal(r.held, false);
+    assert.equal((await s.app.inject({ method: 'POST', url: `/reviews/${r.id}`, headers: { cookie: b }, payload: { action: 'hold', held: true } })).statusCode, 404);
+    assert.equal((await s.app.inject({ method: 'POST', url: `/reviews/${r.id}`, headers: { cookie: a }, payload: { action: 'hold', held: true } })).statusCode, 204);
+    assert.equal((await s.app.inject({ url: '/reviews', headers: { cookie: a } })).json()[0].held, true);
+    // 보류 중에도 사용자가 직접 확정하면 잠금과 상관없이 반영된다.
+    assert.equal((await s.app.inject({ method: 'POST', url: `/reviews/${r.id}`, headers: { cookie: a }, payload: { action: 'link', applicationId: app1.id, status: '전형 진행중' } })).statusCode, 204);
+    assert.equal((await s.app.inject({ url: `/applications/${app1.id}`, headers: { cookie: a } })).json().status, '전형 진행중');
+  } finally { await s.done(); }
+});

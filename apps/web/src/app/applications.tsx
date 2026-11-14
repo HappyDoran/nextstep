@@ -18,6 +18,9 @@ const label = 'flex flex-col gap-2 text-body-sm';
 function formBody(form: FormData, forUpdate: boolean) {
   const body: Record<string, unknown> = Object.fromEntries(form.entries());
   if (body.postingUrl === '') { if (forUpdate) body.postingUrl = null; else delete body.postingUrl; }
+  // 잠금 체크 상자는 여러 값이므로 배열로 보낸다(수정 때만).
+  delete body.lock;
+  if (forUpdate) body.lockedFields = form.getAll('lock');
   return JSON.stringify(body);
 }
 
@@ -111,6 +114,10 @@ function ApplicationDetail({ id, userKey }: { id: string; userKey: string[] }) {
       <label className={label}>공고 URL<input name="postingUrl" type="url" pattern="https://.*" defaultValue={d.postingUrl ?? ''} className={fieldClass} /></label>
       <label className={label}>상태<select name="status" defaultValue={d.status} className={fieldClass}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select></label>
       <label className={label}>열람<select name="readStatus" defaultValue={d.readStatus} className={fieldClass}>{READ_STATUSES.map(s => <option key={s}>{s}</option>)}</select></label>
+      <fieldset className="flex flex-col gap-2 text-body-sm md:col-span-2"><legend className="mb-1">잠금 (잠근 값은 메일로 바뀌지 않습니다. 확인 목록에서 직접 확정하면 바뀝니다)</legend>
+        <label className="flex items-center gap-2"><input type="checkbox" name="lock" value="status" defaultChecked={d.lockedFields.includes('status')} className="size-icon-md accent-primary" />상태 잠금</label>
+        <label className="flex items-center gap-2"><input type="checkbox" name="lock" value="readStatus" defaultChecked={d.lockedFields.includes('readStatus')} className="size-icon-md accent-primary" />열람 잠금</label>
+      </fieldset>
       <div className="flex flex-wrap items-end gap-3">
         <Button type="submit" disabled={update.isPending}>저장</Button>
         <Button disabled={remove.isPending} className="border-destructive !bg-transparent !text-destructive" onClick={() => { if (window.confirm('이 지원 건과 변경 이력을 삭제합니다.')) remove.mutate(); }}>삭제</Button>

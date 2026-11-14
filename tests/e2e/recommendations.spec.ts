@@ -57,7 +57,10 @@ test('추천 목록 표시·관심 없음·지원 현황 저장과 작업 실패
 
     // 판정 결과 화면은 응답을 모의로 바꿔 표시 규칙만 확인한다(실제 수집·AI 검증 아님).
     const item = { postingId: 'p1', source: 'wanted', linkOnly: true, url: 'https://www.wanted.co.kr/wd/1', externalApplyUrl: null, title: '가상 프론트엔드', company: '가상회사', deadline: null, alwaysHire: false, postingStatus: '미확인', companyType: null, employeeCount: null, checkedAt: '2026-11-07T00:00:00.000Z', classification: '미확인', met: ['React 실무 3년'], unmet: [], unknown: ['기업 유형·규모 미기재'], reason: '필수 기술 일부 확인 불가', hidden: false, evaluatedAt: '2026-11-07T00:00:00.000Z' };
-    await page.route('**/api/recommendations', route => route.fulfill({ json: { items: [item], lastJob: null } }));
+    const excluded = { ...item, postingId: 'p2', source: 'jobkorea', linkOnly: false, url: 'https://www.jobkorea.co.kr/Recruit/GI_Read/2', title: '가상 백엔드', company: '다른회사', classification: '제외', unmet: ['공고 직무가 희망 직무와 다름'], reason: '공고 직무가 희망 직무와 다름' };
+    await page.route('**/api/recommendations', route => route.fulfill({ json: { items: [item, excluded], lastJob: null } }));
+    let feedbackBody: unknown;
+    await page.route('**/api/recommendations/p2/feedback', route => { feedbackBody = route.request().postDataJSON(); return route.fulfill({ json: { feedback: null, restored: true, hidden: false } }); });
     await page.reload();
     const card = page.getByRole('listitem').filter({ hasText: '가상 프론트엔드' });
     await expect(card).toContainText('마감 미확인');
@@ -66,8 +69,21 @@ test('추천 목록 표시·관심 없음·지원 현황 저장과 작업 실패
     await expect(card.getByRole('link', { name: /지원하기/ })).toHaveAttribute('href', 'https://www.wanted.co.kr/wd/1');
     await card.getByRole('button', { name: '지원 현황에 저장' }).click();
     await expect(card.getByRole('button', { name: '지원 현황에 저장됨' })).toBeVisible();
+    // 분류별 건수와 고급 필터(출처·검색).
+    await expect(page.getByRole('button', { name: '제외 1' })).toBeVisible();
+    await page.getByLabel('출처').selectOption('jobkorea');
+    await expect(page.getByRole('listitem').filter({ hasText: '가상 프론트엔드' })).toHaveCount(0);
+    await page.getByLabel('출처').selectOption('전체');
+    await page.getByLabel('검색(제목·회사)').fill('다른회사');
+    await expect(page.getByRole('listitem').filter({ hasText: '가상 백엔드' })).toBeVisible();
+    await expect(page.getByRole('listitem').filter({ hasText: '가상 프론트엔드' })).toHaveCount(0);
+    // 제외 공고는 직접 복구할 수 있다.
+    await page.getByRole('listitem').filter({ hasText: '가상 백엔드' }).getByRole('button', { name: '제외 복구' }).click();
+    await expect.poll(() => feedbackBody).toEqual({ restored: true });
+    await page.getByLabel('검색(제목·회사)').fill('');
     await page.getByRole('button', { name: '도전' }).click();
     await expect(page.getByRole('status').filter({ hasText: '조건에 맞는 추천이 없습니다.' })).toBeVisible();
+    await page.unroute('**/api/recommendations/p2/feedback');
     await page.unroute('**/api/recommendations');
     await page.goto('/');
     const saved = page.getByRole('listitem').filter({ hasText: '가상 프론트엔드' });

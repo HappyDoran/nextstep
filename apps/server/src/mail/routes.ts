@@ -9,7 +9,7 @@ import { applyToApplication, type StoredMessage } from './apply.js';
 import { MailSourceError, type MailSource } from './naver.js';
 
 type ConnRow = { account: string; status: string; consent_at: string; last_success_at: string | null; last_error: string | null; range_incomplete: number; covered_since: string | null; backfill_since: string | null };
-type ReviewRow = { id: string; reason: string; status: string; created_at: string; message_id: string; message_key: string; subject: string; received_at: string | null; platform: string | null; classification: string; evidence: string | null };
+type ReviewRow = { id: string; reason: string; status: string; held: number; created_at: string; message_id: string; message_key: string; subject: string; received_at: string | null; platform: string | null; classification: string; evidence: string | null };
 
 export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: Buffer, source: MailSource) {
   app.get('/mail/connection', async (request, reply) => {
@@ -94,9 +94,9 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
   app.get('/reviews', async (request, reply) => {
     const user = requireUser(db, request, reply);
     if (!user) return reply;
-    const rows = db.prepare(`SELECT r.id, r.reason, r.status, r.created_at, m.id AS message_id, m.message_key, m.subject, m.received_at, m.platform, m.classification, m.evidence
-      FROM review_requests r JOIN mail_messages m ON m.id = r.message_id WHERE r.user_id = ? AND r.status = '대기' ORDER BY m.received_at DESC`).all(user.id) as ReviewRow[];
-    return rows.map(r => reviewSchema.parse({ id: r.id, reason: r.reason, createdAt: r.created_at, subject: r.subject, receivedAt: r.received_at, platform: r.platform, classification: r.classification, evidence: r.evidence }));
+    const rows = db.prepare(`SELECT r.id, r.reason, r.status, r.held, r.created_at, m.id AS message_id, m.message_key, m.subject, m.received_at, m.platform, m.classification, m.evidence
+      FROM review_requests r JOIN mail_messages m ON m.id = r.message_id WHERE r.user_id = ? AND r.status = '대기' ORDER BY r.held, m.received_at DESC`).all(user.id) as ReviewRow[];
+    return rows.map(r => reviewSchema.parse({ id: r.id, reason: r.reason, createdAt: r.created_at, subject: r.subject, receivedAt: r.received_at, platform: r.platform, classification: r.classification, evidence: r.evidence, held: r.held === 1 }));
   });
 
   // 확인 목록 처리: 연결·새 지원 건으로 확정·무시만 제공한다. 무시한 근거는 다시 요청하지 않는다.
@@ -105,6 +105,11 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
     if (!user) return reply;
     const action = reviewActionSchema.safeParse(request.body);
     if (!action.success) return reply.status(400).send({ message: '요청을 확인하세요.' });
+    // 보류: 처리하지 않고 목록 아래로 옮긴다. 보류를 풀면 다시 위로 온다.
+    if (action.data.action === 'hold') {
+      const r = db.prepare("UPDATE review_requests SET held = ? WHERE id = ? AND user_id = ? AND status = '대기'").run(action.data.held ? 1 : 0, request.params.id, user.id);
+      return r.changes ? reply.status(204).send() : reply.status(404).send({ message: '찾을 수 없습니다.' });
+    }
     db.exec('BEGIN IMMEDIATE');
     try {
       const row = db.prepare("SELECT r.id, m.id AS message_id, m.message_key, m.subject, m.received_at, m.classification, m.platform FROM review_requests r JOIN mail_messages m ON m.id = r.message_id WHERE r.id = ? AND r.user_id = ? AND r.status = '대기'")
@@ -113,7 +118,7 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
       const status = action.data.action === 'ignore' ? null : (action.data.status ?? row.classification);
       const msg: StoredMessage = { id: row.message_id, userId: user.id, messageKey: row.message_key, subject: row.subject, receivedAt: row.received_at, verdict: { status: status as never, evidence: null, platform: row.platform, postingKeys: [] } };
       if (action.data.action === 'link') {
-        const target = db.prepare('SELECT id, status, read_status, posting_url FROM applications WHERE id = ? AND user_id = ?').get(action.data.applicationId, user.id) as { id: string; status: string; read_status: string; posting_url: string | null } | undefined;
+        const target = db.prepare('SELECT id, status, read_status, posting_url, locked_fields FROM applications WHERE id = ? AND user_id = ?').get(action.data.applicationId, user.id) as { id: string; status: string; read_status: string; posting_url: string | null; locked_fields: string } | undefined;
         if (!target || status === '모호') { db.exec('ROLLBACK'); return reply.status(400).send({ message: '연결할 지원 건과 상태를 확인하세요.' }); }
         // 사용자가 확정한 연결은 충돌 확인 없이 반영하되 이력은 남긴다.
         db.prepare("UPDATE review_requests SET status = '처리', resolved_at = ? WHERE id = ?").run(new Date().toISOString(), row.id);

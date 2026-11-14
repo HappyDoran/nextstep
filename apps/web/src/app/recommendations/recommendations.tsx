@@ -8,6 +8,12 @@ import { call, fieldClass, useMe } from '../api-client';
 import { Account } from '../account';
 
 const CLASSES = recommendationClassSchema.options;
+// 사용자가 제외에서 되살린 공고는 '복구' 묶음으로 따로 본다.
+const GROUPS = [...CLASSES, '복구'] as const;
+type Group = (typeof GROUPS)[number];
+const groupOf = (i: Recommendation): Group => (i.restored ? '복구' : i.classification);
+const SORTS = ['분류순', '마감 임박순', '최근 확인순'] as const;
+const DAY = 86_400_000;
 const SOURCE_NAMES = { saramin: '사람인', jobkorea: '잡코리아', jasoseol: '자소설닷컴', wanted: '원티드', jumpit: '점핏' } as const;
 const ERRORS: Record<string, string> = {
   profile_or_resume_missing: '설정에서 이력서와 프로필을 먼저 저장하세요.',
@@ -58,17 +64,31 @@ function RecommendationList({ me }: { me: Me }) {
     mutationFn: async (url: string) => jobSchema.parse(await call('postings/link', { method: 'POST', body: JSON.stringify({ url }), messages: { 400: '사람인·잡코리아·자소설닷컴·원티드·점핏 공고 상세 링크(https)를 넣으세요.' } })),
     onSuccess: j => setJobId(j.id),
   });
-  const [filter, setFilter] = useState<(typeof CLASSES)[number] | '전체'>('전체');
+  const [filter, setFilter] = useState<Group | '전체'>('전체');
   const [showHidden, setShowHidden] = useState(false);
+  // 고급 필터: 출처·마감 임박·검색어·정렬. 서버 판정은 그대로 두고 보는 방식만 바꾼다.
+  const [source, setSource] = useState<keyof typeof SOURCE_NAMES | '전체'>('전체');
+  const [soon, setSoon] = useState(false);
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<(typeof SORTS)[number]>('분류순');
   const busy = running || refresh.isPending || link.isPending;
   const currentJob = job.data ?? list.data?.lastJob ?? null;
-  const items = (list.data?.items ?? []).filter(i => (filter === '전체' || i.classification === filter) && i.hidden === showHidden);
+  const all = list.data?.items ?? [];
+  const [now] = useState(() => Date.now());
+  const q = search.trim().toLowerCase();
+  const matches = (i: Recommendation) => i.hidden === showHidden && (source === '전체' || i.source === source)
+    && (!soon || (!i.alwaysHire && i.deadline !== null && Date.parse(i.deadline) >= now && Date.parse(i.deadline) - now <= 7 * DAY))
+    && (!q || `${i.title} ${i.company}`.toLowerCase().includes(q));
+  const counts = Object.fromEntries(GROUPS.map(g => [g, all.filter(i => matches(i) && groupOf(i) === g).length])) as Record<Group, number>;
+  const items = all.filter(i => matches(i) && (filter === '전체' || groupOf(i) === filter));
+  if (sort === '마감 임박순') items.sort((a, b) => (a.deadline && !a.alwaysHire ? Date.parse(a.deadline) : Infinity) - (b.deadline && !b.alwaysHire ? Date.parse(b.deadline) : Infinity));
+  if (sort === '최근 확인순') items.sort((a, b) => Date.parse(b.checkedAt) - Date.parse(a.checkedAt));
   const submitLink = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); const form = e.currentTarget; link.mutate(String(new FormData(form).get('url')), { onSuccess: () => form.reset() }); };
 
   return <div className="flex flex-col gap-8">
     <section aria-labelledby="refresh-heading" className="flex flex-col gap-3">
       <h1 id="refresh-heading" className="text-title-lg">추천</h1>
-      <p className="text-body-sm text-muted-foreground">판정을 위해 저장한 프로필·이력서 일부와 공고 정보를 본인 OpenAI 키로 보냅니다. 마감·기업 규모는 출처에 적힌 값만 보여 주고 없으면 미확인으로 둡니다.</p>
+      <p className="text-body-sm text-muted-foreground">공고 조건과 서류(이력서·경력기술서·포트폴리오)를 본인 OpenAI 키로 보내 사실만 뽑고, 분류는 정해진 규칙으로 합니다. 좋아요·별로·제외 복구는 내 목록에만 반영됩니다. 마감·기업 규모는 출처에 적힌 값만 보여 주고 없으면 미확인으로 둡니다.</p>
       <FilterSummary me={me} />
       <div><Button disabled={busy} onClick={() => refresh.mutate()}>{busy ? <LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" /> : <RefreshCw className="size-icon-md shrink-0 stroke-icon" aria-hidden="true" />}새로 가져오기</Button></div>
       <JobStatus job={currentJob} />
@@ -82,9 +102,16 @@ function RecommendationList({ me }: { me: Me }) {
     <section aria-labelledby="list-heading">
       <h2 id="list-heading" className="mb-4 text-title">추천 목록</h2>
       <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="분류 필터">
-        {(['전체', ...CLASSES] as const).map(c => <button key={c} type="button" aria-pressed={filter === c} onClick={() => setFilter(c)}
-          className={`min-h-control rounded-control px-4 text-body ${filter === c ? 'bg-muted font-semibold' : 'text-muted-foreground'}`}>{c}</button>)}
+        {(['전체', ...GROUPS] as const).map(c => <button key={c} type="button" aria-pressed={filter === c} onClick={() => setFilter(c)}
+          className={`min-h-control rounded-control px-4 text-body ${filter === c ? 'bg-muted font-semibold' : 'text-muted-foreground'}`}>{c}{c === '전체' ? '' : ` ${counts[c]}`}</button>)}
         <label className="ml-auto flex items-center gap-2 text-body-sm"><input type="checkbox" checked={showHidden} onChange={e => setShowHidden(e.target.checked)} className="size-icon-md accent-primary" />관심 없음만 보기</label>
+      </div>
+      <div className="mb-4 grid gap-3 md:grid-cols-4" role="group" aria-label="고급 필터">
+        <label className="flex flex-col gap-2 text-body-sm">출처<select value={source} onChange={e => setSource(e.target.value as typeof source)} className={fieldClass}>
+          <option value="전체">전체</option>{Object.entries(SOURCE_NAMES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+        <label className="flex flex-col gap-2 text-body-sm">검색(제목·회사)<input value={search} onChange={e => setSearch(e.target.value)} className={fieldClass} /></label>
+        <label className="flex flex-col gap-2 text-body-sm">정렬<select value={sort} onChange={e => setSort(e.target.value as typeof sort)} className={fieldClass}>{SORTS.map(s => <option key={s}>{s}</option>)}</select></label>
+        <label className="flex items-center gap-2 self-end text-body-sm"><input type="checkbox" checked={soon} onChange={e => setSoon(e.target.checked)} className="size-icon-md accent-primary" />7일 안에 마감</label>
       </div>
       {list.isPending ? <p role="status" className="text-muted-foreground">추천을 불러오고 있습니다.</p>
         : list.isError ? <div><p role="alert" className="mb-4 text-destructive">{list.error.message}</p><Button onClick={() => { void list.refetch(); }}>다시 시도</Button></div>
@@ -97,6 +124,8 @@ function RecommendationList({ me }: { me: Me }) {
 function RecommendationItem({ item, me, listKey }: { item: Recommendation; me: Me; listKey: string[] }) {
   const client = useQueryClient();
   const hide = useMutation({ mutationFn: (hidden: boolean) => call(`recommendations/${item.postingId}/hide`, { method: 'PUT', body: JSON.stringify({ hidden }) }), onSuccess: () => client.invalidateQueries({ queryKey: listKey }) });
+  // 피드백(좋아요는 같은 분류 안에서 위로, 별로는 숨김)과 제외 복구는 내 목록에만 반영된다.
+  const feedback = useMutation({ mutationFn: (body: { feedback?: 'up' | 'down' | null; restored?: boolean }) => call(`recommendations/${item.postingId}/feedback`, { method: 'PUT', body: JSON.stringify(body) }), onSuccess: () => client.invalidateQueries({ queryKey: listKey }) });
   // 지원 현황에 미지원으로 저장만 한다. 지원 완료는 사용자가 직접 바꾼다.
   const track = useMutation({
     mutationFn: () => call('applications', { method: 'POST', body: JSON.stringify({ company: item.company.slice(0, 200), roleTitle: item.title.slice(0, 200), postingUrl: item.url }) }),
@@ -108,6 +137,8 @@ function RecommendationItem({ item, me, listKey }: { item: Recommendation; me: M
   return <li className="rounded-control border border-border p-4">
     <div className="mb-2 flex flex-wrap items-center gap-2">
       <span className="rounded-control bg-muted px-3 py-1 text-body-sm font-semibold">{item.classification}</span>
+      {item.restored && <span className="rounded-control border border-border px-3 py-1 text-body-sm">직접 복구</span>}
+      {item.feedback === 'up' && <span className="rounded-control border border-border px-3 py-1 text-body-sm">좋아요</span>}
       <span className="text-body-sm text-muted-foreground">{SOURCE_NAMES[item.source]}{item.linkOnly ? ' · 링크 판정' : ''} · {item.postingStatus} · {deadline}</span>
     </div>
     <strong className="block text-body font-semibold">{item.title}</strong>
@@ -119,9 +150,12 @@ function RecommendationItem({ item, me, listKey }: { item: Recommendation; me: M
       <a href={item.externalApplyUrl ?? item.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-body-sm text-primary underline">지원하기(외부)<ExternalLink className="size-icon-sm shrink-0 stroke-icon" aria-hidden="true" /></a>
       {item.externalApplyUrl && <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-body-sm underline">원문 보기</a>}
       <button type="button" disabled={track.isPending || track.isSuccess} onClick={() => track.mutate()} className="min-h-control rounded-control px-3 text-body-sm underline">{track.isSuccess ? '지원 현황에 저장됨' : '지원 현황에 저장'}</button>
-      <button type="button" disabled={hide.isPending} onClick={() => hide.mutate(!item.hidden)} className="min-h-control rounded-control px-3 text-body-sm underline">{item.hidden ? '숨김 해제' : '관심 없음'}</button>
+      <button type="button" aria-pressed={item.feedback === 'up'} disabled={feedback.isPending} onClick={() => feedback.mutate({ feedback: item.feedback === 'up' ? null : 'up' })} className="min-h-control rounded-control px-3 text-body-sm underline">{item.feedback === 'up' ? '좋아요 취소' : '좋아요'}</button>
+      {item.feedback !== 'down' && <button type="button" disabled={feedback.isPending} onClick={() => feedback.mutate({ feedback: 'down' })} className="min-h-control rounded-control px-3 text-body-sm underline">별로예요</button>}
+      {(item.classification === '제외' || item.restored) && <button type="button" disabled={feedback.isPending} onClick={() => feedback.mutate({ restored: !item.restored })} className="min-h-control rounded-control px-3 text-body-sm underline">{item.restored ? '복구 취소' : '제외 복구'}</button>}
+      <button type="button" disabled={hide.isPending} onClick={() => item.feedback === 'down' ? feedback.mutate({ feedback: null }) : hide.mutate(!item.hidden)} className="min-h-control rounded-control px-3 text-body-sm underline">{item.hidden ? '숨김 해제' : '관심 없음'}</button>
     </div>
-    {(hide.isError || track.isError) && <p role="alert" className="mt-2 text-body-sm text-destructive">{(hide.error ?? track.error)?.message}</p>}
+    {(hide.isError || track.isError || feedback.isError) && <p role="alert" className="mt-2 text-body-sm text-destructive">{(hide.error ?? track.error ?? feedback.error)?.message}</p>}
   </li>;
 }
 
