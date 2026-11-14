@@ -280,3 +280,21 @@ test('잠근 상태는 메일로 바뀌지 않고, 확인 요청은 보류했다
     assert.equal((await s.app.inject({ url: `/applications/${app1.id}`, headers: { cookie: a } })).json().status, '전형 진행중');
   } finally { await s.done(); }
 });
+
+test('AI 응답 시간 초과는 그 메일만 시도 횟수를 쓰고 다음 메일을 계속 해석한다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    s.state.mails = [mail(1, 'hr@x.example', '서류 전형 결과 안내', '아쉽게도 함께하기 어렵습니다'), mail(2, 'hr@y.example', '서류 전형 결과 안내', '아쉽지만 함께하지 못하게 되었습니다')];
+    await s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 'tester@naver.com', appPassword: 'app-password', consent: true } });
+    let calls = 0;
+    const interpret = async () => { calls++; throw new AiError('ai_timeout'); };
+    const db = openDatabase(s.path);
+    try {
+      await runNext(db, createMailHandler(db, loadSecretKey(join(s.dir, 'secret.key')), async () => [{ mailbox: 'INBOX', uidValidity: '7', messages: s.state.mails, oldestDate: null, complete: true }], { interpret, bodies: async () => new Map() }));
+      assert.equal(calls, 2);
+      assert.equal(db.prepare('SELECT min(interpret_attempts) n FROM mail_messages').get().n, 1);
+      assert.deepEqual(JSON.parse(db.prepare("SELECT result FROM jobs WHERE kind = 'mail'").get().result).aiFailureCodes, { ai_timeout: 2 });
+    } finally { db.close(); }
+  } finally { await s.done(); }
+});

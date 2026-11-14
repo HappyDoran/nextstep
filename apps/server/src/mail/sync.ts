@@ -127,8 +127,9 @@ async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpr
       // 원인 코드별 건수를 남겨 화면·운영자가 키·잔액·연결 문제를 구분하게 한다(본문은 남기지 않음).
       const code = (error as { code?: string }).code ?? 'internal';
       aiFailureCodes[code] = (aiFailureCodes[code] ?? 0) + 1;
-      // 시도 횟수는 잘못된 출력에만 쓴다. 크레딧·연결 같은 일시 실패는 남은 메일도 실패하므로 멈추고 다음 실행에서 다시 해석한다.
-      if ((error as { code?: string }).code !== 'ai_invalid_output') break;
+      // 잘못된 출력·응답 시간 초과는 그 메일만의 문제일 수 있어 시도 횟수를 쓰고 다음 메일로 넘어간다(3회면 더 해석하지 않음).
+      // 키·잔액·연결 같은 일시 실패는 남은 메일도 실패하므로 멈추고 다음 실행에서 다시 해석한다.
+      if (code !== 'ai_invalid_output' && code !== 'ai_timeout') break;
       db.prepare('UPDATE mail_messages SET interpret_attempts = interpret_attempts + 1 WHERE id = ?').run(row.id);
       continue;
     }

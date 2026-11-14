@@ -119,7 +119,8 @@ async function requestOllama<T extends z.ZodType>(schema: T, instructions: strin
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           model: ollamaModel(), stream: false, think: false, format: jsonSchema(schema),
-          options: { temperature: 0, num_ctx: 8192 },
+          // 출력 상한: 작은 모델이 JSON을 끝없이 이어 쓰는 경우를 막는다(구조화 출력은 보통 수백 토큰).
+          options: { temperature: 0, num_ctx: 8192, num_predict: 1536 },
           messages: [{ role: 'system', content: instructions }, { role: 'user', content: input }],
         }),
         // 로컬 CPU·작은 장비는 느리다. 홈서버에서 실측 후 조정한다.
