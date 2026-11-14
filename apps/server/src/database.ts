@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -243,6 +243,12 @@ export function openDatabase(filename: string) {
           verified_at TEXT NOT NULL
         ) STRICT;
         PRAGMA user_version = 11;`);
+    }
+    if (version < 12) {
+      // P1-11: 포트폴리오·경력기술서 kind, OCR로 읽은 쪽 번호, 사용자가 MD를 고쳤는지.
+      db.exec(`ALTER TABLE documents ADD COLUMN ocr_pages TEXT NOT NULL DEFAULT '[]';
+        ALTER TABLE documents ADD COLUMN edited INTEGER NOT NULL DEFAULT 0;
+        PRAGMA user_version = 12;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

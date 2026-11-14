@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { profileSchema, type JobFamily, type Profile, type SourceId } from '@nextstep/contracts';
 import { resetBlockedHosts } from '../sources/http.js';
@@ -96,8 +96,13 @@ async function storeRequirements(db: DatabaseSync, deps: PipelineDeps, postingId
 
 function loadUserBasis(db: DatabaseSync, userId: string) {
   const profileRow = db.prepare('SELECT data, updated_at FROM profiles WHERE user_id = ?').get(userId) as { data: string; updated_at: string } | undefined;
-  const resume = db.prepare("SELECT id, text FROM documents WHERE user_id = ? AND kind = 'resume'").get(userId) as { id: string; text: string } | undefined;
-  if (!profileRow || !resume) return undefined;
+  // 이력서(필수)와 포트폴리오·경력기술서(선택)의 MD를 합쳐 지원자 사실을 뽑는다.
+  const docs = db.prepare("SELECT id, kind, text FROM documents WHERE user_id = ? ORDER BY CASE kind WHEN 'resume' THEN 0 WHEN 'career' THEN 1 ELSE 2 END").all(userId) as { id: string; kind: string; text: string }[];
+  if (!profileRow || !docs.some(d => d.kind === 'resume')) return undefined;
+  const titles: Record<string, string> = { resume: '이력서', career: '경력기술서', portfolio: '포트폴리오' };
+  const text = docs.map(d => `# ${titles[d.kind] ?? d.kind}\n${d.text}`).join('\n\n');
+  // 서류를 고치면(교체·MD 수정) 본문 해시가 바뀌어 다시 판정한다.
+  const resume = { id: `${docs.map(d => d.id).join('+')}:${createHash('sha256').update(text).digest('hex').slice(0, 16)}`, text };
   const profile = profileSchema.parse(JSON.parse(profileRow.data));
   // 프로필·이력서·추출 지시·규칙이 바뀌면 다시 판정한다. 과거 판정을 새 기준으로 위장하지 않는다.
   return { profile, resume, basis: `${profileRow.updated_at}|${resume.id}|${CANDIDATE_PROMPT_VERSION}|${REQUIREMENTS_PROMPT_VERSION}|${RULES_VERSION}` };

@@ -76,3 +76,32 @@ test('프로필은 검증한 값만 저장하고 사용자별로 분리된다', 
     assert.equal((await app.inject({ url: '/profile', headers: { cookie: b } })).statusCode, 404);
   } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('포트폴리오·경력기술서는 이력서와 따로 저장되고, 변환된 MD는 본인만 고칠 수 있다', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-docs-'));
+  const path = join(dir, 'db.sqlite');
+  const app = createApp(path);
+  try {
+    const a = await signup(app, path, 'a@example.com');
+    const b = await signup(app, path, 'b@example.com');
+    const put = (cookie, kind, text, name = 'doc.md') => app.inject({ method: 'PUT', url: `/documents/${kind}`, headers: { cookie, 'content-type': 'text/markdown', 'x-filename': encodeURIComponent(name) }, payload: Buffer.from(text) });
+    assert.equal((await put(a, 'resume', '# 이력서\n프론트엔드 개발자 3년, React 실무와 디자인 시스템 운영')).statusCode, 200);
+    assert.equal((await put(a, 'career', '# 경력기술서\n결제 화면 리뉴얼 프로젝트를 리딩하고 전환율을 개선함')).statusCode, 200);
+    assert.equal((await put(a, 'cover', '# 자기소개서\n지원 동기를 적은 문서입니다')).statusCode, 404);
+    assert.equal((await app.inject({ url: '/documents/career', headers: { cookie: a } })).json().kind, 'career');
+    assert.match((await app.inject({ url: '/documents/resume', headers: { cookie: a } })).json().text, /React 실무/);
+    // 경력기술서를 지워도 이력서는 남는다.
+    assert.equal((await app.inject({ method: 'DELETE', url: '/documents/career', headers: { cookie: a } })).statusCode, 204);
+    assert.equal((await app.inject({ url: '/documents/resume', headers: { cookie: a } })).statusCode, 200);
+    // MD 수정: 본인 서류만 바뀌고 수정 표시가 남는다. 빈 본문은 거부.
+    const edit = (cookie, text) => app.inject({ method: 'PUT', url: '/documents/resume/text', headers: { cookie }, payload: { text } });
+    assert.equal((await edit(b, '남의 이력서 덮어쓰기')).statusCode, 404);
+    assert.equal((await edit(a, '   ')).statusCode, 400);
+    const edited = (await edit(a, '# 이력서\n프론트엔드 3년, React·TypeScript 실무')).json();
+    assert.equal(edited.edited, true);
+    assert.match(edited.text, /TypeScript/);
+  } finally {
+    await app.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

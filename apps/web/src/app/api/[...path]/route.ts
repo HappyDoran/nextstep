@@ -1,7 +1,7 @@
 // 브라우저 → 웹 서버 → API 동일 출처 경유. 세션 쿠키를 그대로 전달하고 API 응답 상태·쿠키를 돌려준다.
 // 인가는 API가 세션으로 판단한다. 여기서는 허용 경로와 교차 출처 변경 요청만 거른다.
 export const dynamic = 'force-dynamic';
-const ALLOWED = /^(auth\/(signup|login|logout|me)|account|applications(\/[\w-]+)?|settings\/(automation|ai)|documents\/resume|profile(\/suggest)?|postings\/(refresh|link)|recommendations(\/[\w-]+(\/hide)?)?|jobs\/[\w-]+|mail\/(connection|sync)|reviews(\/[\w-]+)?)$/;
+const ALLOWED = /^(auth\/(signup|login|logout|me)|account|applications(\/[\w-]+)?|settings\/(automation|ai)|documents\/(resume|portfolio|career)(\/text)?|profile(\/suggest)?|postings\/(refresh|link)|recommendations(\/[\w-]+(\/hide)?)?|jobs\/[\w-]+|mail\/(connection|sync)|reviews(\/[\w-]+)?)$/;
 const origin = () => process.env.NEXTSTEP_API_URL ?? 'http://127.0.0.1:4100';
 
 async function forward(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
@@ -25,8 +25,8 @@ async function forward(request: Request, { params }: { params: Promise<{ path: s
       body: request.method === 'GET' || request.method === 'DELETE' ? null : await request.arrayBuffer(),
       cache: 'no-store',
       redirect: 'manual',
-      // 이력서 추출·AI 판정은 수 초가 걸릴 수 있다.
-      signal: AbortSignal.timeout(60_000),
+      // 서류 변환(이미지 쪽 글자 인식 최대 40초)·AI 처리는 오래 걸릴 수 있다.
+      signal: AbortSignal.timeout(120_000),
     });
     const out = new Headers({ 'content-type': response.headers.get('content-type') ?? 'application/json' });
     const cookie = response.headers.get('set-cookie');

@@ -44,3 +44,42 @@ test('형식·크기 제한을 본문 해석 전에 적용한다', async () => {
   assert.deepEqual(await extractResumeText(md('가'.repeat(30)), 'a.docx'), { ok: false, code: 'unsupported_type' });
   assert.deepEqual(await extractResumeText(new Uint8Array(RESUME_MAX_BYTES + 1), 'a.pdf'), { ok: false, code: 'too_large' });
 });
+
+// 합성 ZIP을 만든다(로컬 헤더 + 중앙 디렉터리 + 끝 레코드). deflate=false면 무압축, plain은 선언 해제 크기를 바꿀 때만 쓴다.
+import { deflateRawSync } from 'node:zlib';
+import { execFileSync } from 'node:child_process';
+import { ocrPdfPages } from '../dist/documents/ocr.js';
+function zip(entries, { encrypted = false } = {}) {
+  const locals = [], centrals = [];
+  let offset = 0;
+  for (const { name, text, plain } of entries) {
+    const data = Buffer.from(text, 'utf8'), packed = deflateRawSync(data), n = Buffer.from(name, 'utf8');
+    const head = Buffer.alloc(30); head.writeUInt32LE(0x04034b50, 0); head.writeUInt16LE(encrypted ? 1 : 0, 6); head.writeUInt16LE(8, 8); head.writeUInt32LE(packed.length, 18); head.writeUInt32LE(plain ?? data.length, 22); head.writeUInt16LE(n.length, 26);
+    const cen = Buffer.alloc(46); cen.writeUInt32LE(0x02014b50, 0); cen.writeUInt16LE(encrypted ? 1 : 0, 8); cen.writeUInt16LE(8, 10); cen.writeUInt32LE(packed.length, 20); cen.writeUInt32LE(plain ?? data.length, 24); cen.writeUInt16LE(n.length, 28); cen.writeUInt32LE(offset, 42);
+    locals.push(head, n, packed); centrals.push(cen, n);
+    offset += 30 + n.length + packed.length;
+  }
+  const cd = Buffer.concat(centrals), end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(offset, 16);
+  return new Uint8Array(Buffer.concat([...locals, cd, end]));
+}
+
+test('Notion ZIP은 안의 MD만 경로 순으로 합치고 위험한 ZIP은 거부한다', async () => {
+  const ok = await extractResumeText(zip([{ name: '경력/2 프로젝트.md', text: '## 결제 시스템\n주문 API 개발' }, { name: '1 소개.md', text: '# 가상 지원자\n백엔드 3년' }, { name: 'img/a.png', text: 'PNG' }, { name: '../밖.md', text: '경로 이탈' }]), 'notion.zip');
+  assert.equal(ok.ok, true);
+  assert.equal(ok.kind, 'zip');
+  assert.ok(ok.text.indexOf('백엔드 3년') < ok.text.indexOf('주문 API 개발'));
+  assert.equal(ok.text.includes('경로 이탈') || ok.text.includes('PNG'), false);
+  assert.deepEqual(await extractResumeText(zip([{ name: 'a.md', text: '가상 지원자 소개 글입니다 충분히 깁니다' }], { encrypted: true }), 'a.zip'), { ok: false, code: 'damaged' });
+  // 선언한 해제 크기가 200MB를 넘으면 풀기 전에 거부한다(압축 폭탄).
+  assert.deepEqual(await extractResumeText(zip([{ name: 'a.md', text: 'x', plain: 201 * 1024 * 1024 }]), 'a.zip'), { ok: false, code: 'too_large' });
+  assert.deepEqual(await extractResumeText(zip(Array.from({ length: 501 }, (_, i) => ({ name: `${i}.md`, text: 'x' }))), 'a.zip'), { ok: false, code: 'too_large' });
+  assert.deepEqual(await extractResumeText(zip([{ name: 'a.png', text: 'x' }]), 'a.zip'), { ok: false, code: 'scanned_or_empty' });
+  assert.deepEqual(await extractResumeText(md('PK 아님'), 'a.zip'), { ok: false, code: 'damaged' });
+});
+
+const hasOcr = (() => { try { execFileSync('pdftoppm', ['-v'], { stdio: 'ignore' }); execFileSync('tesseract', ['--version'], { stdio: 'ignore' }); return true; } catch { return false; } })();
+test('이미지 쪽은 글자 인식(OCR)으로 읽는다', { skip: !hasOcr && 'pdftoppm·tesseract 미설치' }, async () => {
+  const pages = await ocrPdfPages(fixture('resume-scanned.pdf'), [1], 30_000);
+  assert.match(pages.get(1), /스캔/);
+});

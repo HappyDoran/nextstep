@@ -58,7 +58,11 @@ export type Application = z.infer<typeof applicationSchema>;
 
 // 이력서: 사용자당 활성 문서 한 개. 추출 실패 사유는 사용자에게 재등록 경로와 함께 보여 준다.
 export const resumeFailureSchema = z.enum(['unsupported_type', 'too_large', 'encrypted', 'damaged', 'scanned_or_empty', 'timeout']);
-export const resumeSchema = z.object({ id: z.string(), filename: z.string(), size: z.number().int(), createdAt: z.string(), text: z.string(), emptyPages: z.array(z.number().int()).default([]) });
+// 서류: 이력서(필수)·포트폴리오·경력기술서(선택). 모두 MD 텍스트로 바꿔 저장하고 사용자가 확인·수정한다.
+export const documentKindSchema = z.enum(['resume', 'portfolio', 'career']);
+export type DocumentKind = z.infer<typeof documentKindSchema>;
+export const DOCUMENT_TEXT_MAX = 200_000;
+export const resumeSchema = z.object({ id: z.string(), kind: documentKindSchema.default('resume'), filename: z.string(), size: z.number().int(), createdAt: z.string(), text: z.string(), emptyPages: z.array(z.number().int()).default([]), ocrPages: z.array(z.number().int()).default([]), edited: z.boolean().default(false) });
 export type Resume = z.infer<typeof resumeSchema>;
 
 // 프로필·필터: 사용자가 확인한 사실만 저장한다. 직무는 기획서 3절 여섯 직무, 복수 선택은 OR.

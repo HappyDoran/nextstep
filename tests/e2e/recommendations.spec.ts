@@ -9,12 +9,20 @@ test('이력서 등록·실패 시 유지·프로필 저장과 AI 미설정 표�
     await page.goto('/settings');
     await expect(page.getByRole('status').filter({ hasText: '등록한 이력서가 없습니다.' })).toBeVisible();
     await page.getByLabel(/이력서 파일/).setInputFiles(fixture('resume-text.pdf'));
-    await page.getByRole('button', { name: '등록' }).click();
+    await page.getByRole('button', { name: '이력서 등록' }).click();
     await expect(page.getByRole('status').filter({ hasText: '등록된 이력서: resume-text.pdf' })).toBeVisible();
-    await page.getByText('추출된 본문 확인').click();
-    await expect(page.getByText(/프론트엔드 개발자 경력 3년/)).toBeVisible();
+    await page.getByText('변환된 MD 확인·수정').first().click();
+    await expect(page.getByLabel('이력서 MD')).toHaveValue(/프론트엔드 개발자 경력 3년/);
+    // 변환된 MD를 고치면 저장되고 수정 표시가 남는다.
+    await page.getByLabel('이력서 MD').fill('# 가상 지원자\n프론트엔드 개발자 경력 3년, React·TypeScript 실무');
+    await page.getByRole('button', { name: 'MD 저장' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'MD 수정함' })).toBeVisible();
+    // 선택 서류(경력기술서)는 이력서와 따로 등록된다.
+    await page.getByLabel(/경력기술서 파일/).setInputFiles(fixture('resume-text.pdf'));
+    await page.getByRole('button', { name: '경력기술서 등록' }).click();
+    await expect(page.getByRole('status').filter({ hasText: '등록된 경력기술서: resume-text.pdf' })).toBeVisible();
     await page.getByLabel(/이력서 파일/).setInputFiles(fixture('resume-encrypted.pdf'));
-    await page.getByRole('button', { name: '교체' }).click();
+    await page.getByRole('button', { name: '이력서 교체' }).click();
     await expect(alert(page)).toContainText('암호가 걸린 PDF');
     await expect(alert(page)).toContainText('기존 이력서는 유지됩니다.');
     await expect(page.getByRole('status').filter({ hasText: '등록된 이력서: resume-text.pdf' })).toBeVisible();
