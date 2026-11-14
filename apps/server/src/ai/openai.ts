@@ -130,6 +130,8 @@ async function requestOllama<T extends z.ZodType>(schema: T, instructions: strin
       throw new AiError((error as Error).name === 'TimeoutError' ? 'ai_timeout' : 'ai_network');
     }
     if (res.status === 404) throw new AiError('ai_model_unavailable', 404);
+    // 5xx는 생성 중 일시 실패(구조화 출력 실패 등)가 많아 한 번 더 묻고, 그래도 실패하면 그 항목만 잘못된 출력으로 넘긴다.
+    if (res.status >= 500) continue;
     if (!res.ok) throw new AiError('ai_http', res.status);
     const body = await res.json() as { message?: { content?: string }; prompt_eval_count?: number; eval_count?: number };
     usageTotals.calls++;
