@@ -318,3 +318,37 @@ test('AI가 플랫폼 이름이나 지시문이 섞인 문자열을 회사로 �
     void a;
   } finally { await s.done(); }
 });
+
+test('AI 해석은 오래된 메일부터 하고, 같은 회사 지원 건이 하나면 직무명이 포함 관계일 때 같은 지원으로 본다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    // 최근 메일(열람·결과)이 먼저 보관되도록 역순으로 넣는다. 해석은 받은 시각 오름차순.
+    s.state.mails = [
+      mail(3, 'hr@n.example', '서류 전형 결과 안내', '결과'),
+      mail(2, 'noreply@jobkorea.co.kr', '이력서를 열람했습니다', '열람'),
+      mail(1, 'hr@n.example', '지원 완료 안내', '접수'),
+      mail(4, 'hr@n.example', '면접 안내', '다른 직무'),
+    ];
+    await s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 'tester@naver.com', appPassword: 'app-password', consent: true } });
+    const answers = {
+      1: { isRecruiting: true, company: '가상회사', roleTitle: '프론트엔드 개발자', status: '지원 완료', confidence: 'high', evidence: '접수' },
+      2: { isRecruiting: true, company: '가상회사', roleTitle: '프론트엔드 개발자', status: '열람', confidence: 'high', evidence: '열람' },
+      3: { isRecruiting: true, company: '(주)가상회사', roleTitle: '프론트엔드 개발자 (React)', status: '불합격', confidence: 'high', evidence: '결과' },
+      4: { isRecruiting: true, company: '가상회사', roleTitle: '백엔드 개발자', status: '전형 진행중', confidence: 'high', evidence: '면접' },
+    };
+    const order = [];
+    const interpret = async m => { const uid = s.state.mails.find(x => x.text === m.body).uid; order.push(uid); return answers[uid]; };
+    const db = openDatabase(s.path);
+    try {
+      await runNext(db, createMailHandler(db, loadSecretKey(join(s.dir, 'secret.key')), async () => [{ mailbox: 'INBOX', uidValidity: '7', messages: s.state.mails, oldestDate: null, complete: true }], { interpret, bodies: async () => new Map() }));
+    } finally { db.close(); }
+    // 열람 메일(uid 2)은 규칙으로 판정돼 해석 대상이 아닐 수 있어, 해석 순서는 받은 시각 오름차순인지만 본다.
+    assert.deepEqual(order, [...order].sort((x, y) => x - y));
+    const apps = (await s.app.inject({ url: '/applications', headers: { cookie: a } })).json();
+    assert.equal(apps.length, 1);
+    assert.equal(apps[0].status, '불합격');
+    // 직무명이 포함 관계가 아닌 같은 회사 메일(백엔드)은 확인받는다.
+    assert.deepEqual((await s.app.inject({ url: '/reviews', headers: { cookie: a } })).json().map(r => r.reason), ['연결 불명']);
+  } finally { await s.done(); }
+});

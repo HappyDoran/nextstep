@@ -108,9 +108,10 @@ export function createMailHandler(db: DatabaseSync, secretKey: Buffer, source: M
 type Unlinked = { id: string; message_key: string; subject: string; received_at: string | null; classification: string; platform: string | null; mailbox: string | null; uid_validity: string | null; uid: number | null };
 
 // 규칙으로 대상을 찾지 못한 메일을 AI로 해석해 지원 건 생성·연결·확인 요청으로 넘긴다.
+// 오래된 메일부터 해석한다: 지원 완료 메일로 지원 건이 먼저 생겨야 뒤의 열람·결과 메일이 그 건에 붙는다(2026-11-14 실측: 최신순이면 열람 0%).
 async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpret: Interpret; bodies: MailBodySource }, cached: Map<string, MailBody>, counts: Record<string, number>, account: string, password: string, aiFailureCodes: Record<string, number>) {
   const rows = db.prepare(`SELECT id, message_key, subject, received_at, classification, platform, mailbox, uid_validity, uid FROM mail_messages
-    WHERE user_id = ? AND outcome = 'unlinked' AND interpret_attempts < ? ORDER BY received_at DESC LIMIT ?`).all(userId, MAX_INTERPRET_ATTEMPTS, INTERPRET_CAP) as Unlinked[];
+    WHERE user_id = ? AND outcome = 'unlinked' AND interpret_attempts < ? ORDER BY received_at ASC LIMIT ?`).all(userId, MAX_INTERPRET_ATTEMPTS, INTERPRET_CAP) as Unlinked[];
   const missing = rows.filter(r => r.mailbox && r.uid !== null && !cached.has(bodyKey({ mailbox: r.mailbox, uid: r.uid })))
     .map(r => ({ mailbox: r.mailbox!, uidValidity: r.uid_validity ?? '', uid: r.uid! }));
   let fetched = new Map<string, MailBody>();

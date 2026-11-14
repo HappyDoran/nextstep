@@ -105,6 +105,11 @@ export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp
     .filter(a => normalizeName(a.company) === company);
   const exact = apps.filter(a => normalizeName(a.role_title) === role);
   if (exact.length === 1) return applyToApplication(db, verdictMsg, exact[0]!);
+  // 같은 회사 지원 건이 하나뿐이고 직무명이 한쪽에 포함되면(예: '프론트엔드 개발자' ⊂ '프론트엔드 개발자 (React)') 같은 지원으로 본다.
+  // 회사만 같은 것으로 확정하지 않는다는 원칙은 지킨다: 직무명이 포함 관계가 아니거나 후보가 여럿이면 확인받는다(사용자 결정 2026-11-14).
+  const contained = exact.length === 0 && apps.length === 1 && Math.min(role.length, normalizeName(apps[0]!.role_title).length) >= 2
+    && (normalizeName(apps[0]!.role_title).includes(role) || role.includes(normalizeName(apps[0]!.role_title)));
+  if (contained) return applyToApplication(db, verdictMsg, apps[0]!);
   if (exact.length > 1 || apps.length > 0) return review(db, verdictMsg, '연결 불명');
   if (status === '열람') return 'no_change';
   // 결과만 있어도 회사·직무·결과가 명확하면 지원 건을 만든다. 실제 지원일은 만들지 않는다.
