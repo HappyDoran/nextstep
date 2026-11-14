@@ -30,7 +30,7 @@ mise exec -- pnpm build
 mise exec -- sh scripts/mac-service.sh install   # restart · uninstall
 ```
 
-로컬 AI(Ollama)를 쓰려면 `brew install ollama && brew services start ollama && ollama pull qwen3:4b`(Ubuntu는 Ollama 설치 스크립트). `scripts/mac-service.sh`는 기본으로 `NEXTSTEP_AI_PROVIDER=ollama`를 넣는다. 이때 사용자 OpenAI 키는 필요 없고 자료가 서버 밖으로 나가지 않는다.
+로컬 AI(Ollama)를 쓰려면 `brew install ollama && brew services start ollama && ollama pull qwen3:1.7b`(Ubuntu는 Ollama 설치 스크립트). `scripts/mac-service.sh`는 기본으로 `NEXTSTEP_AI_PROVIDER=ollama`를 넣는다. 이때 사용자 OpenAI 키는 필요 없고 자료가 서버 밖으로 나가지 않는다.
 
 서류의 이미지 쪽 글자 인식(OCR)은 시스템 도구를 쓴다. 없으면 OCR 없이 글자 없는 쪽만 경고한다. macOS: `brew install poppler tesseract tesseract-lang`, Ubuntu: `sudo apt install poppler-utils tesseract-ocr tesseract-ocr-kor`.
 
@@ -67,7 +67,7 @@ mise exec -- sh scripts/mac-service.sh install   # restart · uninstall
 | NEXTSTEP_WEB_URL | 초대 링크 발급 | 개발 기본 http://127.0.0.1:3100. 홈서버에서는 초대받는 사람이 여는 사설망 HTTPS 주소로 지정 |
 | NEXTSTEP_SECURE_COOKIE | 서버 | `1`이면 세션 쿠키에 Secure 지정. HTTPS 배포에서 필수, 로컬 HTTP 개발은 미지정 |
 | OPENAI_API_KEY·NEXTSTEP_OPENAI_MODEL | 평가·검증 명령(`eval:recommend`·`verify:*`) | 운영자 키와 모델. 서버의 사용자 요청·작업에는 쓰지 않는다. 사용자는 설정의 OpenAI 키·모델에서 본인 키를 등록한다 |
-| NEXTSTEP_AI_PROVIDER·NEXTSTEP_OLLAMA_URL·NEXTSTEP_OLLAMA_MODEL | 서버 | `ollama`이면 모든 AI 처리를 로컬 Ollama로(기본 주소 http://127.0.0.1:11434, 모델 qwen3:4b). 비우면 사용자별 OpenAI 키 |
+| NEXTSTEP_AI_PROVIDER·NEXTSTEP_OLLAMA_URL·NEXTSTEP_OLLAMA_MODEL | 서버 | `ollama`이면 모든 AI 처리를 로컬 Ollama로(기본 주소 http://127.0.0.1:11434, 모델 qwen3:1.7b). 비우면 사용자별 OpenAI 키 |
 | NEXTSTEP_AI_FAKE·NEXTSTEP_AI_CACHE_DIR | 서버(개발용, 운영에서 켜지 않음) | 요금 절감. `NEXTSTEP_AI_FAKE=1`은 OpenAI 대신 스키마에 맞는 고정 응답(화면·흐름 개발), `NEXTSTEP_AI_CACHE_DIR`(예: `.data/ai-cache`)은 같은 모델·지시·입력의 응답을 파일(0600)로 재사용. 판정은 규칙이라 상한이 없다. 캐시에는 추출 결과(회사명 등)가 남으므로 개발 중에만 쓰고 필요 없으면 폴더를 지운다 |
 | NEXTSTEP_SCHEDULE_HOUR | 서버 | 21. 한국 시간 기준 예약 실행 시작 시각(0~23) |
 | NEXTSTEP_SECRET_KEY | 서버 | 선택. base64 32바이트 연결 비밀정보 암호화 키. 없으면 DB 옆 `secret.key`를 만들어 씀 |

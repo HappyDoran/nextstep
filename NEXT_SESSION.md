@@ -30,7 +30,7 @@ last_verified: 2026-11-14
 
 ## 2-2. 마지막: 로컬 LLM 전환 (P1-10)
 
-- Ollama·qwen3:4b 측정(54/57), 세부 조정, 메일 해석 로컬화, OpenAI 사용자별 키 기능 제거.
+- qwen3:1.7b로 메일 해석 정확도 측정(`verify:mail-accuracy`), 세부 조정, OpenAI 사용자별 키 기능 제거.
 
 ## 3. 사용자 결정 대기
 

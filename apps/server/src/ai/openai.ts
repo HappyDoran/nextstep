@@ -33,10 +33,10 @@ function currentAi(): AiConfig | null {
 export const aiBaseUrl = () => process.env.NEXTSTEP_OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
 
 // 홈서버 로컬 LLM(Ollama). NEXTSTEP_AI_PROVIDER=ollama이면 사용자 키 대신 이 모델 하나로 모든 AI 처리를 한다(기획서 3절, P1-10).
-// 외부로 나가지 않으므로 사용자별 키가 필요 없다. 기본 모델 qwen3:4b, 주소는 127.0.0.1에만 연다.
+// 외부로 나가지 않으므로 사용자별 키가 필요 없다. 기본 모델 qwen3:1.7b, 주소는 127.0.0.1에만 연다.
 const ollama = () => process.env.NEXTSTEP_AI_PROVIDER === 'ollama';
 const ollamaUrl = () => process.env.NEXTSTEP_OLLAMA_URL ?? 'http://127.0.0.1:11434';
-export const ollamaModel = () => process.env.NEXTSTEP_OLLAMA_MODEL ?? 'qwen3:4b';
+export const ollamaModel = () => process.env.NEXTSTEP_OLLAMA_MODEL ?? 'qwen3:1.7b';
 
 export function aiConfigured() {
   return fake() || ollama() || currentAi() !== null;
