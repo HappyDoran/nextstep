@@ -12,7 +12,8 @@ import type { Career } from '../sources/types.js';
 type Posting = { title: string; company: string; deadline: string | null; alwaysHire: boolean; workFields: string[]; careers: Career[]; conditions: { required: string[]; preferred: string[] }; location: string | null; remote: '전면' | '부분' | '없음' | null; companyType: string | null; body?: string };
 type Profile = { id: string; desiredFamilies: string[]; locations: string[]; [key: string]: unknown };
 type Case = { id: string; jobFamily: string; profileId: string; tags: string[]; posting: Posting; expected: { classification: string } };
-const data = JSON.parse(readFileSync(new URL('../../tests/prompts/recommendation-cases.json', import.meta.url), 'utf8')) as { evaluatedAt: string; profiles: Profile[]; cases: Case[] };
+// EVAL_SET=holdout이면 규칙 조정에 쓰지 않은 검증용 사례로 평가한다.
+const data = JSON.parse(readFileSync(new URL(`../../tests/prompts/recommendation-${process.env.EVAL_SET === 'holdout' ? 'holdout' : 'cases'}.json`, import.meta.url), 'utf8')) as { evaluatedAt: string; profiles: Profile[]; cases: Case[] };
 
 // 사례의 구조화 공고를 수집기가 넘기는 본문처럼 글로 만든다(출처가 주는 마감·근무지·경력 필드는 그대로 쓴다).
 const bodyOf = (p: Posting) => [`직무 분야: ${p.workFields.join(', ')}`, '[자격요건]', ...p.conditions.required.map(t => `- ${t}`), '[우대사항]', ...p.conditions.preferred.map(t => `- ${t}`), p.body ?? ''].join('\n');

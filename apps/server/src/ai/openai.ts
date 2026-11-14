@@ -46,7 +46,7 @@ export async function structured<T extends z.ZodType>(name: string, schema: T, i
   if (fake()) {
     try { return schema.parse(fakeValue(jsonSchema(schema))); } catch { throw new AiError('ai_invalid_output'); }
   }
-  const ai = ollama() ? { apiKey: '', model: `ollama:${ollamaModel()}` } : currentAi();
+  const ai = ollama() ? { apiKey: '', model: `ollama:${ollamaModel()}${process.env.NEXTSTEP_OLLAMA_THINK === '1' ? ':think' : ''}` } : currentAi();
   if (!ai) throw new AiError('ai_unconfigured');
   const dir = process.env.NEXTSTEP_AI_CACHE_DIR;
   const file = dir && join(dir, `${createHash('sha256').update(JSON.stringify([ai.model, name, instructions, input])).digest('hex')}.json`);
@@ -118,9 +118,10 @@ async function requestOllama<T extends z.ZodType>(schema: T, instructions: strin
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          model: ollamaModel(), stream: false, think: false, format: jsonSchema(schema),
-          // 출력 상한: 작은 모델이 JSON을 끝없이 이어 쓰는 경우를 막는다(구조화 출력은 보통 수백 토큰).
-          options: { temperature: 0, num_ctx: 8192, num_predict: 1536 },
+          // 생각 모드는 기본으로 끈다(느림). NEXTSTEP_OLLAMA_THINK=1은 품질 비교용.
+          model: ollamaModel(), stream: false, think: process.env.NEXTSTEP_OLLAMA_THINK === '1', format: jsonSchema(schema),
+          // 출력 상한: 작은 모델이 JSON을 끝없이 이어 쓰는 경우를 막는다(구조화 출력은 보통 수백 토큰, 생각 모드면 더 길게).
+          options: { temperature: 0, num_ctx: 8192, num_predict: process.env.NEXTSTEP_OLLAMA_THINK === '1' ? 6144 : 1536 },
           messages: [{ role: 'system', content: instructions }, { role: 'user', content: input }],
         }),
         // 로컬 CPU·작은 장비는 느리다. 홈서버에서 실측 후 조정한다.

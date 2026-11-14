@@ -6,7 +6,7 @@ import type { Judgement } from '../prompts/recommend.js';
 
 // 추천 분류 규칙(기술 설계 D절, 사용자 확정 2026-11-07). 모델은 사실만 뽑고 분류는 여기서 정한다.
 // 우선순위: 제외 > 도전 > 미확인 > 기본. 같은 입력이면 같은 분류가 나온다.
-export const RULES_VERSION = 'rules-2026-11-14g';
+export const RULES_VERSION = 'rules-2026-11-14h';
 
 export type Seeker = { jobFamilies: string[]; regions: string[]; remoteOk: boolean };
 export type PostingInput = {
@@ -35,7 +35,7 @@ const FAMILY_ALIASES: Record<string, string> = Object.fromEntries(Object.entries
   qa: ['qa엔지니어', '소프트웨어qa', '테스트엔지니어', '품질보증', 'sqa'],
 }).flatMap(([to, from]) => from.map(f => [f, to])));
 // 공고 제목에 이런 직무명이 있으면 대상 직무가 아니다(기술 설계 D절: 공간·패션 디자인, 사업·상품·영업기획 제외). 모델 분류보다 우선한다.
-const NOT_TARGET = /사업\s*기획|전략\s*기획|상품\s*기획|영업\s*기획|\bMD\b|(?:공간|전시|패션|시각|제품|인테리어)\s*디자(?:인|이너)|품질\s*관리|\bQC\b/i;
+const NOT_TARGET = /데이터\s*(?:엔지니어|분석가?|사이언티스트)|사업\s*기획|전략\s*기획|상품\s*기획|영업\s*기획|\bMD\b|(?:공간|전시|패션|시각|제품|인테리어)\s*디자(?:인|이너)|품질\s*관리|\bQC\b/i;
 export function norm(s: string) {
   // 같은 뜻의 한글 업무 표현은 하나로 맞춘다(이슈·버그 리포팅 = 결함 리포팅). 작은 모델이 단어 중간에 넣는 콜론(예: '백엔:드')도 지운다.
   const n = s.toLowerCase().replace(/\([^)]*\)/g, '').replace(/[\s.\-_/·:]/g, '').replace(/js$/, '').replace(/이슈|버그/g, '결함');
@@ -53,6 +53,17 @@ export function matches(keys: string[], pool: string[]) {
   const ps = pool.map(norm);
   return keys.map(norm).some(k => ps.some(p => p === k || (hangul(k) && hangul(p) && Math.min(k.length, p.length) >= 3 && (p.includes(k) || k.includes(p)))));
 }
+// 직무 실무 경력이 있으면 당연히 하는 기본 업무·기본기(작은 모델이 추출에서 빠뜨려도 규칙이 채운다).
+const CORE: Record<string, string[]> = {
+  프론트엔드: ['HTML', 'CSS', 'JavaScript', 'Git', '웹 UI 개발'], 앱개발: ['Git', '모바일 앱 개발'], 백엔드: ['SQL', 'Git', 'API 개발'],
+  디자인: ['UI 디자인', '화면 설계', '프로토타이핑'], 기획: ['화면 설계', '기능 명세', '와이어프레임'], qa: ['테스트 케이스 설계', '결함 리포팅', '회귀 테스트'],
+};
+// 조건 원문의 영문 기술명(직무·역할 이름 제외). "Vue.js 실무 경력 2년 이상"처럼 기술 실무 연차 요구를 모델 분류와 상관없이 알아본다.
+const NOT_TECH = new Set(['qa', 'pm', 'po', 'ux', 'ui', 'ios', 'android', 'web', 'it', 'sw', 'hw', 'b2b', 'b2c', 'ai']);
+function techTokens(text: string) {
+  return [...text.matchAll(/[A-Za-z][A-Za-z0-9.+#-]*(?:\s[A-Z][A-Za-z0-9.+#-]*)?/g)].map(m => m[0].trim()).filter(t => !NOT_TECH.has(norm(t)));
+}
+const yearsIn = (text: string) => Number(text.match(/(\d+)\s*년\s*이상/)?.[1] ?? 0) || null;
 const months = (c: Candidate, f: string) => Math.max(0, ...c.careers.filter(r => family(r.family) === family(f)).map(r => r.months));
 const span = (m: number) => (m % 12 ? `${Math.floor(m / 12)}년 ${m % 12}개월` : `${m / 12}년`);
 
@@ -93,7 +104,7 @@ export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: P
   if (!p.required) out('unsure', p.bodyNote ?? '본문 조건 미확인');
   const practical = c.careers.flatMap(r => r.stack);
   // 직무 이름은 경험 비교에 넣지 않는다('앱 개발'이 '하이브리드 앱 개발'과 맞아 버림). 직무 경력은 career 조건에서만 본다.
-  const known = [...c.skills, ...practical, ...c.experiences];
+  const known = [...c.skills, ...practical, ...c.experiences, ...c.careers.filter(r => r.months > 0).flatMap(r => CORE[family(r.family)] ?? [])];
   // 추출에서 빠졌어도 서류 원문에 같은 말이 그대로 있으면 있는 것으로 본다(작은 모델의 추출 누락 보완). 세 글자 이상만.
   // 작은 모델이 키워드를 줄이거나 망가뜨리므로(예: '테스트 케이:케이스') 조건 원문(text)도 함께 대조한다.
   const raw = c.text ? norm(c.text) : '';
@@ -101,7 +112,14 @@ export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: P
   const parts = (k: string) => [k, ...k.split(/[·,/()]|\s등\s|\s또는\s/)].map(x => x.trim().replace(/(\s*(경험|수행|작성|협업|능력|역량|이해|활용|가능자?|보유|우대))+$/, '')).filter(Boolean);
   const inText = (keys: string[]) => Boolean(raw) && keys.flatMap(parts).map(norm).some(k => k.length >= 3 && raw.includes(k));
   const has = (keys: string[], pool: string[]) => matches(keys, pool) || inText(keys);
-  for (const r of p.required ?? []) {
+  // 'AWS 운영 경험'처럼 원문의 영문 기술명이 모두 보유 기술이면 충족으로 본다.
+  const allTech = (text: string) => { const t = techTokens(text); return t.length > 0 && t.every(x => matches([x], known)); };
+  for (const original of p.required ?? []) {
+    // 원문 보정: 기술명과 연차·실무가 함께 있으면 기술 실무 요구, 직무 경력이면 원문에 들어 있는 직무 이름도 키로 쓴다.
+    const tech = techTokens(original.text);
+    const years = original.years ?? yearsIn(original.text);
+    const r = tech.length && years && /실무|경력/.test(original.text) ? { ...original, type: 'skill' as const, keys: tech, years, practical: true }
+      : original.type === 'career' ? { ...original, keys: [...original.keys, ...TARGET_KEYS.filter(t => norm(original.text).includes(t))] } : original;
     if (r.type === 'career') {
       // 같은 직무 연차 부족은 도전, 다른 성격의 필수 경력(직책·다른 직무)은 유사 경험으로 대체하지 않고 제외.
       const best = Math.max(0, ...r.keys.map(k => months(c, k)));
@@ -121,10 +139,10 @@ export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: P
         if (!used.length) out('exclude', `필수 ${r.text}: 실무 경력 없음`);
         else if (r.years && best < r.years * 12) out('challenge', `${r.text}: 실무 ${span(best)}`);
         else out('met', r.text);
-      } else if (has([...r.keys, r.text], known)) out('met', r.text);
+      } else if (has([...r.keys, r.text], known) || allTech(r.text)) out('met', r.text);
       else out('unsure', `필수 ${r.text}: 서류에 미기재`);
     } else if (r.type === 'experience' || r.type === 'role') {
-      if (has([...r.keys, r.text], [...known, ...c.roles])) out('met', r.text);
+      if (has([...r.keys, r.text], [...known, ...c.roles]) || allTech(r.text)) out('met', r.text);
       else out('unsure', `필수 ${r.text}: 서류로 확인 불가`);
     } else if (r.type === 'portfolio') out('unsure', `필수 ${r.text}: 포트폴리오 내용은 서류로 확인 불가`);
     // ponytail: 학력·기타 조건은 판정을 바꾸지 않고 기록만 한다. 학력 필터가 필요해지면 education 비교를 추가한다.

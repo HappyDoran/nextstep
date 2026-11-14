@@ -50,3 +50,15 @@ test('기술 이름은 정확히, 한글 업무 경험은 포함 관계로 맞�
   assert.equal(matches(['UI'], ['UI/UX']), false);
   assert.equal(matches(['이슈 리포팅'], ['결함(이슈) 리포팅']), true);
 });
+
+test('작은 모델 보정: 조건 원문의 기술 실무 연차·직무 이름·기본 업무로 판정한다', () => {
+  // 모델이 "Vue.js 실무 경력 2년 이상"을 직무 경력(키: 프론트엔드)으로 잘못 분류해도 원문으로 기술 실무 요구로 본다.
+  assert.equal(run({ required: [{ text: 'Vue.js 실무 경력 2년 이상', type: 'career', keys: ['프론트엔드'], years: 2, practical: true }] }), '제외');
+  // 직무·역할 이름(QA)은 기술로 보지 않고, 깨진 키('프론트엔:엔드')라도 원문의 직무 이름으로 같은 직무 경력 부족(도전)으로 본다.
+  assert.equal(run({ required: [{ text: '프론트엔드 경력 4년 이상', type: 'career', keys: ['프론트엔:엔드'], years: 4, practical: true }] }), '도전');
+  // 경력이 있는 직무의 기본 업무·기본기는 서류에 없어도 갖춘 것으로 본다(프론트엔드 3년 → HTML·Git).
+  assert.equal(run({ required: [req('skill', ['HTML']), req('skill', ['Git'])] }), '기본');
+  // 원문의 영문 기술명이 모두 보유 기술이면 충족(React·TypeScript 운영 경험).
+  assert.equal(run({ required: [req('experience', ['서비스 운영'], { text: 'React·TypeScript 기반 서비스 운영 경험' })] }), '기본');
+  assert.equal(run({ title: '가상데이터 데이터 엔지니어', families: ['백엔드'] }), '제외');
+});
