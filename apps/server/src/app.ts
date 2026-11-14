@@ -1,7 +1,7 @@
 import Fastify, { type FastifyError } from 'fastify';
-import { healthSchema } from '@nextstep/contracts';
+import { aiSettingsSchema, healthSchema } from '@nextstep/contracts';
 import { openDatabase } from './database.js';
-import { registerAuth } from './auth.js';
+import { registerAuth, requireUser } from './auth.js';
 import { registerApplications } from './applications.js';
 import { registerUserSettings } from './user-settings.js';
 import { registerProfile } from './profile.js';
@@ -15,8 +15,7 @@ import { loadSecretKey } from './secrets.js';
 import { registerMail } from './mail/routes.js';
 import { createMailHandler } from './mail/sync.js';
 import { naverBackfill, naverBodies, naverSource, type BackfillSource, type MailSource } from './mail/naver.js';
-import { aiConfigured, runWithAi } from './ai/openai.js';
-import { loadUserAi, registerAiSettings } from './ai/settings.js';
+import { ollamaModel } from './ai/llm.js';
 import { interpretMail } from './prompts/mail.js';
 
 export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; scheduleHour?: number; deps?: PipelineDeps; mailSource?: MailSource; mailBackfill?: BackfillSource } = {}) {
@@ -36,19 +35,16 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
   registerDocuments(app, db, filesDir);
   // 연결 비밀정보 키는 DB와 다른 파일(또는 환경 변수)에 둔다.
   const secretKey = loadSecretKey(join(dirname(databasePath), 'secret.key'));
-  // AI는 요청·작업마다 그 사용자 본인 키·모델로만 부른다.
-  const withUserAi = <T>(userId: string, fn: () => T) => runWithAi(loadUserAi(db, secretKey, userId), fn);
-  registerRecommendations(app, db, withUserAi);
-  registerAiSettings(app, db, secretKey);
+  registerRecommendations(app, db);
+  // AI는 서버의 로컬 LLM 하나로 처리한다. 설정 화면에는 모델 이름만 보여 준다.
+  app.get('/settings/ai', async (request, reply) => (requireUser(db, request, reply) ? aiSettingsSchema.parse({ model: ollamaModel() }) : reply));
   const mailSource = options.mailSource ?? naverSource;
   registerMail(app, db, secretKey, mailSource);
   // 수집·추천 작업은 요청 경로 밖의 작업자가 처리한다. 테스트는 worker:false로 끄고 직접 실행한다.
   if (options.worker) {
     const recommend = createHandler(db, options.deps);
-    // AI가 설정된 경우에만 보관 메일 해석 단계를 켠다.
-    // 메일 해석은 그 사용자 키가 있을 때만 켠다(키 없이 시도해 재시도 횟수를 쓰지 않는다).
-    const mail = (job: ClaimedJob) => createMailHandler(db, secretKey, mailSource, aiConfigured() ? { interpret: interpretMail, bodies: naverBodies } : undefined, options.mailBackfill ?? naverBackfill)(job);
-    const stop = startWorker(db, (job: ClaimedJob) => withUserAi(job.userId, () => (job.kind === 'mail' ? mail(job) : recommend(job))));
+    const mail = createMailHandler(db, secretKey, mailSource, { interpret: interpretMail, bodies: naverBodies }, options.mailBackfill ?? naverBackfill);
+    const stop = startWorker(db, (job: ClaimedJob) => (job.kind === 'mail' ? mail(job) : recommend(job)));
     // 예약 실행은 작업자와 같은 서버 프로세스에서 돈다. 브라우저를 닫아도 계속된다.
     const stopSchedule = startScheduler(db, options.scheduleHour ?? 21);
     app.addHook('onClose', async () => { stop(); stopSchedule(); });

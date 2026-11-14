@@ -4,10 +4,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@nextstep/design-system';
 import { jobSchema, mailConnectionSchema, type Me } from '@nextstep/contracts';
 import { call, fieldClass, RequestError } from '../api-client';
+import { AI_CAUSES } from './ai';
 
 const ERRORS: Record<string, string> = { auth_failed: '인증 실패: 네이버 애플리케이션 비밀번호와 IMAP 사용 설정을 확인하세요.', network: '네트워크 오류', tls: '보안 연결 오류', protocol: '메일 서버 응답 오류', not_connected: '연결 정보 없음', disconnected: '조회 중 연결이 해제됨' };
 const ACTIVE = ['대기', '실행중'];
-const AI_CAUSES: Record<string, string> = { ai_unconfigured: 'OpenAI 키 미등록', ai_key_invalid: 'OpenAI 키 거부됨', ai_quota: 'OpenAI 잔액 부족', ai_model_unavailable: '선택한 모델 사용 불가', ai_network: 'OpenAI 연결 실패', ai_timeout: 'OpenAI 응답 시간 초과', ai_http: 'OpenAI 오류' };
 const PERIODS: [number, string][] = [[30, '최근 1개월'], [90, '최근 3개월'], [180, '최근 6개월'], [365, '최근 1년']];
 const PAST: [number, string][] = [[90, '최근 3개월까지'], [180, '최근 6개월까지'], [365, '최근 1년까지'], [730, '최근 2년까지']];
 const CONNECT_ERRORS: Record<number, string> = {
@@ -57,7 +57,7 @@ export function MailSetting({ me }: { me: Me }) {
         <ul className="flex list-disc flex-col gap-1 pl-5 text-body-sm">
           <li>받은 메일을 읽기만 합니다. 읽음 처리·이동·삭제·발송을 하지 않습니다.</li>
           <li>채용 메일의 제목 앞부분·짧은 근거·수신 시각만 저장하고 본문은 저장하지 않습니다.</li>
-          <li>규칙으로 지원 건을 찾지 못한 채용 메일은 AI로 회사·직무·결과를 해석합니다. 로컬 AI를 쓰면 본문이 서버 밖으로 나가지 않고, OpenAI를 쓰면 본인 키로 보냅니다(응답 저장 요청 안 함).</li>
+          <li>규칙으로 지원 건을 찾지 못한 채용 메일은 AI로 회사·직무·결과를 해석합니다. 본문은 서버의 로컬 AI로만 처리하고 서버 밖으로 보내지 않습니다.</li>
           <li>애플리케이션 비밀번호는 암호화해 서버에만 둡니다. 연결 해제 시 비밀번호와 조회 위치를 지웁니다.</li>
           <li>네이버에서 애플리케이션 비밀번호를 삭제하면 그 즉시 NextStep의 접근도 끊깁니다.</li>
         </ul>

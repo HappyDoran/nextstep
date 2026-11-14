@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dataBlock, structured } from '../ai/openai.js';
+import { dataBlock, structured } from '../ai/llm.js';
 
 // 서류에서 추천 비교용 지원자 사실을 뽑는다. 저장하지 않고 갱신 작업 안에서만 쓴다.
 export const candidateSchema = z.object({

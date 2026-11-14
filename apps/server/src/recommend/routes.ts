@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { linkRequestSchema, profileSchema, recommendationFeedbackSchema, recommendationListSchema, recommendationSchema } from '@nextstep/contracts';
 import { requireUser } from '../auth.js';
 import { suggestProfile } from '../prompts/profile.js';
-import { AiError } from '../ai/openai.js';
+import { AiError } from '../ai/llm.js';
 import { enqueue, getJob, latestJob } from './jobs.js';
 import { parsePostingLink, rowFacts } from './pipeline.js';
 import { passesFilter } from '../sources/filter.js';
@@ -23,13 +23,12 @@ function postingStatus(row: Row, now: string) {
 }
 
 const AI_MESSAGES: Record<string, string> = {
-  ai_unconfigured: '설정에서 본인 OpenAI API 키를 등록하세요.',
-  ai_key_invalid: 'OpenAI가 등록한 키를 거부했습니다. 설정에서 키를 다시 등록하세요.',
-  ai_quota: 'OpenAI 계정 잔액이 부족합니다. OpenAI에서 충전한 뒤 다시 시도하세요.',
-  ai_model_unavailable: '이 키로는 선택한 모델을 쓸 수 없습니다. 설정에서 모델을 바꾸세요.',
+  ai_network: '로컬 AI(Ollama)에 연결하지 못했습니다. 서버의 Ollama가 켜져 있는지 확인하세요.',
+  ai_model_unavailable: '로컬 AI 모델이 설치되지 않았습니다. 서버에서 ollama pull로 모델을 받으세요.',
+  ai_timeout: '로컬 AI 응답 시간이 초과되었습니다. 잠시 후 다시 시도하세요.',
 };
 
-export function registerRecommendations(app: FastifyInstance, db: DatabaseSync, withUserAi: <T>(userId: string, fn: () => T) => T = (_userId, fn) => fn()) {
+export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) {
   app.post('/postings/refresh', async (request, reply) => {
     const user = requireUser(db, request, reply);
     if (!user) return reply;
@@ -107,9 +106,9 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync, 
     const resume = db.prepare("SELECT text FROM documents WHERE user_id = ? AND kind = 'resume'").get(user.id) as { text: string } | undefined;
     if (!resume) return reply.status(409).send({ message: '이력서를 먼저 등록하세요.' });
     try {
-      return { profile: await withUserAi(user.id, () => suggestProfile(resume.text)) };
+      return { profile: await suggestProfile(resume.text) };
     } catch (error) {
-      if (error instanceof AiError) return reply.status(error.code === 'ai_unconfigured' ? 503 : 502).send({ message: AI_MESSAGES[error.code] ?? 'AI 처리에 실패했습니다. 잠시 후 다시 시도하세요.', code: error.code });
+      if (error instanceof AiError) return reply.status(502).send({ message: AI_MESSAGES[error.code] ?? 'AI 처리에 실패했습니다. 잠시 후 다시 시도하세요.', code: error.code });
       throw error;
     }
   });

@@ -8,8 +8,7 @@
         "^build"
       ],
       "passThroughEnv": [
-        "NEXTSTEP_*",
-        "OPENAI_API_KEY"
+        "NEXTSTEP_*"
       ]
     },
     "build": {

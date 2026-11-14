@@ -6,6 +6,7 @@ import { Button } from '@nextstep/design-system';
 import { jobSchema, profileSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
 import { call, fieldClass, useMe } from '../api-client';
 import { Account } from '../account';
+import { AI_CAUSES } from '../settings/ai';
 
 const CLASSES = recommendationClassSchema.options;
 // 사용자가 제외에서 되살린 공고는 '복구' 묶음으로 따로 본다.
@@ -21,8 +22,6 @@ const ERRORS: Record<string, string> = {
   unsupported_link: '지원하지 않는 링크입니다.',
   lease_expired: '처리 시간이 초과되었습니다. 다시 시도하세요.',
 };
-// 사용자가 고칠 수 있는 AI 실패 원인(설정의 OpenAI 키·모델에서 해결).
-const AI_CAUSES: Record<string, string> = { ai_unconfigured: '설정에서 OpenAI 키 등록 필요', ai_key_invalid: 'OpenAI 키 거부됨', ai_quota: 'OpenAI 잔액 부족', ai_model_unavailable: '선택한 모델 사용 불가', ai_network: 'OpenAI 연결 실패(네트워크·컴퓨터 잠자기 확인)', ai_timeout: 'OpenAI 응답 시간 초과' };
 const ACTIVE: string[] = ['대기', '실행중'];
 const date = (iso: string) => new Date(iso).toLocaleString('ko-KR');
 
@@ -88,7 +87,7 @@ function RecommendationList({ me }: { me: Me }) {
   return <div className="flex flex-col gap-8">
     <section aria-labelledby="refresh-heading" className="flex flex-col gap-3">
       <h1 id="refresh-heading" className="text-title-lg">추천</h1>
-      <p className="text-body-sm text-muted-foreground">공고 조건과 서류(이력서·경력기술서·포트폴리오)에서 AI(설정의 로컬 AI, 또는 본인 OpenAI 키)로 사실만 뽑고, 분류는 정해진 규칙으로 합니다. 좋아요·별로·제외 복구는 내 목록에만 반영됩니다. 마감·기업 규모는 출처에 적힌 값만 보여 주고 없으면 미확인으로 둡니다.</p>
+      <p className="text-body-sm text-muted-foreground">공고 조건과 서류(이력서·경력기술서·포트폴리오)에서 서버의 로컬 AI로 사실만 뽑고, 분류는 정해진 규칙으로 합니다. 좋아요·별로·제외 복구는 내 목록에만 반영됩니다. 마감·기업 규모는 출처에 적힌 값만 보여 주고 없으면 미확인으로 둡니다.</p>
       <FilterSummary me={me} />
       <div><Button disabled={busy} onClick={() => refresh.mutate()}>{busy ? <LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" /> : <RefreshCw className="size-icon-md shrink-0 stroke-icon" aria-hidden="true" />}새로 가져오기</Button></div>
       <JobStatus job={currentJob} />

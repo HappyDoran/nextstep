@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -233,17 +233,7 @@ export function openDatabase(filename: string) {
         UPDATE postings SET acquired_by = 'link';
         PRAGMA user_version = 10;`);
     }
-    if (version < 11) {
-      // P1-08: 사용자 본인 OpenAI 키(DB와 다른 키로 암호화)·끝 4자리·선택 모델.
-      db.exec(`CREATE TABLE ai_settings (
-          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-          key_enc TEXT NOT NULL,
-          key_hint TEXT NOT NULL,
-          model TEXT NOT NULL,
-          verified_at TEXT NOT NULL
-        ) STRICT;
-        PRAGMA user_version = 11;`);
-    }
+    // 버전 11의 사용자별 OpenAI 키 표(ai_settings)는 로컬 LLM 전환으로 없앴다(P1-10). 15에서 기존 표를 지운다.
     if (version < 12) {
       // P1-11: 포트폴리오·경력기술서 kind, OCR로 읽은 쪽 번호, 사용자가 MD를 고쳤는지.
       db.exec(`ALTER TABLE documents ADD COLUMN ocr_pages TEXT NOT NULL DEFAULT '[]';
@@ -272,6 +262,13 @@ export function openDatabase(filename: string) {
         ALTER TABLE applications ADD COLUMN locked_fields TEXT NOT NULL DEFAULT '[]';
         ALTER TABLE review_requests ADD COLUMN held INTEGER NOT NULL DEFAULT 0;
         PRAGMA user_version = 14;`);
+    }
+    if (version < 15) {
+      // P1-10: 사용자별 OpenAI 키 기능 제거. 암호문이 빈 페이지에 남지 않게 덮어쓰며 지운다.
+      db.exec(`PRAGMA secure_delete = ON;
+        DROP TABLE IF EXISTS ai_settings;
+        PRAGMA secure_delete = OFF;
+        PRAGMA user_version = 15;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

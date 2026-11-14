@@ -1,12 +1,12 @@
 // 추천 판정(모델 추출 + 규칙 분류)을 정답 사례로 평가한다. 실제 AI 호출(요금 발생)이며 합성 사례만 보낸다.
 // 호출: 공고 사례마다 추출 1회 + 지원자 프로필마다 1회.
-// 실행: OPENAI_API_KEY=... NEXTSTEP_OPENAI_MODEL=... pnpm --filter @nextstep/server eval:recommend
+// 실행: [NEXTSTEP_OLLAMA_MODEL=...] [EVAL_SET=holdout] pnpm --filter @nextstep/server eval:recommend
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { extractRequirements, REQUIREMENTS_PROMPT_VERSION } from '../prompts/requirements.js';
 import { extractCandidate, CANDIDATE_PROMPT_VERSION, type Candidate } from '../prompts/candidate.js';
 import { classify, RULES_VERSION } from '../recommend/classify.js';
-import { usageTotals } from '../ai/openai.js';
+import { ollamaModel, usageTotals } from '../ai/llm.js';
 import type { Career } from '../sources/types.js';
 
 type Posting = { title: string; company: string; deadline: string | null; alwaysHire: boolean; workFields: string[]; careers: Career[]; conditions: { required: string[]; preferred: string[] }; location: string | null; remote: '전면' | '부분' | '없음' | null; companyType: string | null; body?: string };
@@ -52,7 +52,7 @@ async function main() {
   }
   console.log(JSON.stringify({
     versions: [REQUIREMENTS_PROMPT_VERSION, CANDIDATE_PROMPT_VERSION, RULES_VERSION],
-    model: process.env.NEXTSTEP_OPENAI_MODEL,
+    model: ollamaModel(),
     seconds: Math.round((Date.now() - started) / 1000),
     usage: usageTotals,
     total: results.length,

@@ -3,7 +3,7 @@ import { alert, deleteAccount, signup } from './helpers';
 
 const fixture = (name: string) => `apps/server/tests/fixtures/${name}`;
 
-test('이력서 등록·실패 시 유지·프로필 저장과 AI 미설정 표시', async ({ page }) => {
+test('이력서 등록·실패 시 유지·프로필 저장과 로컬 AI 실패 안내', async ({ page }) => {
   await signup(page, `e2e-rec-${Date.now()}@example.com`);
   try {
     await page.goto('/settings');
@@ -28,12 +28,9 @@ test('이력서 등록·실패 시 유지·프로필 저장과 AI 미설정 표�
     await expect(page.getByRole('status').filter({ hasText: '등록된 이력서: resume-text.pdf' })).toBeVisible();
 
     await page.getByRole('button', { name: '이력서로 초안 만들기' }).click();
-    await expect(alert(page).filter({ hasText: 'AI 처리' })).toContainText('AI 처리가 설정되지 않았습니다');
-    // 본인 OpenAI 키가 없으면 설정에 미등록으로 보이고, 키 없이 저장할 수 없다(실제 OpenAI 호출은 하지 않음).
-    await expect(page.getByRole('status').filter({ hasText: '등록한 키가 없습니다' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '확인 후 저장' })).toBeDisabled();
-    await page.getByText('키가 없나요? 발급 방법').click();
-    await expect(page.getByRole('link', { name: 'API 키 화면 열기' })).toHaveAttribute('href', 'https://platform.openai.com/api-keys');
+    // e2e 서버는 닿지 않는 Ollama 주소를 써서 실패 안내만 확인한다(실제 AI 호출 없음).
+    await expect(alert(page).filter({ hasText: 'AI 처리' })).toContainText('로컬 AI(Ollama)가 켜져 있는지');
+    await expect(page.getByRole('status').filter({ hasText: '외부 AI로 보내지 않습니다' })).toContainText('로컬 AI(qwen3:1.7b)');
     await page.getByRole('checkbox', { name: '앱 개발' }).check();
     await page.getByLabel('업무·도구·기술 (쉼표로 구분)').fill('React, Swift');
     await page.getByRole('button', { name: '프로필 저장' }).click();

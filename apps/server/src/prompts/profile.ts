@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { jobFamilySchema, profileSchema } from '@nextstep/contracts';
-import { dataBlock, structured } from '../ai/openai.js';
+import { dataBlock, structured } from '../ai/llm.js';
 
 // 이력서에서 프로필 초안을 만든다. 저장은 사용자가 확인·수정한 뒤에만 한다.
 const draftSchema = z.object({

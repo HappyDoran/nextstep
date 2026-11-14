@@ -11,7 +11,7 @@ import { runNext } from '../dist/recommend/jobs.js';
 import { createMailHandler } from '../dist/mail/sync.js';
 import { MailSourceError } from '../dist/mail/naver.js';
 import { loadSecretKey } from '../dist/secrets.js';
-import { AiError } from '../dist/ai/openai.js';
+import { AiError } from '../dist/ai/llm.js';
 import { classifyMail, postingKey } from '../dist/mail/classify.js';
 
 // 합성 메일. 실제 사용자 메일 원문이 아니다.

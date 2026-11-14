@@ -11,7 +11,7 @@ import { encrypt, loadSecretKey } from '../secrets.js';
 import { enqueue, runNext } from '../recommend/jobs.js';
 import { createMailHandler } from '../mail/sync.js';
 import { naverBodies, naverSource } from '../mail/naver.js';
-import { aiConfigured, usageTotals } from '../ai/openai.js';
+import { usageTotals } from '../ai/llm.js';
 import { interpretMail } from '../prompts/mail.js';
 
 async function main() {
@@ -26,8 +26,8 @@ async function main() {
     const at = new Date().toISOString();
     db.prepare('INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)').run(userId, 'verify@example.com', 'x', at);
     db.prepare("INSERT INTO mail_connections (user_id, provider, account, secret, status, consent_at, created_at) VALUES (?, 'naver', ?, ?, '정상', ?, ?)").run(userId, user, encrypt(key, pass), at, at);
-    // AI가 설정되면 해석 단계까지 실행한다(실제 메일 본문이 OpenAI로 전달됨). 요금을 줄이려고 1회만 돈다.
-    const ai = aiConfigured() ? { interpret: interpretMail, bodies: naverBodies } : undefined;
+    // --ai면 로컬 LLM 해석 단계까지 1회 실행한다(느림). 없으면 조회·중복 방지만 3회 확인한다.
+    const ai = process.argv.includes('--ai') ? { interpret: interpretMail, bodies: naverBodies } : undefined;
     const handler = createMailHandler(db, key, naverSource, ai);
     const runs = [];
     for (let i = 0; i < (ai ? 1 : 3); i++) {

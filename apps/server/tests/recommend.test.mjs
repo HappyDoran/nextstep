@@ -10,7 +10,7 @@ import { createInvite } from '../dist/auth.js';
 import { runNext, claim, recoverExpired } from '../dist/recommend/jobs.js';
 import { createHandler, isNotHiring, parsePostingLink } from '../dist/recommend/pipeline.js';
 
-// 출처·AI를 가짜로 바꿔 작업·저장·격리 규칙만 확인한다(실제 수집·OpenAI 검증이 아님).
+// 출처·AI를 가짜로 바꿔 작업·저장·격리 규칙만 확인한다(실제 수집·AI 검증이 아님).
 const posting = (source, sourceId, title, body = '필수: React 3년') => ({ source, sourceId, url: `https://example.com/${source}/${sourceId}`, title, company: '가상회사', deadline: '2099-01-01T00:00:00+09:00', alwaysHire: false, location: '서울', remote: false, careers: [], companyType: null, employeeCount: null, externalApplyUrl: null, body, bodyFailure: null });
 function fakeDeps(calls) {
   return {

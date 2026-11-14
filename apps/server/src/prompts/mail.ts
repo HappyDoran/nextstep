@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dataBlock, structured } from '../ai/openai.js';
+import { dataBlock, structured } from '../ai/llm.js';
 
 // 규칙으로 대상을 찾지 못한 채용 메일에서 회사·직무·결과를 읽는다. 확실하지 않으면 low로 답하게 한다.
 export const mailInterpretationSchema = z.object({

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dataBlock, structured } from '../ai/openai.js';
+import { dataBlock, structured } from '../ai/llm.js';
 
 // 공고 본문에서 구조화 사실만 뽑는다. 원문은 저장하지 않고 이 결과만 저장한다.
 // 분류는 하지 않는다. 기본·도전·미확인·제외는 recommend/classify.ts 규칙이 정한다(기술 설계 D절).

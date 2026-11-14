@@ -15,7 +15,7 @@ export function Settings() {
     <h1 className="text-title-lg">설정</h1>
     <Panel><h2 className="mb-3 text-title">계정</h2><Account /></Panel>
     {me.data && <Panel><h2 className="mb-3 text-title">네이버 메일 연결</h2><MailSetting me={me.data} /></Panel>}
-    {me.data && <Panel><h2 className="mb-3 text-title">OpenAI 키·모델</h2><AiSetting me={me.data} /></Panel>}
+    {me.data && <Panel><h2 className="mb-3 text-title">AI 처리</h2><AiSetting me={me.data} /></Panel>}
     {me.data && <Panel><h2 className="mb-3 text-title">이력서 (필수)</h2><ResumeSetting me={me.data} /></Panel>}
     {me.data && <Panel><h2 className="mb-3 text-title">경력기술서 (선택)</h2><ResumeSetting me={me.data} kind="career" /></Panel>}
     {me.data && <Panel><h2 className="mb-3 text-title">포트폴리오 (선택)</h2><ResumeSetting me={me.data} kind="portfolio" /></Panel>}

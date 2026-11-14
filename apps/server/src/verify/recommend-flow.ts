@@ -1,5 +1,5 @@
-// P1-04 실제 흐름 검증: 임시 DB·임시 사용자·합성 이력서로 실제 출처 수집과 OpenAI 판정을 한 번 실행하고 지운다.
-// 출력은 공개 공고의 제목·회사·분류·근거 요약과 건수뿐이다. 실행 시 출처 요청과 OpenAI 요금이 발생한다.
+// P1-04 실제 흐름 검증: 임시 DB·임시 사용자·합성 이력서로 실제 출처 수집과 로컬 LLM 추출·규칙 분류를 한 번 실행하고 지운다.
+// 출력은 공개 공고의 제목·회사·분류·근거 요약과 건수뿐이다. 실행 시 출처 요청이 발생한다.
 // 실행: pnpm --filter @nextstep/server verify:recommend-flow -- [링크 URL...]
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,10 +10,9 @@ import { openDatabase } from '../database.js';
 import { extractResumeText } from '../documents/extract-resume.js';
 import { enqueue, runNext } from '../recommend/jobs.js';
 import { createHandler } from '../recommend/pipeline.js';
-import { aiConfigured, usageTotals } from '../ai/openai.js';
+import { usageTotals } from '../ai/llm.js';
 
 async function main() {
-  if (!aiConfigured()) { console.log(JSON.stringify({ ok: false, code: 'ai_unconfigured' })); process.exitCode = 1; return; }
   const links = process.argv.slice(2).filter(a => a.startsWith('https://'));
   // --all-families: 네 직무 전체로 실행한다(기본은 프론트엔드·앱 개발).
   const personal = process.argv.includes('--all-families');
