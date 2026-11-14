@@ -1,7 +1,7 @@
 ---
 title: 다음 세션 할 일
 kind: handoff
-last_verified: 2026-11-14
+last_verified: 2026-11-15
 ---
 
 # 다음 세션 할 일
@@ -26,7 +26,7 @@ last_verified: 2026-11-14
 
 ## 2-1. 홈서버 (P1-09, 병행 가능)
 
-- 노트북 Ubuntu 설치, GPU 확인, Mac 개발 → 홈서버 빌드·배포 절차, Tailscale(초대 사용자 기기 공유), 노트북 밖 백업·복구.
+- 노트북 Ubuntu Server 설치(USB), NVIDIA 드라이버(580 계열)·Ollama GPU 인식 확인(GTX 950M 2GB), Mac 개발 → 홈서버 빌드·배포 절차, Tailscale(초대 사용자 기기 공유), 노트북 밖 백업·복구.
 
 ## 2-2. 마지막: 로컬 LLM 전환 (P1-10)
 
