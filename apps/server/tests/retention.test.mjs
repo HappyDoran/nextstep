@@ -36,7 +36,7 @@ test('추천 작업 도중 계정을 삭제해도 개인 자료가 되살아나�
       fetchOne: {},
       extract: async () => ({ jobFamilies: ['프론트엔드'], required: [], preferred: [], remote: '미기재', portfolioRequired: false }),
       // 판정 중에 사용자가 계정을 삭제한다.
-      judge: async () => { await s.app.inject({ method: 'DELETE', url: '/account', headers: { cookie: a } }); return { classification: '기본', met: [], unmet: [], unknown: [], reason: 'x' }; },
+      candidate: async () => { await s.app.inject({ method: 'DELETE', url: '/account', headers: { cookie: a } }); return { careers: [], skills: [], experiences: [], roles: [], education: '미기재' }; },
     };
     const db = openDatabase(s.path);
     try {

@@ -20,8 +20,9 @@ function fakeDeps(calls) {
       jasoseol: async () => { calls.push('jasoseol'); return { postings: [], failures: [] }; },
     },
     fetchOne: { saramin: async id => posting('saramin', id, '링크'), jobkorea: async () => ({ source: 'jobkorea', code: 'not_found' }), wanted: async id => posting('wanted', id, '링크 공고'), jasoseol: async id => posting('jasoseol', id, '링크') },
-    extract: async p => { calls.push(`extract:${p.title}`); return { jobFamilies: ['프론트엔드'], required: ['React 3년'], preferred: [], remote: '없음', portfolioRequired: false }; },
-    judge: async (_at, candidate, facts) => { calls.push(`judge:${facts.title}`); assert.equal('body' in facts, false); return { classification: '기본', met: ['React'], unmet: [], unknown: ['기업 유형·규모 미기재'], reason: '조건 충족' }; },
+    extract: async p => { calls.push(`extract:${p.title}`); return { jobFamilies: ['프론트엔드'], required: [{ text: 'React 실무 3년', type: 'skill', keys: ['React'], years: 3, practical: true }], preferred: [], remote: '없음', portfolioRequired: false, employmentTypes: ['정규직'] }; },
+    // 지원자 사실 추출은 갱신 작업당 한 번이며, 공고 원문이 아니라 서류만 받는다.
+    candidate: async text => { calls.push('candidate'); assert.equal(text.includes('필수: React'), false); return { careers: [{ family: '프론트엔드', months: 36, stack: ['React'] }], skills: ['React'], experiences: [], roles: [], education: '대졸' }; },
   };
 }
 async function setup() {
@@ -53,8 +54,7 @@ test('갱신 작업: 세 출처를 수집하고 원문 없이 조건·판정을 
       assert.equal(await runNext(db, createHandler(db, fakeDeps(calls))), false);
     } finally { db.close(); }
     // 출처는 순서대로 수집하고, 판정 순서는 확인 시각이 같으면 정해지지 않는다.
-    assert.deepEqual(calls.slice(0, 5), ['saramin:프론트엔드', 'extract:프론트엔드', 'jobkorea:프론트엔드', 'extract:프론트엔드 개발자', 'jasoseol']);
-    assert.deepEqual(calls.slice(5).sort(), ['judge:프론트엔드', 'judge:프론트엔드 개발자']);
+    assert.deepEqual(calls, ['saramin:프론트엔드', 'extract:프론트엔드', 'jobkorea:프론트엔드', 'extract:프론트엔드 개발자', 'jasoseol', 'candidate']);
     const job = (await s.app.inject({ url: `/jobs/${first.id}`, headers: { cookie: a } })).json();
     // 가짜 사람인이 상세 한 건 실패를 돌려주므로 일부 실패다.
     assert.equal(job.status, '일부 실패');
@@ -93,12 +93,12 @@ test('수집한 공고는 갱신한 사용자 자료로만 저장되고 다른 �
     assert.equal(raw.prepare('SELECT count(*) n FROM postings').get().n, 4);
     assert.equal(raw.prepare('SELECT count(DISTINCT owner_user_id) n FROM postings').get().n, 2);
     raw.close();
-    // 같은 기준으로 다시 실행하면 판정 호출이 없다.
+    // 같은 기준으로 다시 실행하면 지원자 추출(AI 호출)도 다시 하지 않는다.
     await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
     const again = [];
     db = openDatabase(s.path);
     try { await runNext(db, createHandler(db, fakeDeps(again))); } finally { db.close(); }
-    assert.equal(again.filter(c => c.startsWith('judge')).length, 0);
+    assert.equal(again.filter(c => c === 'candidate').length, 0);
   } finally { await s.done(); }
 });
 
@@ -174,8 +174,10 @@ test('사용자 필터에 맞지 않는 공고는 판정하지 않고, 필터를
     deps.collect.saramin = async () => ({ postings: [], failures: [] });
     deps.extract = async p => ({ jobFamilies: ['프론트엔드'], required: [], preferred: [], remote: '없음', portfolioRequired: false, employmentTypes: p.title.includes('프리랜서') ? ['프리랜서'] : ['정규직'] });
     const db = openDatabase(s.path);
-    try { await runNext(db, createHandler(db, deps)); } finally { db.close(); }
-    assert.deepEqual(calls.filter(c => c.startsWith('judge:')), ['judge:서울 공고']);
+    try {
+      await runNext(db, createHandler(db, deps));
+      assert.deepEqual(db.prepare('SELECT p.title FROM recommendations r JOIN postings p ON p.id = r.posting_id').all().map(r => r.title), ['서울 공고']);
+    } finally { db.close(); }
     assert.equal((await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items.length, 1);
     // 지역을 하남으로 바꾸면 다시 가져오기 전에도 서울 공고는 목록에서 빠진다.
     await s.app.inject({ method: 'PUT', url: '/profile', headers: { cookie: a }, payload: { jobFamilies: ['프론트엔드'], experiences: [], regions: ['경기 하남시'], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '' } });

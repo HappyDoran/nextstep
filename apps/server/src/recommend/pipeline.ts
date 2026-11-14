@@ -8,7 +8,8 @@ import { fetchWanted } from '../sources/wanted.js';
 import { collectSaramin, fetchSaramin } from '../sources/saramin.js';
 import { collectJasoseol, fetchJasoseol } from '../sources/jasoseol.js';
 import { extractRequirements, REQUIREMENTS_PROMPT_VERSION, type Requirements } from '../prompts/requirements.js';
-import { judge, RECOMMEND_PROMPT_VERSION, type Judgement } from '../prompts/recommend.js';
+import { extractCandidate, CANDIDATE_PROMPT_VERSION, type Candidate } from '../prompts/candidate.js';
+import { classify, RULES_VERSION, type PostingInput } from './classify.js';
 import type { ClaimedJob, JobOutcome } from './jobs.js';
 import { passesFilter } from '../sources/filter.js';
 
@@ -17,22 +18,20 @@ export type PipelineDeps = {
   collect: { saramin: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jobkorea: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jasoseol: (f: JobFamily[], cap: number) => Promise<Collected> };
   fetchOne: Record<SourceId, (id: string) => Promise<CollectedPosting | CollectFailure>>;
   extract: (posting: { title: string; company: string; body: string }) => Promise<Requirements>;
-  judge: (evaluatedAt: string, candidate: unknown, posting: unknown) => Promise<Judgement>;
+  candidate: (text: string) => Promise<Candidate>;
 };
 export const defaultDeps: PipelineDeps = {
   // 1차 자동 수집은 사람인·잡코리아·자소설닷컴(2026-11-10 결정). 원티드는 2차 출처라 사용자 링크 판정만 받는다.
   collect: { saramin: collectSaramin, jobkorea: collectJobkorea, jasoseol: collectJasoseol },
   fetchOne: { saramin: fetchSaramin, jobkorea: fetchJobkorea, wanted: fetchWanted, jasoseol: fetchJasoseol },
   extract: extractRequirements,
-  judge,
+  candidate: extractCandidate,
 };
 
 // 실행당 요청·판정 상한(출처 부담·요금 제한).
 const PER_FAMILY = 5;
 // 자소설닷컴은 직무별 목록에서 직무당 이 수만큼 상세를 읽는다.
 const JASOSEOL_PER_FAMILY = 5;
-// 개발 중에는 NEXTSTEP_JUDGE_CAP으로 줄여 요금을 아낀다.
-const JUDGE_CAP = Number(process.env.NEXTSTEP_JUDGE_CAP ?? 40);
 // 채용이 아닌 교육·부트캠프 모집은 공고로 받지 않는다(자소설닷컴 직무별 목록에 섞여 나온다).
 const NOT_HIRING = /교육생|수강생|훈련생|부트캠프|클래스메이트|국비\s*(?:지원|교육)|\d+기\s*모집/;
 export const isNotHiring = (title: string) => NOT_HIRING.test(title);
@@ -95,8 +94,8 @@ function loadUserBasis(db: DatabaseSync, userId: string) {
   const resume = db.prepare("SELECT id, text FROM documents WHERE user_id = ? AND kind = 'resume'").get(userId) as { id: string; text: string } | undefined;
   if (!profileRow || !resume) return undefined;
   const profile = profileSchema.parse(JSON.parse(profileRow.data));
-  // 프로필·이력서·프롬프트가 바뀌면 다시 판정한다. 과거 판정을 새 기준으로 위장하지 않는다.
-  return { profile, resume, basis: `${profileRow.updated_at}|${resume.id}|${RECOMMEND_PROMPT_VERSION}` };
+  // 프로필·이력서·추출 지시·규칙이 바뀌면 다시 판정한다. 과거 판정을 새 기준으로 위장하지 않는다.
+  return { profile, resume, basis: `${profileRow.updated_at}|${resume.id}|${CANDIDATE_PROMPT_VERSION}|${REQUIREMENTS_PROMPT_VERSION}|${RULES_VERSION}` };
 }
 
 // 필터용 공고 사실(저장된 값만 쓴다).
@@ -105,31 +104,44 @@ export function rowFacts(row: Pick<PostingRow, 'location' | 'remote' | 'careers'
   return { location: row.location, remote: row.remote === null ? (req?.remote === '전면' ? true : null) : row.remote === 1, careers: JSON.parse(row.careers), employmentTypes: req?.employmentTypes };
 }
 
-function postingFacts(row: PostingRow) {
-  const req = row.requirements ? JSON.parse(row.requirements) as Requirements : null;
+// 저장된 공고 사실을 규칙 입력으로 바꾼다. 이전 형식 추출 결과는 본문 조건 미확인으로 둔다(다시 수집하면 새로 추출).
+function postingInput(row: PostingRow): PostingInput {
+  const raw = row.requirements ? JSON.parse(row.requirements) as Partial<Requirements> & { version?: string } : null;
+  const req = raw?.version === REQUIREMENTS_PROMPT_VERSION ? raw as Requirements : null;
   return {
-    title: row.title, company: row.company, deadline: row.deadline, alwaysHire: row.always_hire === 1,
-    location: row.location ?? '미기재', remote: req?.remote ?? (row.remote === null ? '미기재' : row.remote ? '전면' : '없음'),
-    careers: JSON.parse(row.careers), companyType: row.company_type, employeeCount: row.employee_count,
-    jobFamilies: req?.jobFamilies ?? [], required: req?.required ?? [], preferred: req?.preferred ?? [],
-    portfolioRequired: req?.portfolioRequired ?? false,
-    bodyStatus: req ? '본문 조건 추출됨' : `본문 미확인(${row.body_failure ?? '추출 실패'})`,
+    families: req ? req.jobFamilies : null, required: req ? req.required : null, preferred: req?.preferred ?? [],
+    careers: JSON.parse(row.careers), location: row.location,
+    remote: row.remote === null ? (req?.remote ?? null) : row.remote ? '전면' : '없음',
+    deadline: row.deadline, alwaysHire: row.always_hire === 1, companyType: row.company_type,
+    bodyNote: req ? null : `본문 조건 미확인(${row.body_failure ?? '추출 전 형식 또는 추출 실패'})`,
   };
+}
+
+// 지원자 사실은 갱신마다 서류에서 한 번 뽑는다. 사용자가 확인한 프로필 직무 경력이 있으면 그 기간을 쓴다.
+// ponytail: 갱신마다 1회 호출. 로컬 LLM이 느려 부담되면 서류 ID별로 저장해 재사용한다.
+async function candidateFacts(deps: PipelineDeps, basis: { profile: Profile; resume: { text: string } }): Promise<Candidate> {
+  const c = await deps.candidate(basis.resume.text);
+  const confirmed = basis.profile.experiences.map(e => ({ family: e.jobFamily, months: Math.round(e.years * 12) }));
+  const careers = c.careers.map(r => ({ ...r, months: confirmed.find(e => e.family === r.family)?.months ?? r.months }));
+  for (const e of confirmed) if (!careers.some(r => r.family === e.family)) careers.push({ ...e, stack: [] });
+  return { ...c, careers, skills: [...c.skills, ...basis.profile.skills] };
 }
 
 async function judgeFor(db: DatabaseSync, deps: PipelineDeps, userId: string, basis: { profile: Profile; resume: { text: string }; basis: string }, rows: PostingRow[], counts: Counts & { judged: number }) {
   const at = new Date().toISOString();
-  // 지역을 고르지 않았으면 전국으로 알린다(빈 목록을 '희망 지역 없음'으로 오해하지 않게).
-  const candidate = { profile: { ...basis.profile, regions: basis.profile.regions.length ? basis.profile.regions : ['전국'] }, resumeExcerpt: basis.resume.text.slice(0, 8000) };
-  for (const row of rows.slice(0, JUDGE_CAP)) {
-    const prior = db.prepare('SELECT basis FROM recommendations WHERE user_id = ? AND posting_id = ?').get(userId, row.id) as { basis: string } | undefined;
-    if (prior?.basis === basis.basis) continue;
-    let j: Judgement;
-    try { j = await deps.judge(at, candidate, postingFacts(row)); } catch (error) { countFailure(counts, error); continue; }
+  const pending = rows.filter(row => (db.prepare('SELECT basis FROM recommendations WHERE user_id = ? AND posting_id = ?').get(userId, row.id) as { basis: string } | undefined)?.basis !== basis.basis);
+  if (!pending.length) return;
+  let candidate: Candidate;
+  try { candidate = await candidateFacts(deps, basis); } catch (error) { countFailure(counts, error); return; }
+  const seeker = { jobFamilies: basis.profile.jobFamilies, regions: basis.profile.regions, remoteOk: basis.profile.remoteOk };
+  for (const row of pending) {
+    const j = classify(at, seeker, candidate, postingInput(row));
     // 판정 중 계정이 삭제되면 외래키가 저장을 거부해 추천이 되살아나지 않는다.
-    db.prepare(`INSERT INTO recommendations (user_id, posting_id, basis, classification, judgement, evaluated_at) VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_id, posting_id) DO UPDATE SET basis = excluded.basis, classification = excluded.classification, judgement = excluded.judgement, evaluated_at = excluded.evaluated_at`)
-      .run(userId, row.id, basis.basis, j.classification, JSON.stringify(j), at);
+    try {
+      db.prepare(`INSERT INTO recommendations (user_id, posting_id, basis, classification, judgement, evaluated_at) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, posting_id) DO UPDATE SET basis = excluded.basis, classification = excluded.classification, judgement = excluded.judgement, evaluated_at = excluded.evaluated_at`)
+        .run(userId, row.id, basis.basis, j.classification, JSON.stringify(j), at);
+    } catch { return; }
     counts.judged++;
   }
 }

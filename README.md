@@ -4,7 +4,7 @@
 
 ## 현재 구현 범위
 
-기획 범위와의 차이(2026-11-14 개정 기준): AI는 사용자별 OpenAI 키로 처리하며 판정도 모델이 한다(기획: 구현 기간에는 추출만 OpenAI, 분류는 규칙, 마지막에 로컬 LLM으로 교체). 자동 수집은 사람인·잡코리아·자소설닷컴 세 곳(원티드·점핏 미포함), 직무는 네 개(백엔드·QA 미포함), 서류는 이력서 하나(포트폴리오·경력기술서·ZIP·OCR 미구현), 메일은 네이버(1시간 주기 조회·기간 선택 미구현)이며 서버는 아직 운영자 컴퓨터의 로컬 서버다. Electron 앱은 기획에서 제거했으나 코드는 남아 있다(P1-14). 단계별 상태는 [백로그](docs/spec/백로그.md)가 소유한다.
+기획 범위와의 차이(2026-11-14 개정 기준): AI는 사용자별 OpenAI 키로 공고·서류 정보 추출만 하고 추천 분류는 서버 규칙이 한다(기획: 마지막에 로컬 LLM으로 교체). 자동 수집은 사람인·잡코리아·자소설닷컴 세 곳(원티드·점핏 미포함), 직무는 네 개(백엔드·QA 미포함), 서류는 이력서 하나(포트폴리오·경력기술서·ZIP·OCR 미구현), 메일은 네이버(1시간 주기 조회·기간 선택 미구현)이며 서버는 아직 운영자 컴퓨터의 로컬 서버다. Electron 앱은 기획에서 제거했으나 코드는 남아 있다(P1-14). 단계별 상태는 [백로그](docs/spec/백로그.md)가 소유한다.
 
 pnpm/Turborepo 모노레포, 웹 개발 화면, API·SQLite 준비 확인, DB 버전 관리, Electron 기본 창·종료·URL 보호, 공통 계약·UI·토큰과 Storybook을 구성했다. 디자인 기초는 원시 값·의미 색상·타입·간격·radius·그림자·모션 시간·이징·Lucide React 아이콘을 제공하며 선택한 브랜드와 Light/Dark를 카탈로그에서 비교할 수 있다. 웹의 연결 확인은 실제 로컬 API와 DB를 읽는다. 실패 후 재시도할 수 있다. 초대 코드 가입·이메일/비밀번호 로그인·로그아웃·계정 삭제, 지원 현황(직접 등록·검색·상태 필터·상세·상태/열람 수정과 변경 이력·삭제), 설정(계정·자동 갱신 ON/OFF 저장·연결 확인)이 웹과 Electron에서 동작한다. 공고 열기는 기본 브라우저로 이동만 하고 지원 상태를 바꾸지 않는다. 서버에는 P1-01 기술 검증용 텍스트 PDF/MD 이력서 추출 모듈과 잡코리아 공고·네이버 IMAP 읽기 전용 검증 명령이 있으며 API에 연결하지 않았다. 서버 하나를 운영자와 초대 사용자가 쓰며, 공고는 갱신한 사용자 자료로만 저장한다.
 
@@ -33,11 +33,11 @@ mise exec -- pnpm dev
 | `pnpm --filter @nextstep/web start` | 빌드된 웹 실행 |
 | `pnpm --filter @nextstep/server verify:jobkorea` | 잡코리아 네 직무 공개 공고 소량 조회(직무당 목록 1회·상세 3건, 요청 간 2.5초). 원문 없이 추출 결과·실패 구분만 출력. 공고 검증 명령은 403·429를 받은 호스트에는 다시 요청하지 않음 |
 | `pnpm --filter @nextstep/server invite` | 운영자용 초대 링크 발급(`NEXTSTEP_WEB_URL/?invite=코드`, 14일 유효, 1회용). 서버와 같은 DB에 코드 해시만 저장하고 링크는 이 출력에서만 보임. 링크를 연 사람은 코드 입력 없이 이메일·비밀번호만 정해 가입하고, 가입 후 주소에서 코드를 지움 |
-| `pnpm --filter @nextstep/server eval:recommend` | 추천 판정 프롬프트를 정답 사례 57건(합성)으로 실제 OpenAI에 보내 직무별 일치율·주입 사례 결과를 출력. 요금 발생 |
+| `pnpm --filter @nextstep/server eval:recommend` | 정답 사례 57건(합성)의 공고 조건·지원자 사실을 실제 OpenAI로 추출(사례 57회+지원자 6회)하고 규칙으로 분류해 직무별 일치율·주입 사례·오판 근거를 출력. 요금 발생 |
 | `pnpm --filter @nextstep/server verify:saramin` | 사람인 네 직무 공개 검색 목록 1회·상세 3건 조회(요청 간 2.5초). 원문 없이 추출 결과·본문 길이·실패 구분만 출력 |
 | `pnpm --filter @nextstep/server verify:wanted` | 원티드 네 직무 공개 목록·상세 각 3건 조회(2차 출처, 수집기 유지) |
 | `pnpm --filter @nextstep/server verify:jasoseol` | 자소설닷컴 네 직무 공개 직무별 목록·상세 각 2건 조회 |
-| `pnpm --filter @nextstep/server verify:recommend-flow [--all-families] [링크…]` | 임시 DB·합성 이력서로 실제 출처 수집과 OpenAI 조건 추출·판정을 한 번 실행하고 공개 공고 제목·분류·근거 요약만 출력 후 삭제. `--all-families`는 네 직무 전체. 출처 요청·요금 발생 |
+| `pnpm --filter @nextstep/server verify:recommend-flow [--all-families] [링크…]` | 임시 DB·합성 이력서로 실제 출처 수집과 OpenAI 조건·지원자 추출, 규칙 분류를 한 번 실행하고 공개 공고 제목·분류·근거 요약만 출력 후 삭제. `--all-families`는 네 직무 전체. 출처 요청·요금 발생 |
 | `pnpm --filter @nextstep/server verify:mail-sync` | 임시 DB·임시 사용자로 실제 네이버 증분 동기화를 3회(AI 설정 시 해석 포함 1회) 실행해 건수·분류 분포·중복 수만 출력하고 임시 DB를 삭제. `NAVER_IMAP_USER`·`NAVER_IMAP_PASSWORD` 필요 |
 | `pnpm --filter @nextstep/server verify:naver` | 네이버 IMAP 읽기 전용(EXAMINE) 조회. 제목·주소·본문 없이 편지함별 위치·건수·출처 도메인과 알림 메일의 공고 링크 확보 건수 집계만 출력. 원티드 추적 링크는 최대 5건 리다이렉트 위치만 확인 |
 
@@ -57,7 +57,7 @@ mise exec -- pnpm dev
 | NEXTSTEP_WEB_URL | Electron main·초대 링크 발급 | 개발 기본 http://127.0.0.1:3100. 초대 링크의 주소로도 쓰므로 홈서버에서는 초대받는 사람이 여는 주소로 지정. 패키징 실행은 소유 HTTPS 주소 필수 |
 | NEXTSTEP_SECURE_COOKIE | 서버 | `1`이면 세션 쿠키에 Secure 지정. HTTPS 배포에서 필수, 로컬 HTTP 개발은 미지정 |
 | OPENAI_API_KEY·NEXTSTEP_OPENAI_MODEL | 평가·검증 명령(`eval:recommend`·`verify:*`) | 운영자 키와 모델. 서버의 사용자 요청·작업에는 쓰지 않는다. 사용자는 설정의 OpenAI 키·모델에서 본인 키를 등록한다 |
-| NEXTSTEP_AI_FAKE·NEXTSTEP_AI_CACHE_DIR·NEXTSTEP_JUDGE_CAP | 서버(개발용, 운영에서 켜지 않음) | 요금 절감. `NEXTSTEP_AI_FAKE=1`은 OpenAI 대신 스키마에 맞는 고정 응답(화면·흐름 개발), `NEXTSTEP_AI_CACHE_DIR`(예: `.data/ai-cache`)은 같은 모델·지시·입력의 응답을 파일(0600)로 재사용, `NEXTSTEP_JUDGE_CAP`은 갱신당 판정 상한(기본 40). 캐시에는 판정 결과(회사명 등)가 남으므로 개발 중에만 쓰고 필요 없으면 폴더를 지운다 |
+| NEXTSTEP_AI_FAKE·NEXTSTEP_AI_CACHE_DIR | 서버(개발용, 운영에서 켜지 않음) | 요금 절감. `NEXTSTEP_AI_FAKE=1`은 OpenAI 대신 스키마에 맞는 고정 응답(화면·흐름 개발), `NEXTSTEP_AI_CACHE_DIR`(예: `.data/ai-cache`)은 같은 모델·지시·입력의 응답을 파일(0600)로 재사용. 판정은 규칙이라 상한이 없다. 캐시에는 추출 결과(회사명 등)가 남으므로 개발 중에만 쓰고 필요 없으면 폴더를 지운다 |
 | NEXTSTEP_SCHEDULE_HOUR | 서버 | 21. 한국 시간 기준 예약 실행 시작 시각(0~23) |
 | NEXTSTEP_SECRET_KEY | 서버 | 선택. base64 32바이트 연결 비밀정보 암호화 키. 없으면 DB 옆 `secret.key`를 만들어 씀 |
 | NAVER_IMAP_USER·NAVER_IMAP_PASSWORD | `verify:naver` | 동의한 계정의 주소·앱 비밀번호. 실행 셸에서만 지정하고 파일·로그에 남기지 않음 |
