@@ -7,6 +7,7 @@ import { call, fieldClass, RequestError } from '../api-client';
 
 const ERRORS: Record<string, string> = { auth_failed: '인증 실패: 네이버 애플리케이션 비밀번호와 IMAP 사용 설정을 확인하세요.', network: '네트워크 오류', tls: '보안 연결 오류', protocol: '메일 서버 응답 오류', not_connected: '연결 정보 없음', disconnected: '조회 중 연결이 해제됨' };
 const ACTIVE = ['대기', '실행중'];
+const AI_CAUSES: Record<string, string> = { ai_unconfigured: 'OpenAI 키 미등록', ai_key_invalid: 'OpenAI 키 거부됨', ai_quota: 'OpenAI 잔액 부족', ai_model_unavailable: '선택한 모델 사용 불가', ai_network: 'OpenAI 연결 실패', ai_timeout: 'OpenAI 응답 시간 초과', ai_http: 'OpenAI 오류' };
 const PERIODS: [number, string][] = [[30, '최근 1개월'], [90, '최근 3개월'], [180, '최근 6개월'], [365, '최근 1년']];
 const PAST: [number, string][] = [[90, '최근 3개월까지'], [180, '최근 6개월까지'], [365, '최근 1년까지'], [730, '최근 2년까지']];
 const CONNECT_ERRORS: Record<number, string> = {
@@ -72,11 +73,12 @@ export function MailSetting({ me }: { me: Me }) {
     </form>;
   }
   const job = conn.lastJob;
-  const result = job?.result as { stored?: number; applied?: number; created?: number; review?: number; more?: boolean } | null | undefined;
+  const result = job?.result as { stored?: number; applied?: number; created?: number; review?: number; more?: boolean; aiFailures?: number; aiFailureCodes?: Record<string, number> } | null | undefined;
+  const aiCause = Object.keys(result?.aiFailureCodes ?? {}).map(c => AI_CAUSES[c] ?? c).join(', ');
   return <div className="flex flex-col gap-4">
     <p role="status" className="text-muted-foreground">
       {conn.account} · {conn.status}{conn.lastSuccessAt ? ` · 최근 성공 ${new Date(conn.lastSuccessAt).toLocaleString('ko-KR')}` : ''}
-      {job ? ` · ${ACTIVE.includes(job.status) ? '메일을 확인하고 있습니다' : `${job.status}${job.errorCode ? `(${ERRORS[job.errorCode] ?? job.errorCode})` : ''}: 채용 메일 ${result?.stored ?? 0}건, 반영 ${(result?.applied ?? 0) + (result?.created ?? 0)}건, 확인 필요 ${result?.review ?? 0}건${result?.more ? ', 남은 메일은 다음 조회에서 이어서 처리' : ''}`}` : ''}
+      {job ? ` · ${ACTIVE.includes(job.status) ? '메일을 확인하고 있습니다' : `${job.status}${job.errorCode ? `(${ERRORS[job.errorCode] ?? job.errorCode})` : ''}: 채용 메일 ${result?.stored ?? 0}건, 반영 ${(result?.applied ?? 0) + (result?.created ?? 0)}건, 확인 필요 ${result?.review ?? 0}건${result?.aiFailures ? `, AI 해석 실패(${aiCause}) — 해결 후 다시 확인하면 이어서 해석` : ''}${result?.more ? ', 남은 메일은 다음 조회에서 이어서 처리' : ''}`}` : ''}
     </p>
     {conn.coveredSince && <p className="text-body-sm text-muted-foreground">조회 범위: {new Date(conn.coveredSince).toLocaleDateString('ko-KR')} 이후 받은 메일{conn.backfillSince ? ` · ${new Date(conn.backfillSince).toLocaleDateString('ko-KR')}까지 과거 범위를 넓히는 중(메일 확인 때마다 이어서 가져옴)` : ''}. 자동 갱신을 켜 두면 1시간마다 새 메일을 확인합니다.</p>}
     {conn.rangeIncomplete && <p className="text-body-sm text-destructive">네이버가 IMAP으로 보여 주는 메일이 고른 조회 기간보다 짧습니다. 네이버 메일 환경설정 &gt; POP3/IMAP 설정 &gt; IMAP/SMTP 설정의 &lsquo;IMAP 동기화 메일 제한&rsquo;(기본 1,000통, 최대 5,000통)을 늘린 뒤 다시 연결하면 더 오래된 메일까지 확인합니다.</p>}

@@ -105,8 +105,10 @@ async function request<T extends z.ZodType>({ apiKey, model }: AiConfig, name: s
 // 사용자가 고칠 수 있는 원인(키·잔액·모델 권한)을 일반 HTTP 오류와 구분한다.
 export async function httpError(res: Response) {
   if (res.status === 401) return new AiError('ai_key_invalid', 401);
-  const code = await res.json().then(b => (b as { error?: { code?: string } }).error?.code, () => undefined);
-  if (res.status === 429 && code === 'insufficient_quota') return new AiError('ai_quota', 429);
+  const error = await res.json().then(b => (b as { error?: { code?: string; type?: string } }).error, () => undefined);
+  const code = error?.code;
+  // 잔액 부족은 code가 insufficient_quota이거나, type이 insufficient_quota·code가 credit_balance_exhausted로 온다(2026-11-14 확인).
+  if (res.status === 429 && (code === 'insufficient_quota' || code === 'credit_balance_exhausted' || error?.type === 'insufficient_quota')) return new AiError('ai_quota', 429);
   if (res.status === 404 || code === 'model_not_found') return new AiError('ai_model_unavailable', res.status);
   return new AiError('ai_http', res.status);
 }

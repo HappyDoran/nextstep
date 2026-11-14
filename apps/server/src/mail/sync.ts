@@ -97,17 +97,18 @@ export function createMailHandler(db: DatabaseSync, secretKey: Buffer, source: M
         db.prepare('DELETE FROM mail_backfill WHERE user_id = ?').run(job.userId);
       }
     }
-    if (ai) await interpretUnlinked(db, job.userId, ai, bodies, counts, conn.account, password);
+    const aiFailureCodes: Record<string, number> = {};
+    if (ai) await interpretUnlinked(db, job.userId, ai, bodies, counts, conn.account, password, aiFailureCodes);
     // 범위 미달은 최초 조회에서만 알 수 있으므로 한 번 기록하면 재연결 전까지 유지한다.
     db.prepare("UPDATE mail_connections SET status = '정상', last_success_at = ?, last_error = NULL, range_incomplete = max(range_incomplete, ?) WHERE user_id = ?").run(new Date().toISOString(), rangeIncomplete ? 1 : 0, job.userId);
-    return { status: '성공', result: { ...counts, rangeIncomplete, more: more || backfillMore } };
+    return { status: counts.aiFailures ? '일부 실패' : '성공', result: { ...counts, aiFailureCodes, rangeIncomplete, more: more || backfillMore } };
   };
 }
 
 type Unlinked = { id: string; message_key: string; subject: string; received_at: string | null; classification: string; platform: string | null; mailbox: string | null; uid_validity: string | null; uid: number | null };
 
 // 규칙으로 대상을 찾지 못한 메일을 AI로 해석해 지원 건 생성·연결·확인 요청으로 넘긴다.
-async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpret: Interpret; bodies: MailBodySource }, cached: Map<string, MailBody>, counts: Record<string, number>, account: string, password: string) {
+async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpret: Interpret; bodies: MailBodySource }, cached: Map<string, MailBody>, counts: Record<string, number>, account: string, password: string, aiFailureCodes: Record<string, number>) {
   const rows = db.prepare(`SELECT id, message_key, subject, received_at, classification, platform, mailbox, uid_validity, uid FROM mail_messages
     WHERE user_id = ? AND outcome = 'unlinked' AND interpret_attempts < ? ORDER BY received_at DESC LIMIT ?`).all(userId, MAX_INTERPRET_ATTEMPTS, INTERPRET_CAP) as Unlinked[];
   const missing = rows.filter(r => r.mailbox && r.uid !== null && !cached.has(bodyKey({ mailbox: r.mailbox, uid: r.uid })))
@@ -123,6 +124,9 @@ async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpr
       interp = await ai.interpret({ subject: row.subject, senderDomain: body.fromAddress.split('@')[1] ?? '', ruleStatus: row.classification, body: body.text });
     } catch (error) {
       counts.aiFailures = (counts.aiFailures ?? 0) + 1;
+      // 원인 코드별 건수를 남겨 화면·운영자가 키·잔액·연결 문제를 구분하게 한다(본문은 남기지 않음).
+      const code = (error as { code?: string }).code ?? 'internal';
+      aiFailureCodes[code] = (aiFailureCodes[code] ?? 0) + 1;
       // 시도 횟수는 잘못된 출력에만 쓴다. 크레딧·연결 같은 일시 실패는 남은 메일도 실패하므로 멈추고 다음 실행에서 다시 해석한다.
       if ((error as { code?: string }).code !== 'ai_invalid_output') break;
       db.prepare('UPDATE mail_messages SET interpret_attempts = interpret_attempts + 1 WHERE id = ?').run(row.id);

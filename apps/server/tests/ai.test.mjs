@@ -40,7 +40,7 @@ test('스키마 밖 출력·HTTP 오류·미설정을 구분한다', async () =>
     await assert.rejects(structured('j', judgementSchema, 'i', 'x'), e => e.code === 'ai_http' && e.status === 429);
   });
   // 사용자가 고칠 수 있는 원인(키·잔액·모델)을 구분한다.
-  for (const [status, body, code] of [[401, {}, 'ai_key_invalid'], [429, { error: { code: 'insufficient_quota' } }, 'ai_quota'], [404, { error: { code: 'model_not_found' } }, 'ai_model_unavailable']]) {
+  for (const [status, body, code] of [[401, {}, 'ai_key_invalid'], [429, { error: { code: 'insufficient_quota' } }, 'ai_quota'], [429, { error: { type: 'insufficient_quota', code: 'credit_balance_exhausted' } }, 'ai_quota'], [404, { error: { code: 'model_not_found' } }, 'ai_model_unavailable']]) {
     await withServer((_req, res) => reply(res, status, body), async () => {
       await assert.rejects(structured('j', judgementSchema, 'i', 'x'), e => e.code === code);
     });
