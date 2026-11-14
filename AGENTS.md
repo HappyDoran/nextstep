@@ -23,10 +23,11 @@ last_verified: 2026-11-14
 
 | 사실 | 소유 문서 | 갱신을 유발하는 변경 |
 |---|---|---|
-| 사용자 요구·범위·완료 조건 | [서비스 기획서](docs/spec/서비스기획서_v0.2.md) | 범위·요구·완료 조건 변경 |
-| 이전 기획(2026-11-10판, 1차/2차 구분) 기록 | [서비스 기획서 v0.1](docs/spec/서비스기획서_v0.1.md) | 고치지 않음(현재 요구의 소유 문서 아님) |
-| 데이터 모델·작업·보호·로컬 LLM·확장 설계 | [기술 설계 부록](docs/spec/기술설계_부록.md) | 데이터 구조·작업 처리·보호 정책·마이그레이션 원칙 변경 |
-| 구현 순서(P1 단계)·현재 상태·미결 결정 | [백로그](docs/spec/gap-analysis.md) | 단계 착수·완료, 결정 확정 |
+| 사용자 요구·범위·완료 조건 | [서비스 기획서](docs/spec/서비스기획서.md) | 범위·요구·완료 조건 변경 |
+| 기획서 버전 기록(0.1.0~현재) | [기획서 버전 기록](docs/spec/history/README.md) | 기획서를 고칠 때 버전을 올리고 같은 본문을 새 번호로 추가(구조 검사가 현재본과 최신 기록본 일치 확인). 기록본은 고치지 않음 |
+| 데이터 모델·작업·보호·로컬 LLM·확장 설계 | [기술 설계](docs/spec/기술설계.md) | 데이터 구조·작업 처리·보호 정책·마이그레이션 원칙 변경 |
+| 구현 순서(P1 단계)·현재 상태·미결 결정 | [백로그](docs/spec/백로그.md) | 단계 착수·완료, 결정 확정 |
+| 검증 결과·출처 조사 기록 | [검증 기록](docs/spec/검증기록.md) | 출처·모델·실제 흐름 검증 실행, 출처 조사 |
 | 기술 선택·workspace 책임·의존 경계 | [TECH_RULES.md](TECH_RULES.md) | 의존성 추가·교체, workspace 추가, 금지 패턴 |
 | 실행·검증·환경 변수·현재 구현 범위 | [README.md](README.md) | script·명령·환경 변수·구현 범위 변경 |
 | 다음 세션에 이어서 할 순서(상태는 백로그 소유) | [NEXT_SESSION.md](NEXT_SESSION.md) | 세션 종료 시 다음 할 일 변경 |
@@ -44,9 +45,9 @@ last_verified: 2026-11-14
 | 모든 코드 변경 | 기획서의 해당 범위·완료 조건, TECH_RULES.md, 변경 workspace의 AGENTS.md, `nextstep-testing` |
 | 파일·workspace 배치, 의존 변경 | `nextstep-structure` |
 | 문서·skill·agent 변경 | docs/AI_AGENT_HARNESS.md, `nextstep-doc-policy` |
-| 범위 정리·변경 | docs/spec/서비스기획서_v0.2.md, docs/spec/기술설계_부록.md |
-| 기능 착수·완료, 다음 작업 선택 | docs/spec/gap-analysis.md, `nextstep-backlog` |
-| 범위·요구·완료 조건 정리·변경 | docs/spec/서비스기획서_v0.2.md, `nextstep-spec-discovery` |
+| 범위 정리·변경 | docs/spec/서비스기획서.md, docs/spec/기술설계.md |
+| 기능 착수·완료, 다음 작업 선택 | docs/spec/백로그.md, `nextstep-backlog` |
+| 범위·요구·완료 조건 정리·변경 | docs/spec/서비스기획서.md, `nextstep-spec-discovery` |
 | 화면·공통 UI 변경 | packages/design-system/README.md |
 | 역할을 지정받은 작업 | `.codex/agents/nextstep-<역할>.md`, docs/AI_AGENT_HARNESS.md 역할 표 |
 | 여러 역할로 나누는 작업 | `nextstep-parallel` |
@@ -65,7 +66,7 @@ last_verified: 2026-11-14
 
 ## 작업 흐름
 
-1. 작업 범위와 완료 조건을 확인한다. 기능 작업은 docs/spec/gap-analysis.md의 가장 앞선 미완료 단계에서 시작하고 끝나면 상태를 갱신한다.
+1. 작업 범위와 완료 조건을 확인한다. 기능 작업은 docs/spec/백로그.md의 가장 앞선 미완료 단계에서 시작하고 끝나면 상태를 갱신한다.
 2. 변경 범위의 소유 문서만 읽고 실제 코드·스키마·테스트로 현재 상태를 확인한다. 기획과 다르면 구현 차이로 보고한다.
 3. 코드와 소유 문서를 함께 바꾸고 frontmatter의 `last_verified`를 갱신한다.
 4. README.md의 검증을 실행하고 `nextstep-review`를 적용한다.

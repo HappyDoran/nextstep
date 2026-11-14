@@ -37,11 +37,11 @@ skill을 읽었다는 기록을 서비스 데이터나 보고서로 저장하지
 
 | 역할 | agent | 쓰기 범위 | 주 입력 |
 |---|---|---|---|
-| 기획 | nextstep-planner | docs/spec/서비스기획서_v0.2.md, docs/spec/gap-analysis.md | 사용자 결정, 사업 제안 |
+| 기획 | nextstep-planner | docs/spec/서비스기획서.md, docs/spec/백로그.md | 사용자 결정, 사업 제안 |
 | 디자인 | nextstep-designer | packages/design-system | 기획서 4절 화면·흐름 |
 | 프론트엔드 | nextstep-frontend | apps/web, apps/desktop, tests/e2e, tests/desktop | 기획 완료 조건, 디자인 기초, 계약 |
-| 백엔드 | nextstep-backend | apps/server(프롬프트 경로 제외), packages/contracts, docs/spec/기술설계_부록.md | 기획서, 기술 설계 부록 |
-| AI 프롬프트 | nextstep-prompt-engineer | apps/server/src/prompts, apps/server/tests/prompts (생성 시) | 기획서 8절, 기술 설계 부록 C·D절, 계약 |
+| 백엔드 | nextstep-backend | apps/server(프롬프트 경로 제외), packages/contracts, docs/spec/기술설계.md | 기획서, 기술 설계 |
+| AI 프롬프트 | nextstep-prompt-engineer | apps/server/src/prompts, apps/server/tests/prompts (생성 시) | 기획서 8절, 기술 설계 C·D절, 계약 |
 | 사업 | nextstep-business | 없음(제안만) | 기획서 1·7·9절 |
 
 AI 처리 제공자는 미결정이므로 프롬프트 역할은 제공자 결정 전까지 템플릿·출력 스키마·정답 사례만 다룬다. 기획서는 개발 단계에 가격·운영비·매출 목표를 넣지 않으므로 사업 역할은 이를 산정하지 않고 시장·경쟁·사용자 검증 근거만 기획에 제안한다. README.md·TECH_RULES.md·AGENTS.md·scripts·CI 등 공통 파일은 변경한 역할이 자기 사실만 고치고 겹치는 변경은 병합 담당이 정리한다.

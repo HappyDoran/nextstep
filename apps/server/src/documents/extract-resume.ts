@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { dirname, extname, join } from 'node:path';
 import { getDocument, PasswordException, InvalidPDFException } from 'pdfjs-dist/legacy/build/pdf.mjs';
 
-// 기술 설계 부록 D: 텍스트 PDF·MD 한 개, 파일당 20MB 초기값.
+// 기술 설계 D: 텍스트 PDF·MD 한 개, 파일당 20MB 초기값.
 export const RESUME_MAX_BYTES = 20 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15_000;
 // ponytail: 글자 수 기준 스캔본 판정. 문서 전체가 기준 미만이면 실패, 일부 쪽만 미만이면 emptyPages로 경고한다.

@@ -60,7 +60,7 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync, 
       FROM recommendations r JOIN postings p ON p.id = r.posting_id
       WHERE r.user_id = ? AND p.owner_user_id = ?
       ORDER BY CASE r.classification WHEN '기본' THEN 0 WHEN '도전' THEN 1 WHEN '미확인' THEN 2 ELSE 3 END, p.checked_at DESC`).all(user.id, user.id) as Row[];
-    // 필터를 바꾸면 다시 가져오기 전에도 기존 결과를 현재 필터로 먼저 거른다(기술 설계 부록 D). 링크 공고는 그대로 둔다.
+    // 필터를 바꾸면 다시 가져오기 전에도 기존 결과를 현재 필터로 먼저 거른다(기술 설계 D). 링크 공고는 그대로 둔다.
     const profileRow = db.prepare('SELECT data FROM profiles WHERE user_id = ?').get(user.id) as { data: string } | undefined;
     const profile = profileRow ? profileSchema.parse(JSON.parse(profileRow.data)) : null;
     const items = rows.filter(row => !profile || row.acquired_by === 'link' || passesFilter(rowFacts(row), profile)).map(row => {

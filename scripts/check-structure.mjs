@@ -87,6 +87,19 @@ export function frontmatterErrors(root) {
   }
   return errors;
 }
+// 기획서는 머리말의 버전과 같은 번호의 기록본이 history에 있고 본문이 같아야 한다. 기록본의 머리말 인용(> 첫 단락)은 비교에서 뺀다.
+const SPEC = 'docs/spec/서비스기획서.md';
+const withoutFrontmatter = source => source.replace(/^---\n[\s\S]*?\n---\n\n?/, '');
+export function specVersionErrors(root) {
+  if (!existsSync(join(root, SPEC))) return [];
+  const current = withoutFrontmatter(readFileSync(join(root, SPEC), 'utf8'));
+  const version = /^버전: (\d+\.\d+\.\d+)/m.exec(current)?.[1];
+  if (!version) return [`${SPEC}: '버전: X.Y.Z' 줄이 필요합니다.`];
+  const record = join(root, `docs/spec/history/서비스기획서_${version}.md`);
+  if (!existsSync(record)) return [`${SPEC}: 버전 ${version} 기록본(docs/spec/history/서비스기획서_${version}.md)이 필요합니다.`];
+  const recorded = withoutFrontmatter(readFileSync(record, 'utf8')).replace(/^> [^\n]*\n\n/, '');
+  return recorded === current ? [] : [`docs/spec/history/서비스기획서_${version}.md: 현재 기획서와 본문이 다릅니다. 기획서를 고쳤으면 버전을 올려 새 기록본을 만드세요.`];
+}
 export function checkRepository(root) {
   const errors = [];
   for (const [owner] of Object.entries(graph)) {
@@ -105,8 +118,11 @@ export function checkRepository(root) {
     if (!existsSync(absolute) || !lstatSync(absolute).isSymbolicLink() || resolve(dirname(absolute), readlinkSync(absolute)) !== resolve(root, canonical)) errors.push(`${path}: canonical symlink가 필요합니다.`);
   }
   errors.push(...frontmatterErrors(root));
+  errors.push(...specVersionErrors(root));
   for (const path of walk(root)) {
     if (extname(path) !== '.md') continue;
+    // 기획서 기록본은 당시 본문을 그대로 두므로 링크를 검사하지 않는다.
+    if (/docs\/spec\/history\/서비스기획서_[\d.]+\.md$/.test(path)) continue;
     const source = readFileSync(path, 'utf8').replace(/```[\s\S]*?```/g, '');
     for (const match of source.matchAll(/\]\(([^\s)]+)\)/g)) {
       const target = match[1];

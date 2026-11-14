@@ -1,5 +1,5 @@
 // P1-01 잡코리아 공개 공고 소량 수집 검증. 원문을 저장하지 않고 추출 가능 여부·실패 구분만 출력한다.
-// 원티드·자소설닷컴은 약관상 자동 수집에 사전 허락이 필요해 검증 대상에서 제외했다(gap-analysis 미결 결정).
+// 원티드·자소설닷컴은 약관상 자동 수집에 사전 허락이 필요해 검증 대상에서 제외했다(백로그 미결 결정).
 // 실행: pnpm --filter @nextstep/server verify:jobkorea
 import { pathToFileURL } from 'node:url';
 import { htmlText, politeGet } from '../sources/http.js';

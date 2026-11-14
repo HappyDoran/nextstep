@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { dependencyErrors, frontmatterErrors, importErrors, parseFrontmatter } from '../../scripts/check-structure.mjs';
+import { dependencyErrors, frontmatterErrors, importErrors, parseFrontmatter, specVersionErrors } from '../../scripts/check-structure.mjs';
 test('서버에서 UI 의존을 차단하고 웹의 공통 계약 소비는 허용한다', () => {
   assert.equal(dependencyErrors('apps/server', { '@nextstep/design-system': 'workspace:*' }).length, 1);
   assert.deepEqual(dependencyErrors('apps/web', { '@nextstep/contracts': 'workspace:*' }), []);
@@ -30,5 +30,19 @@ test('규범 문서·skill·agent frontmatter 누락과 이름 불일치를 잡�
     const errors = frontmatterErrors(root);
     assert.equal(errors.length, 4, errors.join('\n'));
     assert.deepEqual(parseFrontmatter('---\nname: a\n---\n'), { name: 'a' });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+test('기획서 버전과 같은 번호의 기록본이 없거나 본문이 다르면 막는다', () => {
+  const root = mkdtempSync(join(tmpdir(), 'harness-'));
+  try {
+    mkdirSync(join(root, 'docs/spec/history'), { recursive: true });
+    const spec = '---\ntitle: 기획\nkind: spec\nlast_verified: 2026-01-01\n---\n\n# 기획\n\n버전: 0.1.1\n\n본문\n';
+    writeFileSync(join(root, 'docs/spec/서비스기획서.md'), spec);
+    assert.equal(specVersionErrors(root).length, 1);
+    const record = body => `---\ntitle: 기록\nkind: history\nlast_verified: 2026-01-01\n---\n\n> 기록본이다.\n\n${body}`;
+    writeFileSync(join(root, 'docs/spec/history/서비스기획서_0.1.1.md'), record('# 기획\n\n버전: 0.1.1\n\n본문\n'));
+    assert.deepEqual(specVersionErrors(root), []);
+    writeFileSync(join(root, 'docs/spec/서비스기획서.md'), spec.replace('본문', '고친 본문'));
+    assert.equal(specVersionErrors(root).length, 1);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
