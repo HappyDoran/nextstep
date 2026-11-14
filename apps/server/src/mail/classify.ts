@@ -29,6 +29,7 @@ export function postingKey(raw: string) {
   if (/(^|\.)jobkorea\.co\.kr$/.test(host)) { const v = id(/\/Recruit\/GI_Read(?:Home)?\/(\d+)/i); return v ? `jobkorea:${v}` : null; }
   if (/(^|\.)wanted\.co\.kr$/.test(host)) { const v = id(/\/(?:wd|jobs)\/(\d+)/); return v ? `wanted:${v}` : null; }
   if (/(^|\.)jasoseol\.com$/.test(host)) { const v = id(/\/recruit\/(\d+)/); return v ? `jasoseol:${v}` : null; }
+  if (host === 'jumpit.saramin.co.kr') { const v = id(/\/position\/(\d+)/); return v ? `jumpit:${v}` : null; }
   if (/(^|\.)saramin\.co\.kr$/.test(host)) { const v = url.searchParams.get('rec_idx'); return v && /^\d+$/.test(v) ? `saramin:${v}` : null; }
   return null;
 }

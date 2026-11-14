@@ -32,7 +32,7 @@ test('추천 작업 도중 계정을 삭제해도 개인 자료가 되살아나�
     await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
     const posting = { source: 'jobkorea', sourceId: '1', url: 'https://example.com/1', title: 't', company: 'c', deadline: null, alwaysHire: true, location: null, remote: null, careers: [], companyType: null, employeeCount: null, externalApplyUrl: null, body: '본문', bodyFailure: null };
     const deps = {
-      collect: { jobkorea: async () => ({ postings: [posting], failures: [] }), saramin: async () => ({ postings: [], failures: [] }), jasoseol: async () => ({ postings: [], failures: [] }) },
+      collect: { jobkorea: async () => ({ postings: [posting], failures: [] }), saramin: async () => ({ postings: [], failures: [] }), wanted: async () => ({ postings: [], failures: [] }), jumpit: async () => ({ postings: [], failures: [] }), jasoseol: async () => ({ postings: [], failures: [] }) },
       fetchOne: {},
       extract: async () => ({ jobFamilies: ['프론트엔드'], required: [], preferred: [], remote: '미기재', portfolioRequired: false }),
       // 판정 중에 사용자가 계정을 삭제한다.

@@ -83,3 +83,18 @@ test('사용자 선호 필터: 출처 요청 조건과 수집 후 지역·경력
   assert.equal(u.searchParams.get('careerMax'), '2');
   assert.equal(u.searchParams.get('jobtype'), '1');
 });
+
+test('점핏 상세의 마감·상시·경력·근무지·본문을 읽고 기업 규모는 미확인으로 둔다', async () => {
+  const jumpit = await import('../dist/sources/jumpit.js');
+  const detail = { title: '가상 백엔드 개발자', companyName: '가상회사', newcomer: true, minCareer: 2, maxCareer: 5, closedAt: '2026-12-13 23:59:59', alwaysOpen: false, location: '서울 금천구 가상로 1, 4층', responsibility: '- API 개발', qualifications: '- Java 실무 2년', preferredRequirements: '' };
+  const p = jumpit.parseDetail('55566561', JSON.stringify({ result: detail }));
+  assert.equal(p.url, 'https://jumpit.saramin.co.kr/position/55566561');
+  assert.equal(p.deadline, '2026-12-13T23:59:59+09:00');
+  assert.equal(p.location, '서울 금천구');
+  assert.deepEqual(p.careers, [{ type: 'NEWBIE', fromYears: null, toYears: null }, { type: 'EXPERIENCED', fromYears: 2, toYears: 5 }]);
+  assert.equal(p.companyType, null);
+  assert.match(p.body, /\[자격 요건\]\n- Java 실무 2년/);
+  assert.equal(jumpit.parseDetail('1', JSON.stringify({ result: { ...detail, alwaysOpen: true } })).alwaysHire, true);
+  assert.deepEqual(jumpit.parseDetail('1', JSON.stringify({ result: {} })), { code: 'parse_failed' });
+  assert.deepEqual(jumpit.listItems('{"result":{"positions":[{"id":1},{"id":"x"}]}}').map(i => i.id), [1]);
+});

@@ -12,6 +12,7 @@
     "verify:naver": "tsx src/verify/naver-imap.ts",
     "verify:jobkorea": "tsx src/verify/jobkorea.ts",
     "verify:saramin": "tsx src/verify/saramin.ts",
+    "verify:jumpit": "tsx src/verify/jumpit.ts",
     "verify:wanted": "tsx src/verify/wanted.ts",
     "verify:jasoseol": "tsx src/verify/jasoseol.ts",
     "invite": "tsx src/invite.ts",

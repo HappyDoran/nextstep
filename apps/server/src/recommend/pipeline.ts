@@ -4,8 +4,10 @@ import { profileSchema, type JobFamily, type Profile, type SourceId } from '@nex
 import { resetBlockedHosts } from '../sources/http.js';
 import type { CollectedPosting, CollectFailure } from '../sources/types.js';
 import { collectJobkorea, fetchJobkorea } from '../sources/jobkorea.js';
-import { fetchWanted } from '../sources/wanted.js';
+import { collectWanted, fetchWanted } from '../sources/wanted.js';
 import { collectSaramin, fetchSaramin } from '../sources/saramin.js';
+import { collectJumpit, fetchJumpit } from '../sources/jumpit.js';
+import { DEV_FAMILIES } from '../sources/types.js';
 import { collectJasoseol, fetchJasoseol } from '../sources/jasoseol.js';
 import { extractRequirements, REQUIREMENTS_PROMPT_VERSION, type Requirements } from '../prompts/requirements.js';
 import { extractCandidate, CANDIDATE_PROMPT_VERSION, type Candidate } from '../prompts/candidate.js';
@@ -15,15 +17,15 @@ import { passesFilter } from '../sources/filter.js';
 
 type Collected = { postings: CollectedPosting[]; failures: CollectFailure[] };
 export type PipelineDeps = {
-  collect: { saramin: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jobkorea: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jasoseol: (f: JobFamily[], cap: number) => Promise<Collected> };
+  collect: { saramin: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; wanted: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jumpit: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jobkorea: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jasoseol: (f: JobFamily[], cap: number) => Promise<Collected> };
   fetchOne: Record<SourceId, (id: string) => Promise<CollectedPosting | CollectFailure>>;
   extract: (posting: { title: string; company: string; body: string }) => Promise<Requirements>;
   candidate: (text: string) => Promise<Candidate>;
 };
 export const defaultDeps: PipelineDeps = {
-  // 1차 자동 수집은 사람인·잡코리아·자소설닷컴(2026-11-10 결정). 원티드는 2차 출처라 사용자 링크 판정만 받는다.
-  collect: { saramin: collectSaramin, jobkorea: collectJobkorea, jasoseol: collectJasoseol },
-  fetchOne: { saramin: fetchSaramin, jobkorea: fetchJobkorea, wanted: fetchWanted, jasoseol: fetchJasoseol },
+  // 자동 수집 출처(기획서 0.2.4): 사람인·잡코리아·원티드·자소설닷컴·점핏. 점핏은 개발 직무만.
+  collect: { saramin: collectSaramin, jobkorea: collectJobkorea, wanted: collectWanted, jumpit: collectJumpit, jasoseol: collectJasoseol },
+  fetchOne: { saramin: fetchSaramin, jobkorea: fetchJobkorea, wanted: fetchWanted, jumpit: fetchJumpit, jasoseol: fetchJasoseol },
   extract: extractRequirements,
   candidate: extractCandidate,
 };
@@ -51,12 +53,15 @@ export function parsePostingLink(raw: string): { source: SourceId; id: string } 
   if (url.protocol !== 'https:') return undefined;
   const host = url.hostname.toLowerCase();
   const match = (re: RegExp) => url.pathname.match(re)?.[1];
+  if (host === 'jumpit.saramin.co.kr') { const id = match(/^\/position\/(\d+)/); return id ? { source: 'jumpit', id } : undefined; }
   if (host === 'www.saramin.co.kr' || host === 'm.saramin.co.kr') { const id = url.searchParams.get('rec_idx'); return id && /^\d+$/.test(id) && url.pathname.startsWith('/zf_user/jobs/') ? { source: 'saramin', id } : undefined; }
   if (host === 'www.jobkorea.co.kr' || host === 'm.jobkorea.co.kr') { const id = match(/^\/Recruit\/GI_Read\/(\d+)/i); return id ? { source: 'jobkorea', id } : undefined; }
   if (host === 'www.wanted.co.kr' || host === 'wanted.co.kr') { const id = match(/^\/wd\/(\d+)/); return id ? { source: 'wanted', id } : undefined; }
   if (host === 'jasoseol.com' || host === 'www.jasoseol.com') { const id = match(/^\/recruit\/(\d+)/); return id ? { source: 'jasoseol', id } : undefined; }
   return undefined;
 }
+
+const SAME_POSTING: Partial<Record<SourceId, SourceId>> = { saramin: 'jumpit', jumpit: 'saramin' };
 
 type PostingRow = { id: string; source: SourceId; title: string; company: string; deadline: string | null; always_hire: number; location: string | null; remote: number | null; careers: string; company_type: string | null; employee_count: number | null; requirements: string | null; body_failure: string | null; acquired_by: 'auto' | 'link'; owner_user_id: string };
 
@@ -170,6 +175,8 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     for (const family of families) {
       runs.push(() => deps.collect.saramin(family, PER_FAMILY, basis.profile));
       runs.push(() => deps.collect.jobkorea(family, PER_FAMILY, basis.profile));
+      runs.push(() => deps.collect.wanted(family, PER_FAMILY, basis.profile));
+      if (DEV_FAMILIES.includes(family)) runs.push(() => deps.collect.jumpit(family, PER_FAMILY, basis.profile));
     }
     runs.push(() => deps.collect.jasoseol(families, JASOSEOL_PER_FAMILY));
     // 출처끼리는 순서대로 요청한다(같은 출처에 동시 요청을 만들지 않는다).
@@ -178,6 +185,9 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
       counts.sourceFailures.push(...failures);
       for (const p of postings) {
         if (isNotHiring(p.title)) { counts.notHiring++; continue; }
+        // 점핏 공고 ID는 사람인 공고 번호와 같다. 같은 공고를 두 출처로 두 번 저장·판정하지 않는다.
+        const twin = SAME_POSTING[p.source];
+        if (twin && db.prepare('SELECT 1 FROM postings WHERE source = ? AND source_id = ? AND owner_user_id = ?').get(twin, p.sourceId, job.userId)) continue;
         const id = upsertPosting(db, p, 'auto', job.userId);
         await storeRequirements(db, deps, id, p, counts);
         counts.collected++;

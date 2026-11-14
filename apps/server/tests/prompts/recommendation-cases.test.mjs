@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-// 추천 정답 사례의 구조만 검사한다. 모델 제공자가 정해지면 같은 사례로 출력 분류를 비교한다.
+// 추천 정답 사례의 구조만 검사한다. 실제 분류 비교는 eval:recommend(모델 추출 + 규칙)가 한다.
 const data = JSON.parse(readFileSync(new URL('./recommendation-cases.json', import.meta.url), 'utf8'));
 const CLASSES = ['기본', '도전', '미확인', '제외'];
-const FAMILIES = ['프론트엔드', '앱 개발', '디자인', '기획'];
+const FAMILIES = ['프론트엔드', '앱 개발', '디자인', '기획', '백엔드', 'QA'];
 const MIN_PER_FAMILY = 8;
 const CAREER_TYPES = ['NEWBIE', 'EXPERIENCED', 'ANY'];
 const REMOTE = ['전면', '부분', '없음', null];

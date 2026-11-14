@@ -6,7 +6,7 @@ import { careerOk, regionOk } from './filter.js';
 export const ORIGIN = 'https://www.jobkorea.co.kr';
 // 사람 속도의 소량 요청: 직무당 목록 1회·상세 3건.
 export const PER_ROLE = 3;
-export const ROLES: Record<string, string> = { frontend: '프론트엔드', app: '앱 개발', design: 'UI/UX 디자이너', planning: '서비스 기획' };
+export const ROLES: Record<string, string> = { frontend: '프론트엔드', app: '앱 개발', design: 'UI/UX 디자이너', planning: '서비스 기획', backend: '백엔드', qa: 'QA 엔지니어' };
 
 export type ParseFailure = 'parse_failed';
 
@@ -123,7 +123,7 @@ export async function fetchJobkorea(id: string): Promise<CollectedPosting | Coll
   };
 }
 
-const KEYWORDS: Record<JobFamily, string> = { 프론트엔드: '프론트엔드', '앱 개발': '앱 개발', 디자인: 'UI/UX 디자이너', 기획: '서비스 기획' };
+const KEYWORDS: Record<JobFamily, string> = { 프론트엔드: '프론트엔드', '앱 개발': '앱 개발', 디자인: 'UI/UX 디자이너', 기획: '서비스 기획', 백엔드: '백엔드', QA: 'QA 엔지니어' };
 
 // 검색이 받는 조건(실제 확인): 경력 범위(careerType=1,2&careerMin&careerMax), 정규직(jobtype=1). 지역은 받지 않아 수집 후 거른다.
 export function jobkoreaSearchUrl(family: JobFamily, f: Profile) {

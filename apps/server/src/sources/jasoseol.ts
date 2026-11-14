@@ -12,6 +12,8 @@ export const ROLE_KEYWORDS: Record<string, RegExp> = {
   app: /\bios\b|안드로이드|android|모바일\s*앱|앱\s*개발|flutter|react\s*native|크로스\s*플랫폼/i,
   design: /ui\/?ux|ux\/?ui|프로덕트\s*디자인|product\s*design|ui\s*디자인|ux\s*디자인|웹\s*디자인/i,
   planning: /서비스\s*기획|웹\s*기획|앱\s*기획|\bpm\b|\bpo\b|프로덕트\s*매니저|product\s*(manager|owner)/i,
+  backend: /백엔드|back[- ]?end|서버\s*개발|server/i,
+  qa: /\bqa\b|테스트\s*엔지니어|소프트웨어\s*품질|sqa/i,
 };
 
 // 자소설닷컴 기업 규모 코드. 모르는 코드는 미확인으로 둔다.
@@ -92,8 +94,8 @@ export async function fetchJasoseol(id: string): Promise<(CollectedPosting & { r
   };
 }
 
-// 자소설닷컴 직무 분류 ID(2026-11-07 /api/v1/duty-groups로 확인한 초기값).
-export const DUTY_GROUPS: Record<JobFamily, number[]> = { 프론트엔드: [175, 162], '앱 개발': [161, 172, 173], 디자인: [241], 기획: [171] };
+// 자소설닷컴 직무 분류 ID(2026-11-07 /api/v1/duty-groups로 확인, 서버·백엔드 176·QA 160은 2026-11-14 확인).
+export const DUTY_GROUPS: Record<JobFamily, number[]> = { 프론트엔드: [175, 162], '앱 개발': [161, 172, 173], 디자인: [241], 기획: [171], 백엔드: [176], QA: [160] };
 
 export function dutyListIds(json: string) {
   const list = JSON.parse(json) as { id?: number }[];

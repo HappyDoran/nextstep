@@ -6,7 +6,7 @@ import { htmlText, politeGet } from './http.js';
 import { careerOk, regionOk } from './filter.js';
 
 export const ORIGIN = 'https://www.saramin.co.kr';
-const KEYWORDS: Record<JobFamily, string> = { 프론트엔드: '프론트엔드', '앱 개발': '앱 개발', 디자인: 'UI/UX 디자이너', 기획: '서비스 기획' };
+const KEYWORDS: Record<JobFamily, string> = { 프론트엔드: '프론트엔드', '앱 개발': '앱 개발', 디자인: 'UI/UX 디자이너', 기획: '서비스 기획', 백엔드: '백엔드', QA: 'QA 엔지니어' };
 
 export type SaraminPosting = Omit<CollectedPosting, 'body' | 'bodyFailure'>;
 

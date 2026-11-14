@@ -6,7 +6,7 @@ import type { Judgement } from '../prompts/recommend.js';
 
 // 추천 분류 규칙(기술 설계 D절, 사용자 확정 2026-11-07). 모델은 사실만 뽑고 분류는 여기서 정한다.
 // 우선순위: 제외 > 도전 > 미확인 > 기본. 같은 입력이면 같은 분류가 나온다.
-export const RULES_VERSION = 'rules-2026-11-14b';
+export const RULES_VERSION = 'rules-2026-11-14c';
 
 export type Seeker = { jobFamilies: string[]; regions: string[]; remoteOk: boolean };
 export type PostingInput = {
@@ -27,7 +27,8 @@ const ALIASES: Record<string, string> = { ts: 'typescript', js: 'javascript', rn
 // 직무 이름 비교에만 쓰는 별칭(일반 경험 비교에 쓰면 '기획'이 '사업기획'과 맞아 버린다).
 const FAMILY_ALIASES: Record<string, string> = { ios: '앱개발', android: '앱개발', ios개발: '앱개발', 모바일앱: '앱개발', 서비스기획: '기획', 프로덕트디자인: '디자인', uiux디자인: '디자인' };
 export function norm(s: string) {
-  const n = s.toLowerCase().replace(/\([^)]*\)/g, '').replace(/[\s.\-_/·]/g, '').replace(/js$/, '');
+  // 같은 뜻의 한글 업무 표현은 하나로 맞춘다(이슈·버그 리포팅 = 결함 리포팅).
+  const n = s.toLowerCase().replace(/\([^)]*\)/g, '').replace(/[\s.\-_/·]/g, '').replace(/js$/, '').replace(/이슈|버그/g, '결함');
   return ALIASES[n] ?? n;
 }
 const family = (s: string) => FAMILY_ALIASES[norm(s)] ?? norm(s);

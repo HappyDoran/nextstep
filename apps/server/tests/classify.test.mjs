@@ -43,4 +43,5 @@ test('기술 이름은 정확히, 한글 업무 경험은 포함 관계로 맞�
   assert.equal(matches(['Next.js'], ['NextJS']), true);
   assert.equal(matches(['앱 서비스 기획'], ['서비스 기획']), true);
   assert.equal(matches(['UI'], ['UI/UX']), false);
+  assert.equal(matches(['이슈 리포팅'], ['결함(이슈) 리포팅']), true);
 });

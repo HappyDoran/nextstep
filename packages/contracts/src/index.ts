@@ -6,7 +6,7 @@ export const healthSchema = z.object({ service: z.literal('nextstep'), status: z
 export type Health = z.infer<typeof healthSchema>;
 export type ApplicationStatus = z.infer<typeof applicationStatusSchema>;
 
-export const sourceIdSchema = z.enum(['saramin', 'jobkorea', 'jasoseol', 'wanted']);
+export const sourceIdSchema = z.enum(['saramin', 'jobkorea', 'jasoseol', 'wanted', 'jumpit']);
 export type SourceId = z.infer<typeof sourceIdSchema>;
 
 // 초대 계정 인증: 초대 코드로 가입하고 이메일·비밀번호로 로그인한다.
@@ -61,13 +61,13 @@ export const resumeFailureSchema = z.enum(['unsupported_type', 'too_large', 'enc
 export const resumeSchema = z.object({ id: z.string(), filename: z.string(), size: z.number().int(), createdAt: z.string(), text: z.string(), emptyPages: z.array(z.number().int()).default([]) });
 export type Resume = z.infer<typeof resumeSchema>;
 
-// 프로필·필터: 사용자가 확인한 사실만 저장한다. 직무는 1차 네 직무, 복수 선택은 OR.
+// 프로필·필터: 사용자가 확인한 사실만 저장한다. 직무는 기획서 3절 여섯 직무, 복수 선택은 OR.
 // 선호(지역·원격·고용 형태·요구 경력)는 사용자만 고른다. 빈 목록·null은 제한 없음(전국·전체)이다.
-export const jobFamilySchema = z.enum(['프론트엔드', '앱 개발', '디자인', '기획']);
+export const jobFamilySchema = z.enum(['프론트엔드', '앱 개발', '디자인', '기획', '백엔드', 'QA']);
 export type JobFamily = z.infer<typeof jobFamilySchema>;
 export const profileSchema = z.object({
-  jobFamilies: z.array(jobFamilySchema).min(1).max(4),
-  experiences: z.array(z.object({ jobFamily: jobFamilySchema, years: z.number().min(0).max(50) })).max(4),
+  jobFamilies: z.array(jobFamilySchema).min(1).max(6),
+  experiences: z.array(z.object({ jobFamily: jobFamilySchema, years: z.number().min(0).max(50) })).max(6),
   regions: z.array(z.string().trim().min(1).max(40)).max(10),
   remoteOk: z.boolean(),
   employmentTypes: z.array(z.enum(['정규직', '계약직', '인턴', '프리랜서'])).max(4),

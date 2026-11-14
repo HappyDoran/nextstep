@@ -6,8 +6,8 @@ import { careerOk, regionOk } from './filter.js';
 
 export const ORIGIN = 'https://www.wanted.co.kr';
 export const PER_ROLE = 3;
-// 원티드 직무 태그 ID(2026-11-07 목록 응답으로 확인한 검증용 초기값).
-export const ROLES: Record<string, number[]> = { frontend: [669], app: [677, 678, 10111], design: [597, 599], planning: [559, 565] };
+// 원티드 직무 태그 ID(2026-11-07 목록 응답으로 확인, 서버 개발자 872·QA 676은 2026-11-14 확인).
+export const ROLES: Record<string, number[]> = { frontend: [669], app: [677, 678, 10111], design: [597, 599], planning: [559, 565], backend: [872], qa: [676] };
 
 export type WantedPosting = {
   id: string;

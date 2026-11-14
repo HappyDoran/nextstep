@@ -8,7 +8,7 @@ import { call, fieldClass, useMe } from '../api-client';
 import { Account } from '../account';
 
 const CLASSES = recommendationClassSchema.options;
-const SOURCE_NAMES = { saramin: '사람인', jobkorea: '잡코리아', jasoseol: '자소설닷컴', wanted: '원티드' } as const;
+const SOURCE_NAMES = { saramin: '사람인', jobkorea: '잡코리아', jasoseol: '자소설닷컴', wanted: '원티드', jumpit: '점핏' } as const;
 const ERRORS: Record<string, string> = {
   profile_or_resume_missing: '설정에서 이력서와 프로필을 먼저 저장하세요.',
   collect_failed: '공고를 가져오지 못했습니다. 잠시 후 다시 시도하세요.',
@@ -55,7 +55,7 @@ function RecommendationList({ me }: { me: Me }) {
   const running = Boolean(jobId) && (!job.data || ACTIVE.includes(job.data.status));
   const refresh = useMutation({ mutationFn: async () => jobSchema.parse(await call('postings/refresh', { method: 'POST' })), onSuccess: j => setJobId(j.id) });
   const link = useMutation({
-    mutationFn: async (url: string) => jobSchema.parse(await call('postings/link', { method: 'POST', body: JSON.stringify({ url }), messages: { 400: '사람인·잡코리아·자소설닷컴·원티드 공고 상세 링크(https)를 넣으세요.' } })),
+    mutationFn: async (url: string) => jobSchema.parse(await call('postings/link', { method: 'POST', body: JSON.stringify({ url }), messages: { 400: '사람인·잡코리아·자소설닷컴·원티드·점핏 공고 상세 링크(https)를 넣으세요.' } })),
     onSuccess: j => setJobId(j.id),
   });
   const [filter, setFilter] = useState<(typeof CLASSES)[number] | '전체'>('전체');
