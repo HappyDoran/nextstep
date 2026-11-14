@@ -1,23 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
-import { mailConnectRequestSchema, mailConnectionSchema, reviewActionSchema, reviewSchema } from '@nextstep/contracts';
+import { mailBackfillRequestSchema, mailConnectRequestSchema, mailConnectionSchema, reviewActionSchema, reviewSchema } from '@nextstep/contracts';
 import { requireUser } from '../auth.js';
 import { encrypt } from '../secrets.js';
 import { enqueue, latestJob } from '../recommend/jobs.js';
 import { applyToApplication, type StoredMessage } from './apply.js';
 import { MailSourceError, type MailSource } from './naver.js';
 
-type ConnRow = { account: string; status: string; consent_at: string; last_success_at: string | null; last_error: string | null; range_incomplete: number };
+type ConnRow = { account: string; status: string; consent_at: string; last_success_at: string | null; last_error: string | null; range_incomplete: number; covered_since: string | null; backfill_since: string | null };
 type ReviewRow = { id: string; reason: string; status: string; created_at: string; message_id: string; message_key: string; subject: string; received_at: string | null; platform: string | null; classification: string; evidence: string | null };
 
 export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: Buffer, source: MailSource) {
   app.get('/mail/connection', async (request, reply) => {
     const user = requireUser(db, request, reply);
     if (!user) return reply;
-    const row = db.prepare('SELECT account, status, consent_at, last_success_at, last_error, range_incomplete FROM mail_connections WHERE user_id = ?').get(user.id) as ConnRow | undefined;
+    const row = db.prepare('SELECT account, status, consent_at, last_success_at, last_error, range_incomplete, covered_since, backfill_since FROM mail_connections WHERE user_id = ?').get(user.id) as ConnRow | undefined;
     if (!row) return reply.status(404).send({ message: '연결한 메일이 없습니다.' });
-    return mailConnectionSchema.parse({ provider: 'naver', account: row.account, status: row.status, consentAt: row.consent_at, lastSuccessAt: row.last_success_at, lastError: row.last_error, rangeIncomplete: row.range_incomplete === 1, lastJob: latestJob(db, user.id, 'mail') });
+    return mailConnectionSchema.parse({ provider: 'naver', account: row.account, status: row.status, consentAt: row.consent_at, lastSuccessAt: row.last_success_at, lastError: row.last_error, rangeIncomplete: row.range_incomplete === 1, coveredSince: row.covered_since, backfillSince: row.backfill_since, lastJob: latestJob(db, user.id, 'mail') });
   });
 
   // 연결 검사: 실제 로그인으로 확인한 뒤에만 암호화해 저장하고 최초 조회 작업을 만든다.
@@ -34,9 +34,27 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
       return reply.status(code === 'auth_failed' ? 422 : code === 'network' ? 503 : 502).send({ message: code === 'auth_failed' ? '네이버 계정 또는 애플리케이션 비밀번호를 확인하세요. IMAP 사용 설정이 켜져 있어야 합니다.' : '네이버 메일에 연결하지 못했습니다. 잠시 후 다시 시도하세요.', code });
     }
     const at = new Date().toISOString();
-    db.prepare(`INSERT INTO mail_connections (user_id, provider, account, secret, status, consent_at, created_at) VALUES (?, 'naver', ?, ?, '정상', ?, ?)
-      ON CONFLICT(user_id) DO UPDATE SET account = excluded.account, secret = excluded.secret, status = '정상', consent_at = excluded.consent_at, last_error = NULL, range_incomplete = 0`)
-      .run(user.id, body.data.account, encrypt(secretKey, body.data.appPassword), at, at);
+    // 고른 최초 조회 기간으로 조회 범위를 정한다. 재연결하면 과거 범위 넓히기 진행도 지운다.
+    const coveredSince = new Date(Date.now() - body.data.days * 86_400_000).toISOString();
+    db.prepare(`INSERT INTO mail_connections (user_id, provider, account, secret, status, consent_at, created_at, covered_since) VALUES (?, 'naver', ?, ?, '정상', ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET account = excluded.account, secret = excluded.secret, status = '정상', consent_at = excluded.consent_at, last_error = NULL, range_incomplete = 0, covered_since = excluded.covered_since, backfill_since = NULL`)
+      .run(user.id, body.data.account, encrypt(secretKey, body.data.appPassword), at, at, coveredSince);
+    db.prepare('DELETE FROM mail_backfill WHERE user_id = ?').run(user.id);
+    return reply.status(202).send(enqueue(db, user.id, 'mail'));
+  });
+
+  // 과거 범위 넓히기: 지금 조회 범위보다 이전만 대상으로 한다. 현재 조회 위치(커서)는 바꾸지 않는다.
+  app.post('/mail/backfill', async (request, reply) => {
+    const user = requireUser(db, request, reply);
+    if (!user) return reply;
+    const body = mailBackfillRequestSchema.safeParse(request.body);
+    if (!body.success) return reply.status(400).send({ message: '기간을 확인하세요.' });
+    const conn = db.prepare('SELECT covered_since FROM mail_connections WHERE user_id = ?').get(user.id) as { covered_since: string | null } | undefined;
+    if (!conn) return reply.status(409).send({ message: '네이버 메일을 먼저 연결하세요.' });
+    const target = new Date(Date.now() - body.data.days * 86_400_000).toISOString();
+    if (conn.covered_since && target >= conn.covered_since) return reply.status(400).send({ message: '이미 조회한 범위입니다. 더 긴 기간을 고르세요.' });
+    db.prepare('UPDATE mail_connections SET backfill_since = ? WHERE user_id = ?').run(target, user.id);
+    db.prepare('DELETE FROM mail_backfill WHERE user_id = ?').run(user.id);
     return reply.status(202).send(enqueue(db, user.id, 'mail'));
   });
 
@@ -56,6 +74,7 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
     try {
       db.prepare('DELETE FROM mail_connections WHERE user_id = ?').run(user.id);
       db.prepare('DELETE FROM mail_cursors WHERE user_id = ?').run(user.id);
+      db.prepare('DELETE FROM mail_backfill WHERE user_id = ?').run(user.id);
       // 연결 해제는 수동·예약 구분 없이 대기 중인 메일 작업을 모두 정리한다.
       db.prepare("DELETE FROM jobs WHERE user_id = ? AND kind = 'mail' AND status = '대기'").run(user.id);
       if (!keep) {

@@ -8,14 +8,25 @@ test('네이버 연결 동의 필수·연결 상태 표시와 확인 목록 처�
     await page.goto('/settings');
     await page.getByLabel('네이버 메일 주소').fill('tester@naver.com');
     await page.getByLabel('애플리케이션 비밀번호').fill('x');
+    // 처음 조회할 기간을 고른다(기본 3개월).
+    await expect(page.getByLabel('처음 조회할 기간')).toHaveValue('90');
+    await page.getByLabel('처음 조회할 기간').selectOption('180');
     await page.getByRole('button', { name: '연결 검사 후 연결' }).click();
     // 동의하지 않으면 브라우저 필수 입력 검사로 제출되지 않는다.
-    await expect(page.getByLabel(/읽기 전용으로 조회하는 데 동의/)).toHaveJSProperty('validity.valueMissing', true);
+    await expect(page.getByLabel(/읽기 전용으로 조회하고/)).toHaveJSProperty('validity.valueMissing', true);
 
-    await page.route('**/api/mail/connection', route => route.fulfill({ json: { provider: 'naver', account: 'tester@naver.com', status: '정상', consentAt: '2026-11-07T00:00:00.000Z', lastSuccessAt: '2026-11-07T01:00:00.000Z', lastError: null, rangeIncomplete: true, lastJob: { id: 'j', kind: 'mail', status: '성공', errorCode: null, result: { stored: 3, applied: 2, created: 0, review: 1 }, createdAt: '2026-11-07T00:00:00.000Z', finishedAt: '2026-11-07T01:00:00.000Z' } } }));
+    await page.route('**/api/mail/connection', route => route.fulfill({ json: { provider: 'naver', account: 'tester@naver.com', status: '정상', consentAt: '2026-11-07T00:00:00.000Z', lastSuccessAt: '2026-11-07T01:00:00.000Z', lastError: null, rangeIncomplete: true, coveredSince: '2026-08-09T00:00:00.000Z', backfillSince: null, lastJob: { id: 'j', kind: 'mail', status: '성공', errorCode: null, result: { stored: 3, applied: 2, created: 0, review: 1 }, createdAt: '2026-11-07T00:00:00.000Z', finishedAt: '2026-11-07T01:00:00.000Z' } } }));
     await page.reload();
     await expect(page.getByRole('status').filter({ hasText: 'tester@naver.com' })).toContainText('채용 메일 3건, 반영 2건, 확인 필요 1건');
-    await expect(page.getByText(/최근 3개월보다 짧습니다/)).toBeVisible();
+    await expect(page.getByText(/고른 조회 기간보다 짧습니다/)).toBeVisible();
+    await expect(page.getByText(/조회 범위: .* 이후 받은 메일/)).toContainText('1시간마다');
+    // 과거 범위 넓히기는 고른 기간으로 별도 작업을 요청한다.
+    let pastBody: unknown;
+    await page.route('**/api/mail/backfill', route => { pastBody = route.request().postDataJSON(); return route.fulfill({ status: 202, json: { id: 'j2', kind: 'mail', status: '대기', errorCode: null, result: null, createdAt: '2026-11-07T02:00:00.000Z', finishedAt: null } }); });
+    await page.getByLabel('과거 범위 넓히기').selectOption('365');
+    await page.getByRole('button', { name: '더 오래된 메일 가져오기' }).click();
+    await expect.poll(() => pastBody).toEqual({ days: 365 });
+    await page.unroute('**/api/mail/backfill');
     await page.unroute('**/api/mail/connection');
 
     let posted: unknown;

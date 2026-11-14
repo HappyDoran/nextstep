@@ -10,7 +10,7 @@ import { runSchedule, seoulParts } from '../dist/schedule.js';
 
 const at = iso => new Date(iso);
 
-test('예약 실행: 21시 이후 자동 ON·권한·연결 조건을 만족하는 사용자만 하루 한 번, OFF는 대기 작업을 정리한다', async () => {
+test('예약 실행: 공고 갱신은 21시 이후 하루 한 번, 메일은 매시간 한 번. 자동 ON·권한·연결 조건과 OFF 정리', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'nextstep-sched-'));
   const path = join(dir, 'db.sqlite');
   const app = createApp(path, { mailSource: async () => [] });
@@ -31,13 +31,16 @@ test('예약 실행: 21시 이후 자동 ON·권한·연결 조건을 만족하�
     try {
       db.exec("DELETE FROM jobs"); // 연결 시 만든 수동 작업을 지워 예약 작업만 본다.
       assert.equal(seoulParts(at('2026-11-07T11:59:00Z')).hour, 20);
-      assert.equal(runSchedule(db, at('2026-11-07T11:59:00Z'), 21), 0);
+      // 20시대: 메일만(매시간). 21시: 공고 갱신 + 21시대 메일.
+      assert.equal(runSchedule(db, at('2026-11-07T11:59:00Z'), 21), 1);
       assert.equal(runSchedule(db, at('2026-11-07T12:00:00Z'), 21), 2);
-      // 같은 날 다시 검사하거나 서버가 재시작돼도 중복 생성하지 않는다.
-      assert.equal(runSchedule(db, at('2026-11-07T14:30:00Z'), 21), 0);
+      // 같은 시간대에 다시 검사하거나 서버가 재시작돼도 중복 생성하지 않는다.
+      assert.equal(runSchedule(db, at('2026-11-07T12:30:00Z'), 21), 0);
+      // 23시대: 메일만 새로 만든다(공고 갱신은 그날 이미 했음).
+      assert.equal(runSchedule(db, at('2026-11-07T14:30:00Z'), 21), 1);
       const jobs = db.prepare('SELECT kind, scheduled FROM jobs ORDER BY kind').all().map(r => [r.kind, r.scheduled]);
       assert.deepEqual(jobs, [['mail', 1], ['refresh', 1]]);
-      // 다음 날(한국 시간)에는 새로 만든다. 단, 아직 대기 중인 같은 종류 작업이 있으면 그 작업을 쓴다.
+      // 대기 중인 같은 종류 작업이 있으면 새로 만들지 않고 그 작업을 쓴다. 다음 날(한국 시간)에는 공고 갱신도 다시 만든다.
       db.exec("UPDATE jobs SET status = '성공'");
       assert.equal(runSchedule(db, at('2026-11-08T12:00:00Z'), 21), 2);
     } finally { db.close(); }
@@ -50,7 +53,8 @@ test('예약 실행: 21시 이후 자동 ON·권한·연결 조건을 만족하�
     } finally { db2.close(); }
     const settings = (await app.inject({ url: '/settings/automation', headers: { cookie: a } })).json();
     assert.equal(settings.enabled, false);
-    assert.equal(settings.lastScheduled[0].runDate, '2026-11-08');
+    assert.equal(settings.lastScheduled.find(r => r.kind === 'refresh').runDate, '2026-11-08');
+    assert.equal(settings.lastScheduled.find(r => r.kind === 'mail').runDate, '2026-11-08T21');
     assert.equal((await app.inject({ url: '/settings/automation', headers: { cookie: b } })).json().lastScheduled.length, 0);
   } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
 });

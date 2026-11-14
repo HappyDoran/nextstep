@@ -200,3 +200,55 @@ test('AI 일시 실패(크레딧·연결)는 해석 시도 횟수를 쓰지 않�
     raw.close();
   } finally { await s.done(); }
 });
+
+test('조회 기간을 골라 연결하고, 과거 범위 넓히기는 현재 조회 위치를 바꾸지 않고 나눠 가져온다', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-mail-'));
+  const path = join(dir, 'db.sqlite');
+  const seen = { since: [], backfill: [] };
+  const source = async (_a, _p, cursors, since) => { seen.since.push(since.toISOString()); return [{ mailbox: 'INBOX', uidValidity: '7', messages: cursors.size ? [] : [mail(50, 'noreply@wanted.co.kr', '[원티드] 가상A 지원이 완료되었습니다')], oldestDate: null, complete: true }]; };
+  // 과거 메일 uid 1~3. 실행당 2건씩(최근 것부터) 돌려주며 진행 위치(belowUid)를 존중한다.
+  const past = [mail(1, 'noreply@wanted.co.kr', '[원티드] 가상B 지원이 완료되었습니다'), mail(2, 'friend@example.com', '주말 약속'), mail(3, 'noreply@wanted.co.kr', '[원티드] 가상C 지원이 완료되었습니다')];
+  const backfill = async (_a, _p, progress, since, before) => {
+    seen.backfill.push([since.toISOString(), before.toISOString()]);
+    const below = progress.get('INBOX')?.belowUid ?? Infinity;
+    const left = past.filter(m => m.uid < below).sort((x, y) => y.uid - x.uid);
+    const take = left.slice(0, 2);
+    return [{ mailbox: 'INBOX', uidValidity: '7', messages: take, oldestDate: null, complete: left.length <= 2, lowestUid: take.length ? Math.min(...take.map(m => m.uid)) : null }];
+  };
+  const app = createApp(path, { mailSource: source });
+  try {
+    const db0 = openDatabase(path); const inviteCode = createInvite(db0); db0.close();
+    const a = (await app.inject({ method: 'POST', url: '/auth/signup', payload: { inviteCode, email: 'a@example.com', password: 'correct horse battery' } })).headers['set-cookie'].split(';')[0];
+    assert.equal((await app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 't@naver.com', appPassword: 'x', consent: true, days: 45 } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 't@naver.com', appPassword: 'x', consent: true, days: 30 } })).statusCode, 202);
+    const run = async () => { const db = openDatabase(path); try { await runNext(db, createMailHandler(db, loadSecretKey(join(dir, 'secret.key')), source, undefined, backfill)); } finally { db.close(); } };
+    await run();
+    const conn = (await app.inject({ url: '/mail/connection', headers: { cookie: a } })).json();
+    // 최초 조회는 고른 기간(30일)부터.
+    assert.ok(Math.abs(Date.parse(seen.since.at(-1)) - (Date.now() - 30 * 86_400_000)) < 60_000);
+    assert.equal(conn.coveredSince, seen.since.at(-1));
+    assert.equal(conn.backfillSince, null);
+    assert.equal(seen.backfill.length, 0);
+    // 이미 조회한 범위보다 짧은 기간은 거부.
+    assert.equal((await app.inject({ method: 'POST', url: '/mail/backfill', headers: { cookie: a }, payload: { days: 30 } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'POST', url: '/mail/backfill', headers: { cookie: a }, payload: { days: 180 } })).statusCode, 202);
+    await run();
+    let c = (await app.inject({ url: '/mail/connection', headers: { cookie: a } })).json();
+    assert.ok(c.backfillSince, '첫 실행 뒤에도 남은 과거 메일이 있어 진행 중');
+    assert.deepEqual(seen.backfill[0], [c.backfillSince, c.coveredSince]);
+    assert.equal(c.lastJob.result.more, true);
+    await app.inject({ method: 'POST', url: '/mail/sync', headers: { cookie: a } });
+    await run();
+    c = (await app.inject({ url: '/mail/connection', headers: { cookie: a } })).json();
+    // 다 가져오면 조회 범위 시작이 목표로 옮겨지고 진행 위치가 지워진다.
+    assert.equal(c.backfillSince, null);
+    assert.ok(Math.abs(Date.parse(c.coveredSince) - (Date.now() - 180 * 86_400_000)) < 60_000);
+    const raw = new DatabaseSync(path);
+    try {
+      // 채용 메일만 저장(가상A·B·C), 현재 조회 위치(커서)는 최초 조회 때 그대로.
+      assert.equal(raw.prepare('SELECT count(*) n FROM mail_messages').get().n, 3);
+      assert.equal(raw.prepare("SELECT last_uid FROM mail_cursors WHERE mailbox = 'INBOX'").get().last_uid, 50);
+      assert.equal(raw.prepare('SELECT count(*) n FROM mail_backfill').get().n, 0);
+    } finally { raw.close(); }
+  } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
+});

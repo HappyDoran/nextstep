@@ -128,7 +128,11 @@ export const mailConnectRequestSchema = z.object({
   account: z.email().max(254),
   appPassword: z.string().min(1).max(100),
   consent: z.literal(true),
+  // 최초 조회 기간(일). 사용자가 고르고 동의한다(기획서 4절).
+  days: z.union([z.literal(30), z.literal(90), z.literal(180), z.literal(365)]).default(90),
 }).strict();
+// 과거 범위 넓히기: 지금 조회한 범위보다 오래된 메일을 별도 작업으로 가져온다. 현재 조회 위치는 바꾸지 않는다.
+export const mailBackfillRequestSchema = z.object({ days: z.union([z.literal(90), z.literal(180), z.literal(365), z.literal(730)]) }).strict();
 export const mailConnectionSchema = z.object({
   provider: z.literal('naver'),
   account: z.string(),
@@ -137,6 +141,9 @@ export const mailConnectionSchema = z.object({
   lastSuccessAt: z.string().nullable(),
   lastError: z.string().nullable(),
   rangeIncomplete: z.boolean(),
+  // 조회한 범위의 시작 시각과, 넓히는 중이면 목표 시작 시각.
+  coveredSince: z.string().nullable(),
+  backfillSince: z.string().nullable(),
   lastJob: jobSchema.nullable(),
 });
 export type MailConnection = z.infer<typeof mailConnectionSchema>;

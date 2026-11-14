@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -249,6 +249,21 @@ export function openDatabase(filename: string) {
       db.exec(`ALTER TABLE documents ADD COLUMN ocr_pages TEXT NOT NULL DEFAULT '[]';
         ALTER TABLE documents ADD COLUMN edited INTEGER NOT NULL DEFAULT 0;
         PRAGMA user_version = 12;`);
+    }
+    if (version < 13) {
+      // P1-12: 조회한 범위 시작(covered_since)·과거 범위 넓히기 목표(backfill_since)와 편지함별 진행 위치.
+      // 이전 연결은 최초 조회 기본값(동의 시각 기준 90일)으로 채운다.
+      db.exec(`ALTER TABLE mail_connections ADD COLUMN covered_since TEXT;
+        ALTER TABLE mail_connections ADD COLUMN backfill_since TEXT;
+        UPDATE mail_connections SET covered_since = strftime('%Y-%m-%dT%H:%M:%fZ', consent_at, '-90 days');
+        CREATE TABLE mail_backfill (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          mailbox TEXT NOT NULL,
+          uid_validity TEXT NOT NULL,
+          below_uid INTEGER NOT NULL,
+          PRIMARY KEY (user_id, mailbox)
+        ) STRICT;
+        PRAGMA user_version = 13;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

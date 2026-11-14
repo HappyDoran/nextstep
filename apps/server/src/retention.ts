@@ -11,5 +11,7 @@ export function purgeExpired(db: DatabaseSync, now = new Date()) {
   // 만료된 세션·초대 코드도 지운다.
   const sessions = db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now.toISOString()).changes;
   const invites = db.prepare('DELETE FROM invites WHERE expires_at < ? AND used_at IS NULL').run(cutoff).changes;
-  return { jobs, reviews, sessions, invites };
+  // 매시간 메일 예약 기록이 쌓이므로 30일 지난 예약 실행 기록도 지운다.
+  const runs = db.prepare('DELETE FROM schedule_runs WHERE created_at < ?').run(cutoff).changes;
+  return { jobs, reviews, sessions, invites, runs };
 }

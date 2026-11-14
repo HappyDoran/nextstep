@@ -14,6 +14,10 @@ export type FetchedMail = { uid: number; messageKey: string; receivedAt: string 
 export type MailboxBatch = { mailbox: string; uidValidity: string; messages: FetchedMail[]; oldestDate: string | null; complete: boolean };
 export type Cursor = { uidValidity: string; lastUid: number };
 export type MailSource = (account: string, password: string, cursors: Map<string, Cursor>, since: Date) => Promise<MailboxBatch[]>;
+// 과거 범위 넓히기: [since, before) 기간을 최근 것부터 편지함별로 나눠 가져온다. belowUid는 지난 실행에서 처리한 가장 작은 UID.
+export type BackfillProgress = Map<string, { uidValidity: string; belowUid: number }>;
+export type BackfillBatch = MailboxBatch & { lowestUid: number | null };
+export type BackfillSource = (account: string, password: string, progress: BackfillProgress, since: Date, before: Date) => Promise<BackfillBatch[]>;
 export class MailSourceError extends Error { constructor(readonly code: string) { super(code); } }
 
 const EXCLUDED = new Set(['\\Sent', '\\Drafts', '\\Trash', '\\Junk']);
@@ -41,62 +45,93 @@ export function mailText(raw: string, html: boolean) {
   return { text: text.replace(/\s+/g, ' ').trim(), links };
 }
 
-// 네이버 IMAP 읽기 전용 조회(EXAMINE, BODY.PEEK). 메일을 읽음 처리·이동·삭제하지 않는다.
-export const naverSource: MailSource = async (account, password, cursors, since) => {
+type Client = InstanceType<typeof ImapFlow>;
+
+async function openClient(account: string, password: string) {
   const client = new ImapFlow({ host: 'imap.naver.com', port: 993, secure: true, auth: { user: account, pass: password }, logger: false });
   client.on('error', () => {});
   try { await client.connect(); } catch (error) { throw new MailSourceError(classifyImapError(error)); }
-  const batches: MailboxBatch[] = [];
+  return client;
+}
+
+// 조회 대상 편지함(보낸·임시·휴지통·스팸 제외)을 읽기 전용으로 열며 하나씩 처리한다.
+async function eachMailbox<T>(client: Client, fn: (path: string, uidValidity: string, exists: number) => Promise<T>) {
+  const out: T[] = [];
   try {
     for (const box of await client.list()) {
       if (box.flags.has('\\Noselect') || (box.specialUse && EXCLUDED.has(box.specialUse))) continue;
       const opened = await client.mailboxOpen(box.path, { readOnly: true });
-      const uidValidity = String(opened.uidValidity);
-      const cursor = cursors.get(box.path);
-      // 위치가 유효하면 그 다음 UID부터, UIDVALIDITY가 바뀌었거나 처음이면 조회 시작일부터 다시 본다(중복은 메시지 키로 막는다).
-      const resume = cursor && cursor.uidValidity === uidValidity;
-      let uids: number[] = [];
-      if (opened.exists) {
-        const found = resume ? await client.search({ uid: `${cursor.lastUid + 1}:*` }, { uid: true }) : await client.search({ since }, { uid: true });
-        uids = (found || []).filter(uid => !resume || uid > cursor.lastUid).sort((a, b) => a - b);
-      }
-      let oldestDate: string | null = null;
-      if (!resume && opened.exists) {
-        const first = await client.fetchOne('1', { internalDate: true });
-        const d = first && first.internalDate;
-        oldestDate = d instanceof Date ? d.toISOString() : null;
-      }
-      const take = uids.slice(0, PER_MAILBOX);
-      const messages: FetchedMail[] = [];
-      const metas = [];
-      if (take.length) for await (const msg of client.fetch(take, { uid: true, envelope: true, bodyStructure: true, internalDate: true }, { uid: true })) metas.push(msg);
-      for (const msg of metas) {
-        const part = textPart(msg.bodyStructure as Part);
-        let raw = '';
-        if (part) {
-          const { content } = await client.download(String(msg.uid), part.part, { uid: true });
-          if (content) for await (const chunk of content) raw += chunk.toString('utf8');
-        }
-        const { text, links } = mailText(raw, part?.html ?? false);
-        const env = msg.envelope;
-        messages.push({
-          uid: msg.uid,
-          messageKey: env?.messageId || `${box.path}:${uidValidity}:${msg.uid}`,
-          receivedAt: msg.internalDate instanceof Date ? msg.internalDate.toISOString() : null,
-          fromAddress: env?.from?.[0]?.address ?? '',
-          subject: env?.subject ?? '',
-          text: text.slice(0, 50_000),
-          links: links.slice(0, 200),
-        });
-      }
-      batches.push({ mailbox: box.path, uidValidity, messages, oldestDate, complete: uids.length <= PER_MAILBOX });
+      out.push(await fn(box.path, String(opened.uidValidity), opened.exists));
     }
   } catch (error) {
     await client.logout().catch(() => {});
     throw new MailSourceError(error instanceof MailSourceError ? error.code : classifyImapError(error));
   }
   await client.logout();
-  return batches;
+  return out;
+}
+
+async function fetchMessages(client: Client, path: string, uidValidity: string, uids: number[]) {
+  const messages: FetchedMail[] = [];
+  const metas = [];
+  if (uids.length) for await (const msg of client.fetch(uids, { uid: true, envelope: true, bodyStructure: true, internalDate: true }, { uid: true })) metas.push(msg);
+  for (const msg of metas) {
+    const part = textPart(msg.bodyStructure as Part);
+    let raw = '';
+    if (part) {
+      const { content } = await client.download(String(msg.uid), part.part, { uid: true });
+      if (content) for await (const chunk of content) raw += chunk.toString('utf8');
+    }
+    const { text, links } = mailText(raw, part?.html ?? false);
+    const env = msg.envelope;
+    messages.push({
+      uid: msg.uid,
+      messageKey: env?.messageId || `${path}:${uidValidity}:${msg.uid}`,
+      receivedAt: msg.internalDate instanceof Date ? msg.internalDate.toISOString() : null,
+      fromAddress: env?.from?.[0]?.address ?? '',
+      subject: env?.subject ?? '',
+      text: text.slice(0, 50_000),
+      links: links.slice(0, 200),
+    });
+  }
+  return messages;
+}
+
+// 네이버 IMAP 읽기 전용 조회(EXAMINE, BODY.PEEK). 메일을 읽음 처리·이동·삭제하지 않는다.
+export const naverSource: MailSource = async (account, password, cursors, since) => {
+  const client = await openClient(account, password);
+  return eachMailbox(client, async (path, uidValidity, exists) => {
+    const cursor = cursors.get(path);
+    // 위치가 유효하면 그 다음 UID부터, UIDVALIDITY가 바뀌었거나 처음이면 조회 시작일부터 다시 본다(중복은 메시지 키로 막는다).
+    const resume = cursor && cursor.uidValidity === uidValidity;
+    let uids: number[] = [];
+    if (exists) {
+      const found = resume ? await client.search({ uid: `${cursor.lastUid + 1}:*` }, { uid: true }) : await client.search({ since }, { uid: true });
+      uids = (found || []).filter(uid => !resume || uid > cursor.lastUid).sort((a, b) => a - b);
+    }
+    let oldestDate: string | null = null;
+    if (!resume && exists) {
+      const first = await client.fetchOne('1', { internalDate: true });
+      const d = first && first.internalDate;
+      oldestDate = d instanceof Date ? d.toISOString() : null;
+    }
+    const messages = await fetchMessages(client, path, uidValidity, uids.slice(0, PER_MAILBOX));
+    return { mailbox: path, uidValidity, messages, oldestDate, complete: uids.length <= PER_MAILBOX };
+  });
+};
+
+// 과거 범위: 최근 것부터 편지함별 300건씩. 진행 위치(belowUid)보다 작은 UID만 본다. UIDVALIDITY가 바뀌면 그 편지함은 처음부터 다시 본다.
+export const naverBackfill: BackfillSource = async (account, password, progress, since, before) => {
+  const client = await openClient(account, password);
+  return eachMailbox(client, async (path, uidValidity, exists) => {
+    const p = progress.get(path);
+    const below = p && p.uidValidity === uidValidity ? p.belowUid : Infinity;
+    const found = exists ? (await client.search({ since, before }, { uid: true })) || [] : [];
+    const uids = found.filter(uid => uid < below).sort((a, b) => b - a);
+    const take = uids.slice(0, PER_MAILBOX);
+    const messages = await fetchMessages(client, path, uidValidity, take);
+    return { mailbox: path, uidValidity, messages, oldestDate: null, complete: uids.length <= PER_MAILBOX, lowestUid: take.length ? Math.min(...take) : null };
+  });
 };
 
 export type BodyRef = { mailbox: string; uidValidity: string; uid: number };
@@ -108,9 +143,7 @@ export const bodyKey = (r: { mailbox: string; uid: number }) => `${r.mailbox}:${
 export const naverBodies: MailBodySource = async (account, password, refs) => {
   const out = new Map<string, MailBody>();
   if (!refs.length) return out;
-  const client = new ImapFlow({ host: 'imap.naver.com', port: 993, secure: true, auth: { user: account, pass: password }, logger: false });
-  client.on('error', () => {});
-  try { await client.connect(); } catch (error) { throw new MailSourceError(classifyImapError(error)); }
+  const client = await openClient(account, password);
   try {
     const byBox = new Map<string, BodyRef[]>();
     for (const r of refs) byBox.set(r.mailbox, [...(byBox.get(r.mailbox) ?? []), r]);

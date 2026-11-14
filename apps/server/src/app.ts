@@ -14,12 +14,12 @@ import { startScheduler } from './schedule.js';
 import { loadSecretKey } from './secrets.js';
 import { registerMail } from './mail/routes.js';
 import { createMailHandler } from './mail/sync.js';
-import { naverBodies, naverSource, type MailSource } from './mail/naver.js';
+import { naverBackfill, naverBodies, naverSource, type BackfillSource, type MailSource } from './mail/naver.js';
 import { aiConfigured, runWithAi } from './ai/openai.js';
 import { loadUserAi, registerAiSettings } from './ai/settings.js';
 import { interpretMail } from './prompts/mail.js';
 
-export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; scheduleHour?: number; deps?: PipelineDeps; mailSource?: MailSource } = {}) {
+export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; scheduleHour?: number; deps?: PipelineDeps; mailSource?: MailSource; mailBackfill?: BackfillSource } = {}) {
   const db = openDatabase(databasePath);
   // 원본 파일은 DB 옆 비공개 디렉터리에 둔다(Git 제외 경로).
   const filesDir = options.filesDir ?? join(dirname(databasePath), 'files');
@@ -47,7 +47,7 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
     const recommend = createHandler(db, options.deps);
     // AI가 설정된 경우에만 보관 메일 해석 단계를 켠다.
     // 메일 해석은 그 사용자 키가 있을 때만 켠다(키 없이 시도해 재시도 횟수를 쓰지 않는다).
-    const mail = (job: ClaimedJob) => createMailHandler(db, secretKey, mailSource, aiConfigured() ? { interpret: interpretMail, bodies: naverBodies } : undefined)(job);
+    const mail = (job: ClaimedJob) => createMailHandler(db, secretKey, mailSource, aiConfigured() ? { interpret: interpretMail, bodies: naverBodies } : undefined, options.mailBackfill ?? naverBackfill)(job);
     const stop = startWorker(db, (job: ClaimedJob) => withUserAi(job.userId, () => (job.kind === 'mail' ? mail(job) : recommend(job))));
     // 예약 실행은 작업자와 같은 서버 프로세스에서 돈다. 브라우저를 닫아도 계속된다.
     const stopSchedule = startScheduler(db, options.scheduleHour ?? 21);

@@ -6,7 +6,9 @@ import { cancelQueuedScheduled } from './schedule.js';
 
 function status(db: DatabaseSync, userId: string) {
   const row = db.prepare('SELECT auto_enabled FROM users WHERE id = ?').get(userId) as { auto_enabled: number };
-  const last = db.prepare('SELECT s.kind, j.status, j.finished_at, s.run_date FROM schedule_runs s LEFT JOIN jobs j ON j.id = s.job_id WHERE s.user_id = ? ORDER BY s.created_at DESC LIMIT 2').all(userId) as { kind: string; status: string | null; finished_at: string | null; run_date: string }[];
+  // 종류별 가장 최근 예약 실행(메일은 매시간, 공고 갱신은 하루 한 번).
+  const last = db.prepare(`SELECT s.kind, j.status, j.finished_at, s.run_date FROM schedule_runs s LEFT JOIN jobs j ON j.id = s.job_id
+    WHERE s.user_id = ? AND s.created_at = (SELECT max(created_at) FROM schedule_runs x WHERE x.user_id = s.user_id AND x.kind = s.kind) ORDER BY s.created_at DESC`).all(userId) as { kind: string; status: string | null; finished_at: string | null; run_date: string }[];
   return automationStatusSchema.parse({ enabled: row.auto_enabled === 1, lastScheduled: last.map(l => ({ kind: l.kind, status: l.status, finishedAt: l.finished_at, runDate: l.run_date })) });
 }
 

@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { enqueue } from './recommend/jobs.js';
 import { purgeExpired } from './retention.js';
 
-// 서버 예약 실행: 앱이 꺼져 있어도 서버 프로세스가 하루 한 번 수집·추천과 메일 조회 작업을 만든다.
+// 서버 예약 실행: 브라우저가 꺼져 있어도 서버 프로세스가 공고 갱신은 하루 한 번(지정 시각 이후), 메일 조회는 매시간 작업을 만든다(기획서 6절).
 // 조건: 자동화 권한(1차는 초대 테스트 권한) AND 자동 ON AND 필요한 연결 정상. 수동 요청과 같은 작업 경로를 쓴다.
 const TIME_ZONE = 'Asia/Seoul';
 
@@ -15,22 +15,22 @@ type Eligible = { id: string; has_basis: number; mail_ok: number };
 
 export function runSchedule(db: DatabaseSync, at: Date, hour: number) {
   const { date, hour: current } = seoulParts(at);
-  if (current < hour) return 0;
   const users = db.prepare(`SELECT u.id,
       (EXISTS (SELECT 1 FROM profiles p WHERE p.user_id = u.id) AND EXISTS (SELECT 1 FROM documents d WHERE d.user_id = u.id AND d.kind = 'resume')) AS has_basis,
       EXISTS (SELECT 1 FROM mail_connections c WHERE c.user_id = u.id AND c.status = '정상') AS mail_ok
     FROM users u WHERE u.auto_enabled = 1 AND u.test_permission = 1`).all() as Eligible[];
   let created = 0;
   for (const user of users) {
-    const kinds = [...(user.has_basis ? ['refresh' as const] : []), ...(user.mail_ok ? ['mail' as const] : [])];
-    for (const kind of kinds) {
+    // 실행 키: 공고 갱신은 날짜(지정 시각 이후 하루 한 번), 메일은 날짜+시(매시간 한 번).
+    const runs = [...(user.has_basis && current >= hour ? [{ kind: 'refresh' as const, key: date }] : []), ...(user.mail_ok ? [{ kind: 'mail' as const, key: `${date}T${String(current).padStart(2, '0')}` }] : [])];
+    for (const { kind, key } of runs) {
       db.exec('BEGIN IMMEDIATE');
       try {
         // 같은 날 같은 종류는 한 번만 만든다(서버 재시작·여러 번 검사해도 중복 없음).
-        const claimed = db.prepare('INSERT OR IGNORE INTO schedule_runs (user_id, run_date, kind, created_at) VALUES (?, ?, ?, ?)').run(user.id, date, kind, at.toISOString());
+        const claimed = db.prepare('INSERT OR IGNORE INTO schedule_runs (user_id, run_date, kind, created_at) VALUES (?, ?, ?, ?)').run(user.id, key, kind, at.toISOString());
         if (claimed.changes === 1) {
           const job = enqueue(db, user.id, kind, undefined, true);
-          db.prepare('UPDATE schedule_runs SET job_id = ? WHERE user_id = ? AND run_date = ? AND kind = ?').run(job.id, user.id, date, kind);
+          db.prepare('UPDATE schedule_runs SET job_id = ? WHERE user_id = ? AND run_date = ? AND kind = ?').run(job.id, user.id, key, kind);
           created++;
         }
         db.exec('COMMIT');
