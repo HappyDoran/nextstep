@@ -36,7 +36,8 @@ async function main() {
     const cand = candidates.get(profile);
     const req = extracted.get(c);
     if (!cand || cand instanceof Error || !req || req instanceof Error) return { id: c.id, family: c.jobFamily, expected: c.expected.classification, got: `오류:${((cand instanceof Error && cand) || (req as Error)).message}`, tags: c.tags, why: '' };
-    const j = classify(data.evaluatedAt, { jobFamilies: profile.desiredFamilies, regions: profile.locations.filter(l => l !== '원격'), remoteOk: profile.locations.includes('원격') }, cand as Candidate, {
+    const j = classify(data.evaluatedAt, { jobFamilies: profile.desiredFamilies, regions: profile.locations.filter(l => l !== '원격'), remoteOk: profile.locations.includes('원격') }, { ...(cand as Candidate), text: JSON.stringify(profile, (k, v) => (['id', 'desiredFamilies', 'locations'].includes(k) ? undefined : v)) }, {
+      title: c.posting.title,
       families: req.jobFamilies, required: req.required, preferred: req.preferred, careers: c.posting.careers, location: c.posting.location,
       remote: c.posting.remote ?? (req.remote === '미기재' ? null : req.remote), deadline: c.posting.deadline, alwaysHire: c.posting.alwaysHire, companyType: c.posting.companyType, bodyNote: null,
     });

@@ -2,6 +2,7 @@
 # 홈서버 전까지 운영자 Mac에서 빌드한 API·웹을 상시 실행한다(launchd: 로그인 시 시작, 종료되면 재시작).
 # 사용: sh scripts/mac-service.sh install | uninstall | restart   (install 전에 pnpm build)
 # 로그: ~/Library/Logs/nextstep/{api,web}.log. Mac이 잠자거나 꺼지면 함께 멈춘다.
+# AI는 기본으로 로컬 Ollama(qwen3:4b)를 쓴다(brew services start ollama, ollama pull qwen3:4b). OpenAI로 돌리려면 NEXTSTEP_AI_PROVIDER=openai로 install.
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 NODE=$(command -v node)
@@ -20,7 +21,7 @@ plist() { # 이름 작업폴더 인자...
   <key>Label</key><string>com.nextstep.$name</string>
   <key>ProgramArguments</key><array>$args</array>
   <key>WorkingDirectory</key><string>$dir</string>
-  <key>EnvironmentVariables</key><dict><key>PATH</key><string>$PATH_VALUE</string><key>NODE_ENV</key><string>production</string></dict>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>$PATH_VALUE</string><key>NODE_ENV</key><string>production</string><key>NEXTSTEP_AI_PROVIDER</key><string>${NEXTSTEP_AI_PROVIDER:-ollama}</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$LOGS/$name.log</string>

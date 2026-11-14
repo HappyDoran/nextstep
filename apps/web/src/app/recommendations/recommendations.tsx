@@ -88,7 +88,7 @@ function RecommendationList({ me }: { me: Me }) {
   return <div className="flex flex-col gap-8">
     <section aria-labelledby="refresh-heading" className="flex flex-col gap-3">
       <h1 id="refresh-heading" className="text-title-lg">추천</h1>
-      <p className="text-body-sm text-muted-foreground">공고 조건과 서류(이력서·경력기술서·포트폴리오)를 본인 OpenAI 키로 보내 사실만 뽑고, 분류는 정해진 규칙으로 합니다. 좋아요·별로·제외 복구는 내 목록에만 반영됩니다. 마감·기업 규모는 출처에 적힌 값만 보여 주고 없으면 미확인으로 둡니다.</p>
+      <p className="text-body-sm text-muted-foreground">공고 조건과 서류(이력서·경력기술서·포트폴리오)에서 AI(설정의 로컬 AI, 또는 본인 OpenAI 키)로 사실만 뽑고, 분류는 정해진 규칙으로 합니다. 좋아요·별로·제외 복구는 내 목록에만 반영됩니다. 마감·기업 규모는 출처에 적힌 값만 보여 주고 없으면 미확인으로 둡니다.</p>
       <FilterSummary me={me} />
       <div><Button disabled={busy} onClick={() => refresh.mutate()}>{busy ? <LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" /> : <RefreshCw className="size-icon-md shrink-0 stroke-icon" aria-hidden="true" />}새로 가져오기</Button></div>
       <JobStatus job={currentJob} />

@@ -40,7 +40,7 @@ test('사용자 OpenAI 키는 확인 후 암호화 저장하고, 본인 요청�
     const a = await signup('a@example.com');
     const b = await signup('b@example.com');
     const put = (cookie, payload) => app.inject({ method: 'PUT', url: '/settings/ai', headers: { cookie }, payload });
-    assert.deepEqual((await app.inject({ url: '/settings/ai', headers: { cookie: a } })).json(), { configured: false, keyHint: null, model: 'gpt-5.5', verifiedAt: null });
+    assert.deepEqual((await app.inject({ url: '/settings/ai', headers: { cookie: a } })).json(), { configured: false, keyHint: null, model: 'gpt-5.5', verifiedAt: null, local: null });
 
     // 키 없는 사용자는 운영자 키가 있어도 AI를 쓸 수 없다.
     const noKey = await app.inject({ method: 'POST', url: '/profile/suggest', headers: { cookie: a } });

@@ -6,10 +6,11 @@ import type { Judgement } from '../prompts/recommend.js';
 
 // 추천 분류 규칙(기술 설계 D절, 사용자 확정 2026-11-07). 모델은 사실만 뽑고 분류는 여기서 정한다.
 // 우선순위: 제외 > 도전 > 미확인 > 기본. 같은 입력이면 같은 분류가 나온다.
-export const RULES_VERSION = 'rules-2026-11-14c';
+export const RULES_VERSION = 'rules-2026-11-14g';
 
 export type Seeker = { jobFamilies: string[]; regions: string[]; remoteOk: boolean };
 export type PostingInput = {
+  title?: string;
   families: string[] | null;
   required: Requirement[] | null;
   preferred: { text: string; keys: string[] }[];
@@ -25,13 +26,27 @@ export type PostingInput = {
 const TARGETS = ['프론트엔드', '앱 개발', '디자인', '기획', '백엔드', 'QA'];
 const ALIASES: Record<string, string> = { ts: 'typescript', js: 'javascript', rn: 'reactnative' };
 // 직무 이름 비교에만 쓰는 별칭(일반 경험 비교에 쓰면 '기획'이 '사업기획'과 맞아 버린다).
-const FAMILY_ALIASES: Record<string, string> = { ios: '앱개발', android: '앱개발', ios개발: '앱개발', 모바일앱: '앱개발', 서비스기획: '기획', 프로덕트디자인: '디자인', uiux디자인: '디자인' };
+const FAMILY_ALIASES: Record<string, string> = Object.fromEntries(Object.entries({
+  앱개발: ['ios', 'android', 'ios개발', 'ios개발자', 'android개발', '안드로이드', '안드로이드개발', '모바일앱', '모바일앱개발', '모바일개발', '앱개발자', '크로스플랫폼'],
+  기획: ['서비스기획', '서비스기획자', '기획자', 'pm', '프로덕트매니저', '제품기획'],
+  디자인: ['프로덕트디자인', '프로덕트디자이너', 'uiux디자인', 'uiux디자이너', 'ui디자인', 'ux디자인', 'ui디자이너', '디자이너'],
+  백엔드: ['서버', '서버개발', '서버개발자', '백엔드개발', '백엔드개발자', 'backend', '서버백엔드', '서버백엔드개발'],
+  프론트엔드: ['frontend', '프론트엔드개발', '프론트엔드개발자', '웹프론트엔드', '프론트'],
+  qa: ['qa엔지니어', '소프트웨어qa', '테스트엔지니어', '품질보증', 'sqa'],
+}).flatMap(([to, from]) => from.map(f => [f, to])));
+// 공고 제목에 이런 직무명이 있으면 대상 직무가 아니다(기술 설계 D절: 공간·패션 디자인, 사업·상품·영업기획 제외). 모델 분류보다 우선한다.
+const NOT_TARGET = /사업\s*기획|전략\s*기획|상품\s*기획|영업\s*기획|\bMD\b|(?:공간|전시|패션|시각|제품|인테리어)\s*디자(?:인|이너)|품질\s*관리|\bQC\b/i;
 export function norm(s: string) {
-  // 같은 뜻의 한글 업무 표현은 하나로 맞춘다(이슈·버그 리포팅 = 결함 리포팅).
-  const n = s.toLowerCase().replace(/\([^)]*\)/g, '').replace(/[\s.\-_/·]/g, '').replace(/js$/, '').replace(/이슈|버그/g, '결함');
+  // 같은 뜻의 한글 업무 표현은 하나로 맞춘다(이슈·버그 리포팅 = 결함 리포팅). 작은 모델이 단어 중간에 넣는 콜론(예: '백엔:드')도 지운다.
+  const n = s.toLowerCase().replace(/\([^)]*\)/g, '').replace(/[\s.\-_/·:]/g, '').replace(/js$/, '').replace(/이슈|버그/g, '결함');
   return ALIASES[n] ?? n;
 }
-const family = (s: string) => FAMILY_ALIASES[norm(s)] ?? norm(s);
+// 직무 이름: 별칭 → 대상 직무, 대상 직무 이름의 앞부분만 잘린 표기(예: '프론트엔')도 같은 직무로 본다.
+const TARGET_KEYS = ['프론트엔드', '앱개발', '디자인', '기획', '백엔드', 'qa'];
+function family(s: string) {
+  const n = norm(s);
+  return FAMILY_ALIASES[n] ?? TARGET_KEYS.find(t => n.length >= 3 && t.startsWith(n)) ?? n;
+}
 const hangul = (s: string) => /[가-힣]/.test(s);
 // 기술 이름은 정확히 같아야 한다(React ≠ React Native). 한글 업무 경험은 한쪽이 다른 쪽을 포함하면 같다고 본다.
 export function matches(keys: string[], pool: string[]) {
@@ -50,9 +65,11 @@ export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: P
     else { unknown.push(text); if (kind === 'unsure') { unsure = true; unsureWhy.push(text); } }
   };
 
-  // 직무: 희망 직무 중 하나만 맞아도 된다(OR).
-  const families = p.families?.filter(f => seeker.jobFamilies.includes(f)) ?? [];
-  if (p.families && !families.length) out('exclude', `공고 직무(${p.families.join('·')})가 희망 직무(${seeker.jobFamilies.join('·')})와 다름`);
+  // 직무: 희망 직무 중 하나만 맞아도 된다(OR). 제목이 대상 아닌 직무명이면 모델 분류와 상관없이 제외한다.
+  const off = p.title?.match(NOT_TARGET)?.[0];
+  const families = off ? [] : p.families?.filter(f => seeker.jobFamilies.includes(f)) ?? [];
+  if (off) out('exclude', `공고 직무(${off})가 대상 직무가 아님`);
+  else if (p.families && !families.length) out('exclude', `공고 직무(${p.families.join('·')})가 희망 직무(${seeker.jobFamilies.join('·')})와 다름`);
   const jobFamilies = families.length ? families : seeker.jobFamilies;
 
   // 마감: 기준 시각보다 앞서면 제외(개인 불합격이 아님).
@@ -77,6 +94,13 @@ export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: P
   const practical = c.careers.flatMap(r => r.stack);
   // 직무 이름은 경험 비교에 넣지 않는다('앱 개발'이 '하이브리드 앱 개발'과 맞아 버림). 직무 경력은 career 조건에서만 본다.
   const known = [...c.skills, ...practical, ...c.experiences];
+  // 추출에서 빠졌어도 서류 원문에 같은 말이 그대로 있으면 있는 것으로 본다(작은 모델의 추출 누락 보완). 세 글자 이상만.
+  // 작은 모델이 키워드를 줄이거나 망가뜨리므로(예: '테스트 케이:케이스') 조건 원문(text)도 함께 대조한다.
+  const raw = c.text ? norm(c.text) : '';
+  // 긴 조건 문구는 '·', ',', '/', 괄호, '등', '또는'으로 나누고 끝의 일반어(경험·수행·작성 등)를 떼어 각 조각을 대조한다.
+  const parts = (k: string) => [k, ...k.split(/[·,/()]|\s등\s|\s또는\s/)].map(x => x.trim().replace(/(\s*(경험|수행|작성|협업|능력|역량|이해|활용|가능자?|보유|우대))+$/, '')).filter(Boolean);
+  const inText = (keys: string[]) => Boolean(raw) && keys.flatMap(parts).map(norm).some(k => k.length >= 3 && raw.includes(k));
+  const has = (keys: string[], pool: string[]) => matches(keys, pool) || inText(keys);
   for (const r of p.required ?? []) {
     if (r.type === 'career') {
       // 같은 직무 연차 부족은 도전, 다른 성격의 필수 경력(직책·다른 직무)은 유사 경험으로 대체하지 않고 제외.
@@ -90,24 +114,24 @@ export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: P
       else if (r.keys.some(k => !TARGETS.some(t => family(t) === family(k))) || need > 0) out('exclude', `필수 ${r.text} 없음(유사 경험으로 대체하지 않음)`);
       else out('unsure', `${r.text} 확인 불가`);
     } else if (r.type === 'skill') {
-      if (r.practical) {
-        // 실무를 요구한 기술은 실무 스택에 있어야 한다. 사이드 프로젝트·비슷한 기술로 대신하지 않는다.
+      if (r.practical && r.years) {
+        // 연차를 밝혀 실무를 요구한 기술은 실무 스택에 있어야 한다. 사이드 프로젝트·비슷한 기술로 대신하지 않는다.
         const used = c.careers.filter(k => matches(r.keys, k.stack));
         const best = Math.max(0, ...used.map(k => k.months));
         if (!used.length) out('exclude', `필수 ${r.text}: 실무 경력 없음`);
         else if (r.years && best < r.years * 12) out('challenge', `${r.text}: 실무 ${span(best)}`);
         else out('met', r.text);
-      } else if (matches(r.keys, known)) out('met', r.text);
+      } else if (has([...r.keys, r.text], known)) out('met', r.text);
       else out('unsure', `필수 ${r.text}: 서류에 미기재`);
     } else if (r.type === 'experience' || r.type === 'role') {
-      if (matches(r.keys, [...known, ...c.roles])) out('met', r.text);
+      if (has([...r.keys, r.text], [...known, ...c.roles])) out('met', r.text);
       else out('unsure', `필수 ${r.text}: 서류로 확인 불가`);
     } else if (r.type === 'portfolio') out('unsure', `필수 ${r.text}: 포트폴리오 내용은 서류로 확인 불가`);
     // ponytail: 학력·기타 조건은 판정을 바꾸지 않고 기록만 한다. 학력 필터가 필요해지면 education 비교를 추가한다.
     else if (r.type === 'education') out(c.education === '미기재' ? 'note' : 'met', `${r.text}(최종 학력 ${c.education})`);
     else out('note', `${r.text}: 확인 필요`);
   }
-  for (const r of p.preferred) if (matches(r.keys, known)) out('met', `우대: ${r.text}`);
+  for (const r of p.preferred) if (has([...r.keys, r.text], known)) out('met', `우대: ${r.text}`);
   if (!p.companyType) out('note', '기업 유형·규모 미기재');
 
   const classification = exclude ? '제외' : challenge ? '도전' : unsure ? '미확인' : '기본';

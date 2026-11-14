@@ -100,3 +100,26 @@ test('응답 캐시는 같은 입력이면 다시 요청하지 않고 소유자�
     assert.equal(statSync(join(dir, file)).mode & 0o777, 0o600);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('로컬 AI(Ollama): 사용자 키 없이 JSON Schema·생각 모드 끔으로 요청하고, 형식이 틀리면 한 번만 다시 묻는다', async () => {
+  const valid = { classification: '기본', met: [], unmet: [], unknown: [], reason: '충족' };
+  const seen = [];
+  const answers = ['형식 아님', JSON.stringify(valid)];
+  const server = createServer((req, res) => { let body = ''; req.on('data', c => { body += c; }).on('end', () => { seen.push({ url: req.url, body: JSON.parse(body) }); reply(res, 200, { message: { content: answers.shift() ?? '형식 아님' }, prompt_eval_count: 10, eval_count: 5 }); }); });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const env = { ...process.env };
+  Object.assign(process.env, { NEXTSTEP_AI_PROVIDER: 'ollama', NEXTSTEP_OLLAMA_URL: `http://127.0.0.1:${server.address().port}`, NEXTSTEP_OLLAMA_MODEL: 'qwen3:4b' });
+  delete process.env.NEXTSTEP_AI_CACHE_DIR;
+  try {
+    // 사용자 키가 없는(null) 요청 범위에서도 로컬 AI로 처리한다.
+    assert.deepEqual(await runWithAi(null, () => structured('j', judgementSchema, '지시', '입력')), valid);
+    assert.equal(seen.length, 2);
+    assert.equal(seen[0].url, '/api/chat');
+    assert.equal(seen[0].body.model, 'qwen3:4b');
+    assert.equal(seen[0].body.think, false);
+    assert.equal(seen[0].body.format.type, 'object');
+    assert.deepEqual(seen[0].body.messages.map(m => m.role), ['system', 'user']);
+    // 두 번 다 틀리면 잘못된 출력으로 끝난다.
+    await assert.rejects(structured('j', judgementSchema, '지시', '다른 입력'), e => e.code === 'ai_invalid_output');
+  } finally { process.env = env; server.close(); }
+});

@@ -44,6 +44,8 @@ export function AiSetting({ me }: { me: Me }) {
   const selected = model ?? current?.model ?? AI_MODELS[0].id;
   const submit = (e: FormEvent) => { e.preventDefault(); update.mutate({ ...(apiKey ? { apiKey } : {}), model: selected }); };
 
+  // 서버가 로컬 AI를 쓰면 키 입력 없이 안내만 한다.
+  if (current?.local) return <p role="status" className="text-body-sm">로컬 AI({current.local})를 쓰고 있습니다. 서류·공고·메일은 이 서버 안에서만 처리되고 외부 AI로 보내지 않으며, OpenAI 키·요금이 필요 없습니다. 처리 속도는 OpenAI보다 느릴 수 있습니다.</p>;
   return <form onSubmit={submit} className="flex flex-col gap-4">
     <p className="text-body-sm text-muted-foreground">추천 판정·프로필 초안·메일 해석은 본인 OpenAI API 키로 처리하고 요금도 키 주인에게 청구됩니다. 키는 서버에 암호화해 저장하고 화면에는 끝 4자리만 보여 줍니다.</p>
     <p role="status" className="text-body-sm">

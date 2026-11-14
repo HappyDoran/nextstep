@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { aiModelSchema, aiSettingsSchema, aiSettingsUpdateSchema, AI_MODELS } from '@nextstep/contracts';
 import { requireUser } from '../auth.js';
 import { decrypt, encrypt } from '../secrets.js';
-import { AiError, aiBaseUrl, httpError, type AiConfig } from './openai.js';
+import { AiError, aiBaseUrl, httpError, ollamaModel, type AiConfig } from './openai.js';
 
 type Row = { key_enc: string; key_hint: string; model: string; verified_at: string };
 const DEFAULT_MODEL = AI_MODELS[0].id;
@@ -33,11 +33,12 @@ const MESSAGES: Record<string, string> = {
 };
 
 export function registerAiSettings(app: FastifyInstance, db: DatabaseSync, secretKey: Buffer) {
+  const local = process.env.NEXTSTEP_AI_PROVIDER === 'ollama' ? ollamaModel() : null;
   const view = (userId: string) => {
     const row = db.prepare('SELECT key_hint, model, verified_at FROM ai_settings WHERE user_id = ?').get(userId) as Omit<Row, 'key_enc'> | undefined;
     return aiSettingsSchema.parse(row
-      ? { configured: true, keyHint: row.key_hint, model: aiModelSchema.safeParse(row.model).data ?? DEFAULT_MODEL, verifiedAt: row.verified_at }
-      : { configured: false, keyHint: null, model: DEFAULT_MODEL, verifiedAt: null });
+      ? { configured: true, keyHint: row.key_hint, model: aiModelSchema.safeParse(row.model).data ?? DEFAULT_MODEL, verifiedAt: row.verified_at, local }
+      : { configured: false, keyHint: null, model: DEFAULT_MODEL, verifiedAt: null, local });
   };
 
   app.get('/settings/ai', async (request, reply) => {

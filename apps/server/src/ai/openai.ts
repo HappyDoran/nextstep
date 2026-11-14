@@ -32,22 +32,28 @@ function currentAi(): AiConfig | null {
 }
 export const aiBaseUrl = () => process.env.NEXTSTEP_OPENAI_BASE_URL ?? 'https://api.openai.com/v1';
 
+// 홈서버 로컬 LLM(Ollama). NEXTSTEP_AI_PROVIDER=ollama이면 사용자 키 대신 이 모델 하나로 모든 AI 처리를 한다(기획서 3절, P1-10).
+// 외부로 나가지 않으므로 사용자별 키가 필요 없다. 기본 모델 qwen3:4b, 주소는 127.0.0.1에만 연다.
+const ollama = () => process.env.NEXTSTEP_AI_PROVIDER === 'ollama';
+const ollamaUrl = () => process.env.NEXTSTEP_OLLAMA_URL ?? 'http://127.0.0.1:11434';
+export const ollamaModel = () => process.env.NEXTSTEP_OLLAMA_MODEL ?? 'qwen3:4b';
+
 export function aiConfigured() {
-  return fake() || currentAi() !== null;
+  return fake() || ollama() || currentAi() !== null;
 }
 
 export async function structured<T extends z.ZodType>(name: string, schema: T, instructions: string, input: string): Promise<z.infer<T>> {
   if (fake()) {
     try { return schema.parse(fakeValue(jsonSchema(schema))); } catch { throw new AiError('ai_invalid_output'); }
   }
-  const ai = currentAi();
+  const ai = ollama() ? { apiKey: '', model: `ollama:${ollamaModel()}` } : currentAi();
   if (!ai) throw new AiError('ai_unconfigured');
   const dir = process.env.NEXTSTEP_AI_CACHE_DIR;
   const file = dir && join(dir, `${createHash('sha256').update(JSON.stringify([ai.model, name, instructions, input])).digest('hex')}.json`);
   if (file) {
     try { return schema.parse(JSON.parse(readFileSync(file, 'utf8'))); } catch { /* 없거나 스키마가 바뀌면 새로 요청 */ }
   }
-  const value = await request(ai, name, schema, instructions, input);
+  const value = ollama() ? await requestOllama(schema, instructions, input) : await request(ai, name, schema, instructions, input);
   if (file) {
     // 응답에 개인 자료(회사명 등)가 있을 수 있어 소유자만 읽게 둔다.
     mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -100,6 +106,37 @@ async function request<T extends z.ZodType>({ apiKey, model }: AiConfig, name: s
   } catch {
     throw new AiError('ai_invalid_output');
   }
+}
+
+// Ollama 구조화 출력: JSON Schema를 format으로 넘기고 Qwen3 생각 모드는 끈다. 온도 0, 문맥 8,192 토큰.
+// 형식이 틀리면 한 번 다시 묻고, 그래도 틀리면 ai_invalid_output(호출한 쪽이 미확인으로 처리).
+async function requestOllama<T extends z.ZodType>(schema: T, instructions: string, input: string): Promise<z.infer<T>> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let res: Response;
+    try {
+      res = await fetch(`${ollamaUrl()}/api/chat`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: ollamaModel(), stream: false, think: false, format: jsonSchema(schema),
+          options: { temperature: 0, num_ctx: 8192 },
+          messages: [{ role: 'system', content: instructions }, { role: 'user', content: input }],
+        }),
+        // 로컬 CPU·작은 장비는 느리다. 홈서버에서 실측 후 조정한다.
+        signal: AbortSignal.timeout(300_000),
+      });
+    } catch (error) {
+      throw new AiError((error as Error).name === 'TimeoutError' ? 'ai_timeout' : 'ai_network');
+    }
+    if (res.status === 404) throw new AiError('ai_model_unavailable', 404);
+    if (!res.ok) throw new AiError('ai_http', res.status);
+    const body = await res.json() as { message?: { content?: string }; prompt_eval_count?: number; eval_count?: number };
+    usageTotals.calls++;
+    usageTotals.inputTokens += body.prompt_eval_count ?? 0;
+    usageTotals.outputTokens += body.eval_count ?? 0;
+    try { return schema.parse(JSON.parse(body.message?.content ?? '')); } catch { /* 한 번 더 */ }
+  }
+  throw new AiError('ai_invalid_output');
 }
 
 // 사용자가 고칠 수 있는 원인(키·잔액·모델 권한)을 일반 HTTP 오류와 구분한다.

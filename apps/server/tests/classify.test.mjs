@@ -26,7 +26,12 @@ test('제외 > 도전 > 미확인 > 기본 순으로 분류한다', () => {
 
 test('필수 조건 종류별 규칙: 실무 기술·다른 성격 경력·서류 미기재·포트폴리오', () => {
   assert.equal(run({ required: [req('skill', ['Vue'], { practical: true, years: 2 })] }), '제외');
-  assert.equal(run({ required: [req('skill', ['React Native'], { practical: true })] }), '제외', '사이드 프로젝트 기술은 실무가 아님');
+  assert.equal(run({ required: [req('skill', ['React Native'], { practical: true, years: 1 })] }), '제외', '사이드 프로젝트 기술은 실무가 아님');
+  // 연차 없이 '실무'만 붙은 기술(작은 모델이 자주 붙임)은 보유 기술이면 충족, 없으면 미확인으로 본다.
+  assert.equal(run({ required: [req('skill', ['React Native'], { practical: true })] }), '기본');
+  assert.equal(classify(at, seeker, { ...cand, text: '결제 화면 UI 개선과 QA 협업' }, { ...base, required: [req('experience', ['UI'])] }).classification, '미확인', '세 글자 미만 키는 원문 대조 안 함');
+  assert.equal(classify(at, seeker, { ...cand, text: '웹 접근성 개선 프로젝트 리딩' }, { ...base, required: [req('experience', ['웹 접근성'])] }).classification, '기본');
+  assert.equal(run({ title: '가상그룹 사업기획 담당', families: ['기획'] }), '제외');
   assert.equal(run({ required: [req('skill', ['React'], { practical: true, years: 4 })] }), '도전');
   assert.equal(run({ required: [req('skill', ['ReactJS'], { practical: true }), req('skill', ['TS'])] }), '기본');
   assert.equal(run({ required: [req('skill', ['RxJS'])] }), '미확인');

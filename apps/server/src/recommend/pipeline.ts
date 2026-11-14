@@ -122,7 +122,7 @@ function postingInput(row: PostingRow): PostingInput {
     families: req ? req.jobFamilies : null, required: req ? req.required : null, preferred: req?.preferred ?? [],
     careers: JSON.parse(row.careers), location: row.location,
     remote: row.remote === null ? (req?.remote ?? null) : row.remote ? '전면' : '없음',
-    deadline: row.deadline, alwaysHire: row.always_hire === 1, companyType: row.company_type,
+    title: row.title, deadline: row.deadline, alwaysHire: row.always_hire === 1, companyType: row.company_type,
     bodyNote: req ? null : `본문 조건 미확인(${row.body_failure ?? '추출 전 형식 또는 추출 실패'})`,
   };
 }
@@ -134,7 +134,7 @@ async function candidateFacts(deps: PipelineDeps, basis: { profile: Profile; res
   const confirmed = basis.profile.experiences.map(e => ({ family: e.jobFamily, months: Math.round(e.years * 12) }));
   const careers = c.careers.map(r => ({ ...r, months: confirmed.find(e => e.family === r.family)?.months ?? r.months }));
   for (const e of confirmed) if (!careers.some(r => r.family === e.family)) careers.push({ ...e, stack: [] });
-  return { ...c, careers, skills: [...c.skills, ...basis.profile.skills] };
+  return { ...c, careers, skills: [...c.skills, ...basis.profile.skills], text: basis.resume.text };
 }
 
 async function judgeFor(db: DatabaseSync, deps: PipelineDeps, userId: string, basis: { profile: Profile; resume: { text: string }; basis: string }, rows: PostingRow[], counts: Counts & { judged: number }) {
