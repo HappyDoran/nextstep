@@ -39,7 +39,7 @@ skill을 읽었다는 기록을 서비스 데이터나 보고서로 저장하지
 |---|---|---|---|
 | 기획 | nextstep-planner | docs/spec/서비스기획서.md, docs/spec/백로그.md | 사용자 결정, 사업 제안 |
 | 디자인 | nextstep-designer | packages/design-system | 기획서 4절 화면·흐름 |
-| 프론트엔드 | nextstep-frontend | apps/web, apps/desktop, tests/e2e, tests/desktop | 기획 완료 조건, 디자인 기초, 계약 |
+| 프론트엔드 | nextstep-frontend | apps/web, tests/e2e | 기획 완료 조건, 디자인 기초, 계약 |
 | 백엔드 | nextstep-backend | apps/server(프롬프트 경로 제외), packages/contracts, docs/spec/기술설계.md | 기획서, 기술 설계 |
 | AI 프롬프트 | nextstep-prompt-engineer | apps/server/src/prompts, apps/server/tests/prompts (생성 시) | 기획서 8절, 기술 설계 C·D절, 계약 |
 | 사업 | nextstep-business | 없음(제안만) | 기획서 1·7·9절 |

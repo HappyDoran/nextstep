@@ -7,7 +7,6 @@
   },
   "scripts": {
     "dev": "turbo run dev --filter=@nextstep/web --filter=@nextstep/server",
-    "dev:desktop": "pnpm --filter @nextstep/desktop dev",
     "storybook": "pnpm --filter @nextstep/design-system storybook",
     "build": "turbo run build build-storybook",
     "lint": "eslint . --max-warnings=0",
@@ -17,8 +16,7 @@
     "test:e2e": "playwright test",
     "structure:check": "node scripts/check-structure.mjs",
     "check": "pnpm structure:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
-    "prepare": "node scripts/install-hooks.mjs",
-    "test:desktop": "playwright test --config playwright.desktop.config.ts"
+    "prepare": "node scripts/install-hooks.mjs"
   },
   "devDependencies": {
     "turbo": "^2.11.10",

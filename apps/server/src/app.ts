@@ -49,7 +49,7 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
     // 메일 해석은 그 사용자 키가 있을 때만 켠다(키 없이 시도해 재시도 횟수를 쓰지 않는다).
     const mail = (job: ClaimedJob) => createMailHandler(db, secretKey, mailSource, aiConfigured() ? { interpret: interpretMail, bodies: naverBodies } : undefined)(job);
     const stop = startWorker(db, (job: ClaimedJob) => withUserAi(job.userId, () => (job.kind === 'mail' ? mail(job) : recommend(job))));
-    // 예약 실행은 작업자와 같은 서버 프로세스에서 돈다. 앱(Electron) 종료와 무관하다.
+    // 예약 실행은 작업자와 같은 서버 프로세스에서 돈다. 브라우저를 닫아도 계속된다.
     const stopSchedule = startScheduler(db, options.scheduleHour ?? 21);
     app.addHook('onClose', async () => { stop(); stopSchedule(); });
   }

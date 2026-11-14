@@ -8,7 +8,6 @@ import ts from 'typescript';
 export const graph = {
   'apps/web': ['@nextstep/contracts', '@nextstep/design-system'],
   'apps/server': ['@nextstep/contracts'],
-  'apps/desktop': [],
   'packages/contracts': [],
   'packages/design-system': [],
 };
@@ -19,7 +18,7 @@ function isExported(name, value) {
   const manifest = join(repoRoot, 'packages', name.split('/')[1], 'package.json');
   return existsSync(manifest) && Object.hasOwn(JSON.parse(readFileSync(manifest, 'utf8')).exports ?? {}, `.${value.slice(name.length)}`);
 }
-const serverRuntime = new Set([...builtinModules, 'electron', 'fastify']);
+const serverRuntime = new Set([...builtinModules, 'fastify']);
 export function dependencyErrors(owner, dependencies) {
   return Object.keys(dependencies).filter(name => name.startsWith('@nextstep/') && !graph[owner]?.includes(name)).map(name => `${owner}: 허용하지 않는 의존 ${name}`);
 }
