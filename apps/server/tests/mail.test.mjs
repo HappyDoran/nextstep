@@ -23,6 +23,7 @@ test('채용 메일 규칙 판정과 공고 키', () => {
   assert.equal(v('hr@example.com', '서류 전형 결과 안내', '아쉽게도 이번에는 함께하기 어렵게 되었습니다.'), '불합격');
   assert.equal(v('hr@example.com', '서류 합격 및 면접 일정 안내'), '전형 진행중');
   assert.equal(v('hr@example.com', '최종 합격을 축하드립니다'), '합격');
+  assert.equal(v('hr@example.com', '전형 결과 안내', '서류 전형 합격을 진심으로 축하드립니다. 면접 일정은'), '전형 진행중');
   assert.equal(v('noreply@wanted.co.kr', '[원티드] 가상회사 지원이 완료되었습니다', '최종 합격 시 합격 보상금 50만원을 드립니다'), '지원 완료');
   assert.equal(v('hr@example.com', '면접 일정 안내', '최종 합격자 발표는 다음 주입니다'), '전형 진행중');
   assert.equal(v('noreply@jobkorea.co.kr', '가상회사에서 회원님의 이력서를 열람했습니다'), '열람');
@@ -440,4 +441,28 @@ test('지원 현황 CSV를 가져오면 중복 없이 등록하고, 연결 불�
     assert.equal((await s.app.inject({ url: '/applications', headers: { cookie: b } })).json().length, 0);
     assert.equal((await s.app.inject({ method: 'POST', url: '/applications/import', headers: { cookie: b }, payload: { csv: '이름\n값\n' } })).statusCode, 400);
   } finally { await s.done(); }
+});
+
+test('메일 본문 추천 영역 자르기·제목에서 회사 읽기·회사명 오인식 대조(2026-11-15 실제 사례, 합성 문구)', async () => {
+  const { mainBody, subjectHint } = await import('../dist/mail/classify.js');
+  const { sameCompany } = await import('../dist/mail/apply.js');
+  const head = '10.02 (금) 입사지원이 완료되었습니다. 서동원님이 지원하신 공고 (주)가상회사 웹 프론트 개발자 채용 지원 일시 : 2026-10-02 입사지원 현황 보기';
+  // 사람인 비슷한 공고·원티드 다른 포지션·하단 발신 안내(원티드랩)는 지원과 무관하다.
+  assert.equal(mainBody(`${head} 지원하신 공고와 비슷한 15개의 공고입니다. 주식회사 와이투엠 시스템 엔지니어`).trim(), head);
+  assert.equal(mainBody(`${head} 다른 포지션 찾아 보기 지원해 볼 만한 다른 포지션 X`).trim(), head);
+  assert.equal(mainBody(`${head} 본 이메일은 수신동의와 관계없이 발송되었습니다. (주)원티드랩`).trim(), head);
+  // 첫머리의 '본 메일은'은 직접 메일 본문일 수 있어 자르지 않는다.
+  assert.equal(mainBody('본 메일은 서류 결과 안내입니다. 아쉽게도 함께하기 어렵게 되었습니다.'), '본 메일은 서류 결과 안내입니다. 아쉽게도 함께하기 어렵게 되었습니다.');
+
+  assert.deepEqual(subjectHint('[사람인] (주)가상회사에 입사지원이 성공적으로 완료되었습니다.'), { company: '(주)가상회사', roleTitle: null });
+  assert.deepEqual(subjectHint('[원티드] 서동원님! 가상회사의 프론트엔드 개발자에 지원이 완료되었습니다.'), { company: '가상회사', roleTitle: '프론트엔드 개발자' });
+  assert.deepEqual(subjectHint("[점핏] '가상회사'의 'App Lead' 포지션에 지원완료되었습니다"), { company: '가상회사', roleTitle: 'App Lead' });
+  assert.deepEqual(subjectHint('[지원완료] ㈜가상회사, 유사한 공고도 확인해보세요.'), { company: '㈜가상회사', roleTitle: null });
+  assert.deepEqual(subjectHint('[잡코리아] ㈜가상회사에서 결과 발표가 도착했습니다.'), { company: '㈜가상회사', roleTitle: null });
+  assert.equal(subjectHint('[가상회사] 서류 전형 결과 안내'), null);
+
+  // 같은 회사로 봐야 하는 실제 오인식 유형
+  for (const [a, b] of [['씨제이올리브영(CJ올리브영)', '씨제이올리브영'], ['칵테일아이오(주)', '카브테일아이오(주)'], ['렛유인에듀', 'лект유인에듀'], ['뤼튼테크놀로지스', '루튼테크놀로지스'], ['힐링페이퍼(강남언니)', '힐링페이퍼'], ['(유)미소', '유)미소'], ['유클(사이클 컴퍼니)', '사이클 컴퍼니'], ['씨메스', '씨메스로보틱스']]) assert.ok(sameCompany(a, b), `${a}=${b}`);
+  // 짧은 이름·다른 회사는 같다고 보지 않는다.
+  for (const [a, b] of [['티윈', '티원'], ['컬리', '헤렌'], ['미리디', '미리캔버스'], ['가상회사', '']]) assert.ok(!sameCompany(a, b), `${a}≠${b}`);
 });

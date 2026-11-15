@@ -87,6 +87,34 @@ export function applyMessage(db: DatabaseSync, msg: StoredMessage): Outcome {
 // 회사·직무 표기 차이(주식회사·㈜·공백·대소문자)만 지운다. 비슷한 이름을 같다고 보지 않는다.
 export const normalizeName = (value: string) => value.replace(/\(주\)|㈜|주식회사|\s+/g, '').toLowerCase();
 
+// 메일에서 읽은 회사명과 지원 건 회사명이 같은 회사인지. 작은 모델의 오인식(2026-11-15 실제)을 흡수한다:
+// 괄호 속 별칭(씨제이올리브영(CJ올리브영)), 앞부분 일치(씨메스↔씨메스로보틱스, 3글자 이상), 섞인 외국 문자(лект유인에듀↔렛유인에듀, 4글자 이상이 뒤로 포함),
+// 자모 한두 개 차이(루튼↔뤼튼, 카브테일↔칵테일, 3글자 이상). 2글자 이하 이름은 정확히 같을 때만 같다고 본다.
+const companyKey = (value: string) => value.replace(/\(주\)|㈜|주식회사|\(유\)|유\)|\([^)]*\)?|[^가-힣a-zA-Z0-9]/g, '').toLowerCase();
+const jamo = (value: string) => value.normalize('NFD');
+function distance(a: string, b: string) {
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j]! + 1, cur[j - 1]! + 1, prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length]!;
+}
+// 괄호 속은 별칭으로도 본다: '유클(사이클 컴퍼니)'는 '사이클 컴퍼니'와 같다.
+const aliases = (value: string) => [companyKey(value), ...[...value.matchAll(/\(([^)]+)\)/g)].map(m => companyKey(m[1]!))].filter(k => k.length >= 2);
+export function sameCompany(a: string, b: string) {
+  return aliases(a).some(x => aliases(b).some(y => sameKey(x, y)));
+}
+function sameKey(x: string, y: string) {
+  if (x === y) return true;
+  const short = Math.min(x.length, y.length);
+  if (short >= 3 && (x.startsWith(y) || y.startsWith(x))) return true;
+  if (short >= 4 && (x.endsWith(y) || y.endsWith(x))) return true;
+  if (short < 3 || Math.abs(x.length - y.length) > 1) return false;
+  return distance(jamo(x), jamo(y)) <= (short >= 5 ? 2 : 1);
+}
+
 // AI 해석 결과로 대상 찾기·지원 건 생성·확인 요청을 정한다.
 // 회사와 직무가 모두 같은 지원 건이 정확히 하나일 때만 연결하고, 회사만 같거나 확신이 낮으면 확인받는다.
 export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp: { isRecruiting: boolean; company: string | null; roleTitle: string | null; status: string; confidence: string }): Outcome | 'ignored' {
@@ -97,7 +125,7 @@ export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp
   // 작은 모델이 플랫폼 이름(원티드랩·jumpit.co.kr 등, 2026-11-15 실제 해석)을 회사로 쓰거나 지시문을 섞어 내는 경우가 있어(2026-11-14 실제 해석) 그런 회사명은 확정하지 않는다.
   const badCompany = !interp.company || /^(원티드(랩)?|잡코리아|사람인|점핏|자소설닷컴|(www\.)?(wanted|jobkorea|saramin|jumpit|jasoseol)(lab)?(\.co\.kr|\.com)?)$/i.test(normalizeName(interp.company)) || /[:\n]/.test(interp.company) || interp.company.length > 60;
   const appsOf = (name: string) => (db.prepare('SELECT id, company, role_title, status, read_status, posting_url, locked_fields FROM applications WHERE user_id = ?').all(msg.userId) as (AppRow & { company: string; role_title: string })[])
-    .filter(a => normalizeName(a.company) === normalizeName(name));
+    .filter(a => sameCompany(a.company, name));
   if (status === '열람') {
     // 열람은 지원 상태가 아닌 별도 표시라, 직무명이 없거나 확신이 낮아도 같은 회사 지원 건이 하나뿐이면 붙인다(사용자 결정 2026-11-15).
     // 같은 회사 지원 건이 여럿이면 직무명이 정확히 같은 건에만 붙이고, 아니면 바꾸지 않는다(열람만으로 확인 요청을 만들지 않음).

@@ -2,11 +2,10 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { decrypt } from '../secrets.js';
 import type { ClaimedJob, JobOutcome } from '../recommend/jobs.js';
-import { classifyMail, type MailStatus } from './classify.js';
+import { classifyMail, mainBody, platformOf, subjectHint, type MailStatus } from './classify.js';
 import { applyInterpretation, applyMessage, type Outcome } from './apply.js';
 import { bodyKey, MailSourceError, type BackfillSource, type Cursor, type MailboxBatch, type MailBody, type MailBodySource, type MailSource } from './naver.js';
 import type { MailInterpretation } from '../prompts/mail.js';
-import { platformOf } from './classify.js';
 
 export type Interpret = (mail: { subject: string; senderDomain: string; ruleStatus: string; body: string }) => Promise<MailInterpretation>;
 // 실행당 AI 해석 상한(요금·처리 시간). 남은 메일은 다음 실행에서 이어서 해석한다.
@@ -131,8 +130,12 @@ async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpr
     // 저장된 분류는 이전 해석 결과일 수 있어 규칙 판정을 본문으로 다시 한다.
     const rule = classifyMail({ fromAddress: body.fromAddress, subject: row.subject, text: body.text, links: body.links })?.status ?? null;
     try {
-      interp = await ai.interpret({ subject: row.subject, senderDomain: body.fromAddress.split('@')[1] ?? '', ruleStatus: rule ?? row.classification, body: body.text });
-      interp = { ...interp, status: mergeMailStatus(rule, interp.status) };
+      // 추천 공고·하단 안내 영역은 AI에 넘기지 않는다(그 안의 회사를 지원으로 오인).
+      interp = await ai.interpret({ subject: row.subject, senderDomain: body.fromAddress.split('@')[1] ?? '', ruleStatus: rule ?? row.classification, body: mainBody(body.text) });
+      // 플랫폼 알림 제목에서 회사(·직무)를 읽을 수 있으면 AI 값보다 우선한다. 회사·직무가 모두 제목에 있으면 확신으로 본다.
+      const hint = platformOf(body.fromAddress) ? subjectHint(row.subject) : null;
+      interp = { ...interp, status: mergeMailStatus(rule, interp.status),
+        ...(hint ? { company: hint.company, roleTitle: hint.roleTitle ?? interp.roleTitle, ...(hint.roleTitle ? { confidence: 'high' as const } : {}) } : {}) };
     } catch (error) {
       counts.aiFailures = (counts.aiFailures ?? 0) + 1;
       // 원인 코드별 건수를 남겨 화면·운영자가 키·잔액·연결 문제를 구분하게 한다(본문은 남기지 않음).
