@@ -69,11 +69,19 @@ test('직무 없이 지원 자격만 말하는 필수 문구는 다른 직무 �
   }
   assert.equal(run({ required: [{ text: '경력: 2년 이상', type: 'career', keys: ['경력'], years: 2, practical: false }] }), '기본');
   assert.equal(run({ required: [{ text: '경력 3년 이하', type: 'experience', keys: ['경력'], years: null, practical: false }] }), '기본');
+  // 실제 이력서 확인(2026-11-15): 신입이 들어간 범위·상한, 학력무관, 동일경력 범위.
+  for (const [text, type] of [['Android 개발 신입/경력 1~3년(회사 근무 경력)', 'career'], ['경력: 신입/ 경력 ( ~3 년 이하)', 'career'], ['경력 : 신입·경력', 'career'], ['학력무관', 'skill'], ['동일경력 2~3년차', 'career']]) {
+    assert.equal(run({ required: [{ text, type, keys: [text], years: null, practical: false }] }), '기본', text);
+  }
+  assert.equal(run({ required: [{ text: '동일경력 5~7년차', type: 'career', keys: ['동일경력'], years: null, practical: false }] }), '도전');
   assert.equal(run({ required: [{ text: '경력 5년 이상', type: 'career', keys: ['경력'], years: 5, practical: false }] }), '도전');
   // 직무가 붙은 다른 성격 경력은 그대로 제외.
   assert.equal(run({ required: [{ text: '정보보호 경력 3년 이하', type: 'career', keys: ['정보보호'], years: null, practical: false }] }), '제외');
   // 조사: 3년으로, 0년으로, 6개월로
   const reason = c => classify(at, seeker, { ...cand, careers: c }, { ...base, careers: [{ type: 'EXPERIENCED', fromYears: 4, toYears: null }] }).reason;
   assert.equal(reason(cand.careers), '직무 경력 3년으로 요구 4년보다 부족');
+  // 제외 사유는 제외를 만든 항목(앞선 도전 항목이 아님).
+  const j = classify(at, seeker, cand, { ...base, careers: [{ type: 'EXPERIENCED', fromYears: 4, toYears: null }], required: [{ text: '보안 솔루션 개발', type: 'career', keys: ['보안 솔루션'], years: null, practical: false }] });
+  assert.deepEqual([j.classification, j.reason], ['제외', '필수 보안 솔루션 개발 없음(유사 경험으로 대체하지 않음)']);
   assert.equal(reason([{ family: '프론트엔드', months: 30, stack: [] }]), '직무 경력 2년 6개월로 요구 4년보다 부족');
 });
