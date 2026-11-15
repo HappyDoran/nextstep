@@ -37,6 +37,17 @@ export const applicationSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
+// 지원 현황 CSV 가져오기: 다른 곳(엑셀·Notion 내보내기)에서 관리하던 지원 건을 한 번에 옮긴다.
+// 필수 열은 회사·직무·상태, 선택 열은 공고URL. 같은 회사·직무(또는 같은 공고 URL)가 이미 있으면 건너뛴다.
+export const applicationImportSchema = z.object({ csv: z.string().min(1).max(2_000_000) }).strict();
+export const applicationImportResultSchema = z.object({
+  imported: z.number().int(),
+  duplicates: z.number().int(),
+  invalid: z.number().int(),
+  // 가져온 지원 건으로 다시 연결해 보도록 해석 대기로 되돌린 확인 요청(연결 불명) 수.
+  requeued: z.number().int(),
+});
+export type ApplicationImportResult = z.infer<typeof applicationImportResultSchema>;
 // 직접 수정: 보낸 필드만 바꾼다. postingUrl은 null로 지울 수 있다.
 export const applicationUpdateSchema = z.object({
   company: z.string().trim().min(1).max(200).optional(),
@@ -50,7 +61,7 @@ export const applicationEventSchema = z.object({
   field: z.enum(['status', 'readStatus']),
   from: z.string().nullable(),
   to: z.string(),
-  source: z.enum(['manual', 'mail']),
+  source: z.enum(['manual', 'mail', 'import']),
   at: z.string(),
 });
 export const applicationDetailSchema = applicationSchema.extend({ events: z.array(applicationEventSchema) });
@@ -168,6 +179,10 @@ export const reviewSchema = z.object({
   evidence: z.string().nullable(),
   // 보류한 항목은 목록 아래에 따로 두고 언제든 다시 처리한다.
   held: z.boolean().default(false),
+  // AI가 메일에서 읽은 회사·직무(없을 수 있음)와, 같은 회사 지원 건이 하나뿐일 때의 연결 제안. 확정은 사용자가 한다.
+  company: z.string().nullable().default(null),
+  roleTitle: z.string().nullable().default(null),
+  suggestedApplicationId: z.string().nullable().default(null),
 });
 export type Review = z.infer<typeof reviewSchema>;
 const reviewStatus = z.enum(['지원 완료', '전형 진행중', '합격', '불합격', '열람']).optional();

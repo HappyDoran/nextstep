@@ -6,22 +6,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { normalizeName } from '../mail/apply.js';
-
-export function parseCsv(text: string) {
-  const rows: string[][] = [];
-  let row: string[] = [], cell = '', quoted = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]!;
-    if (quoted) { if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') quoted = false; else cell += ch; }
-    else if (ch === '"') quoted = true;
-    else if (ch === ',') { row.push(cell); cell = ''; }
-    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
-    else cell += ch;
-  }
-  if (cell || row.length) { row.push(cell); rows.push(row); }
-  const [head, ...body] = rows.filter(r => r.some(Boolean));
-  return body.map(r => Object.fromEntries(head!.map((h, i) => [h.replace(/^\uFEFF/, ''), r[i] ?? '']))) as Record<string, string>[];
-}
+import { parseCsv } from '../csv.js';
 
 // 정답 상태 → 우리 상태로 맞다고 볼 값.
 const OK: Record<string, string[]> = { '지원 완료': ['지원 완료'], '이력서 열람': ['지원 완료', '전형 진행중'], '서류 합격': ['전형 진행중', '합격'], 불합격: ['불합격'] };

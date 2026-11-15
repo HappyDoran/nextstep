@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -269,6 +269,12 @@ export function openDatabase(filename: string) {
         DROP TABLE IF EXISTS ai_settings;
         PRAGMA secure_delete = OFF;
         PRAGMA user_version = 15;`);
+    }
+    if (version < 16) {
+      // 확인 목록 묶음 처리: 확인 요청에 AI가 읽은 회사·직무를 남겨 회사별로 묶고 연결 대상을 제안한다.
+      db.exec(`ALTER TABLE review_requests ADD COLUMN company TEXT;
+        ALTER TABLE review_requests ADD COLUMN role_title TEXT;
+        PRAGMA user_version = 16;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

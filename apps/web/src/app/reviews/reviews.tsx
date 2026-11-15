@@ -26,17 +26,52 @@ function ReviewList({ me }: { me: Me }) {
     {reviews.isPending ? <p role="status" className="text-muted-foreground">불러오고 있습니다.</p>
       : reviews.isError ? <div><p role="alert" className="mb-3 text-destructive">{reviews.error.message}</p><Button onClick={() => { void reviews.refetch(); }}>다시 시도</Button></div>
         : reviews.data.length === 0 ? <p role="status" className="text-muted-foreground">확인할 항목이 없습니다.</p>
-          : <ul className="flex flex-col gap-3">{reviews.data.map(r => <ReviewItem key={r.id} review={r} me={me} apps={apps.data ?? []} />)}</ul>}
+          : <GroupedReviews reviews={reviews.data} me={me} apps={apps.data ?? []} />}
   </div>;
 }
 
-function ReviewItem({ review, me, apps }: { review: Review; me: Me; apps: { id: string; company: string; roleTitle: string; status: string }[] }) {
+type AppOption = { id: string; company: string; roleTitle: string; status: string };
+
+// AI가 읽은 회사별로 묶는다. 같은 회사 지원 건이 하나뿐인 메일은 그 건을 제안하고, 묶음 확정은 제안이 있는 메일에만 적용한다.
+function GroupedReviews({ reviews, me, apps }: { reviews: Review[]; me: Me; apps: AppOption[] }) {
+  const groups = [...reviews.reduce((m, r) => m.set(r.company ?? '회사 미확인', [...(m.get(r.company ?? '회사 미확인') ?? []), r]), new Map<string, Review[]>())]
+    .sort((a, b) => b[1].length - a[1].length);
+  return <div className="flex flex-col gap-6">
+    <p className="text-body-sm text-muted-foreground">{reviews.length}건 · 회사 {groups.length}곳</p>
+    {groups.map(([company, items]) => <ReviewGroup key={company} company={company} items={items} me={me} apps={apps} />)}
+  </div>;
+}
+
+function ReviewGroup({ company, items, me, apps }: { company: string; items: Review[]; me: Me; apps: AppOption[] }) {
+  const client = useQueryClient();
+  const linkable = items.filter(r => r.suggestedApplicationId && r.classification !== '모호' && !r.held);
+  const target = apps.find(a => a.id === linkable[0]?.suggestedApplicationId);
+  // 한 건씩 차례로 보낸다. 중간에 실패하면 멈추고 남은 항목은 목록에 그대로 둔다.
+  const bulk = useMutation({
+    mutationFn: async ({ list, body }: { list: Review[]; body: (r: Review) => object }) => { for (const r of list) await call(`reviews/${r.id}`, { method: 'POST', body: JSON.stringify(body(r)) }); },
+    onSettled: () => { void client.invalidateQueries({ queryKey: ['reviews', me.id] }); void client.invalidateQueries({ queryKey: ['applications', me.id] }); },
+  });
+  return <section aria-label={`${company} 확인 요청`} className="flex flex-col gap-3">
+    <div className="flex flex-wrap items-center gap-3">
+      <h2 className="text-title">{company} <span className="text-body-sm text-muted-foreground">{items.length}건</span></h2>
+      {target && <Button disabled={bulk.isPending} onClick={() => bulk.mutate({ list: linkable, body: linkBody })}>제안대로 {linkable.length}건 연결 ({target.company} · {target.roleTitle})</Button>}
+      {items.length > 1 && <Button disabled={bulk.isPending} className="!bg-transparent !text-foreground border-border"
+        onClick={() => { if (window.confirm(`${company} ${items.length}건을 모두 무시할까요? 무시한 메일은 다시 묻지 않습니다.`)) bulk.mutate({ list: items, body: ignoreBody }); }}>모두 무시</Button>}
+    </div>
+    {bulk.isError && <p role="alert" className="text-body-sm text-destructive">{bulk.error.message}</p>}
+    <ul className="flex flex-col gap-3">{items.map(r => <ReviewItem key={r.id} review={r} me={me} apps={apps} />)}</ul>
+  </section>;
+}
+const linkBody = (r: Review) => ({ action: 'link', applicationId: r.suggestedApplicationId, status: r.classification });
+const ignoreBody = () => ({ action: 'ignore' });
+
+function ReviewItem({ review, me, apps }: { review: Review; me: Me; apps: AppOption[] }) {
   const client = useQueryClient();
   const [mode, setMode] = useState<'link' | 'create'>('link');
   const [status, setStatus] = useState<string>(review.classification === '모호' ? '' : review.classification);
-  const [target, setTarget] = useState('');
-  const [company, setCompany] = useState('');
-  const [role, setRole] = useState('');
+  const [target, setTarget] = useState(review.suggestedApplicationId ?? '');
+  const [company, setCompany] = useState(review.company ?? '');
+  const [role, setRole] = useState(review.roleTitle ?? '');
   const act = useMutation({
     mutationFn: (body: object) => call(`reviews/${review.id}`, { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => { void client.invalidateQueries({ queryKey: ['reviews', me.id] }); void client.invalidateQueries({ queryKey: ['applications', me.id] }); },
@@ -48,6 +83,7 @@ function ReviewItem({ review, me, apps }: { review: Review; me: Me; apps: { id: 
       <span className="text-muted-foreground">{review.platform ?? '직접 메일'} · 판정 {review.classification}{review.receivedAt ? ` · ${new Date(review.receivedAt).toLocaleString('ko-KR')}` : ''}</span></div>
     <strong className="block text-body">{review.subject}</strong>
     {review.evidence && <p className="mt-1 text-body-sm text-muted-foreground">근거: {review.evidence}</p>}
+    {(review.company || review.roleTitle) && <p className="mt-1 text-body-sm text-muted-foreground">AI 해석: {review.company ?? '회사 미확인'} · {review.roleTitle ?? '직무 미확인'}{review.suggestedApplicationId ? ' · 같은 회사 지원 건 제안' : ''}</p>}
     <div className="mt-4 flex gap-2" role="group" aria-label="처리 방법">
       {(['link', 'create'] as const).map(m => <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)} className={`min-h-control rounded-control px-4 text-body-sm ${mode === m ? 'bg-muted font-semibold' : 'text-muted-foreground'}`}>{m === 'link' ? '기존 지원 건에 연결' : '새 지원 건으로 확정'}</button>)}
     </div>

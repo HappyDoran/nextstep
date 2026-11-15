@@ -4,7 +4,7 @@ import { ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@nextstep/design-system';
 import {
-  applicationDetailSchema, applicationSchema, applicationStatusSchema, readStatusSchema,
+  applicationDetailSchema, applicationImportResultSchema, applicationSchema, applicationStatusSchema, readStatusSchema,
   type Application, type ApplicationStatus, type Me,
 } from '@nextstep/contracts';
 import { call, fieldClass } from './api-client';
@@ -58,6 +58,7 @@ export function Applications({ me }: { me: Me }) {
       </form>
     </section>
 
+    <ImportCsv userKey={key} />
     <section aria-labelledby="application-list">
       <h2 id="application-list" className="mb-4 text-title">지원 현황</h2>
       <div className="mb-4 grid gap-4 md:grid-cols-[1fr_auto]">
@@ -74,6 +75,24 @@ export function Applications({ me }: { me: Me }) {
             : <ul className="flex flex-col gap-3">{items.map(item => <ApplicationItem key={item.id} item={item} userKey={key} open={openId === item.id} onToggle={() => setOpenId(openId === item.id ? null : item.id)} />)}</ul>}
     </section>
   </div>;
+}
+
+// 엑셀·Notion에서 내보낸 지원 현황 CSV를 한 번에 옮긴다. 파일은 서버에 남기지 않고 지원 건만 저장한다.
+function ImportCsv({ userKey }: { userKey: string[] }) {
+  const client = useQueryClient();
+  const run = useMutation({
+    mutationFn: async (file: File) => applicationImportResultSchema.parse(await call('applications/import', { method: 'POST', body: JSON.stringify({ csv: await file.text() }) })),
+    onSuccess: () => { void client.invalidateQueries({ queryKey: userKey }); void client.invalidateQueries({ queryKey: ['reviews', userKey[1]] }); },
+  });
+  return <section aria-labelledby="import-applications">
+    <h2 id="import-applications" className="mb-2 text-title">CSV로 한 번에 등록</h2>
+    <p className="mb-4 text-body-sm text-muted-foreground">엑셀·Notion에서 내보낸 CSV를 올리면 지원 건을 한 번에 등록합니다. 필요한 열은 회사·직무·상태(지원 완료·이력서 열람·서류 합격·불합격 등)이고 공고URL은 선택입니다. 이미 있는 회사·직무는 건너뛰고, 확인 목록의 연결 불명 메일은 가져온 지원 건으로 다시 연결해 봅니다.</p>
+    <label className={label}>CSV 파일<input type="file" accept=".csv,text/csv" disabled={run.isPending}
+      onChange={e => { const file = e.target.files?.[0]; if (file) run.mutate(file); e.target.value = ''; }} className="text-body-sm" /></label>
+    {run.isPending && <p role="status" className="mt-2 text-body-sm text-muted-foreground">가져오고 있습니다.</p>}
+    {run.data && <p role="status" className="mt-2 text-body-sm">등록 {run.data.imported}건 · 이미 있음 {run.data.duplicates}건 · 형식 오류 {run.data.invalid}건{run.data.requeued ? ` · 확인 요청 ${run.data.requeued}건을 다시 연결하는 중` : ''}</p>}
+    {run.isError && <p role="alert" className="mt-2 text-body-sm text-destructive">{run.error.message}</p>}
+  </section>;
 }
 
 function ApplicationItem({ item, userKey, open, onToggle }: { item: Application; userKey: string[]; open: boolean; onToggle: () => void }) {
@@ -128,6 +147,6 @@ function ApplicationDetail({ id, userKey }: { id: string; userKey: string[] }) {
     <h3 className="mb-2 mt-6 text-body font-semibold">변경 이력</h3>
     {d.events.length === 0 ? <p className="text-body-sm text-muted-foreground">상태·열람 변경 이력이 없습니다.</p>
       : <ul className="flex flex-col gap-1 text-body-sm text-muted-foreground">{d.events.map(e => <li key={`${e.at}-${e.field}`}>
-        {new Date(e.at).toLocaleString('ko-KR')} · {e.field === 'status' ? '상태' : '열람'} {e.from ?? '없음'} → {e.to} ({e.source === 'mail' ? '메일' : '직접 수정'})</li>)}</ul>}
+        {new Date(e.at).toLocaleString('ko-KR')} · {e.field === 'status' ? '상태' : '열람'} {e.from ?? '없음'} → {e.to} ({e.source === 'mail' ? '메일' : e.source === 'import' ? '가져오기' : '직접 수정'})</li>)}</ul>}
   </div>;
 }

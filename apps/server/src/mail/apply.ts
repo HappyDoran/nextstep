@@ -19,9 +19,10 @@ function logEvent(db: DatabaseSync, appId: string, field: 'status' | 'readStatus
     .run(randomUUID(), appId, field, from, to, now(), messageId);
 }
 
-function review(db: DatabaseSync, msg: StoredMessage, reason: '연결 불명' | '모호' | '최종 결과 충돌'): Outcome {
+function review(db: DatabaseSync, msg: StoredMessage, reason: '연결 불명' | '모호' | '최종 결과 충돌', hint: { company?: string | null; roleTitle?: string | null } = {}): Outcome {
   // 같은 근거는 다시 요청하지 않는다(메시지당 하나).
-  db.prepare("INSERT OR IGNORE INTO review_requests (id, user_id, message_id, reason, status, created_at) VALUES (?, ?, ?, ?, '대기', ?)").run(randomUUID(), msg.userId, msg.id, reason, now());
+  db.prepare("INSERT OR IGNORE INTO review_requests (id, user_id, message_id, reason, status, created_at, company, role_title) VALUES (?, ?, ?, ?, '대기', ?, ?, ?)")
+    .run(randomUUID(), msg.userId, msg.id, reason, now(), hint.company?.slice(0, 200) ?? null, hint.roleTitle?.slice(0, 200) ?? null);
   return 'review';
 }
 
@@ -105,8 +106,9 @@ export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp
     const target = same.length === 1 ? same[0] : byRole.length === 1 ? byRole[0] : undefined;
     return target ? applyToApplication(db, verdictMsg, target) : 'no_change';
   }
+  const hint = { company: badCompany ? null : interp.company, roleTitle: interp.roleTitle };
   if (interp.confidence !== 'high' || badCompany || !interp.roleTitle || status === '모호') {
-    return review(db, verdictMsg, status === '모호' ? '모호' : '연결 불명');
+    return review(db, verdictMsg, status === '모호' ? '모호' : '연결 불명', hint);
   }
   const role = normalizeName(interp.roleTitle);
   const apps = appsOf(interp.company!);
@@ -117,7 +119,7 @@ export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp
   const contained = exact.length === 0 && apps.length === 1 && Math.min(role.length, normalizeName(apps[0]!.role_title).length) >= 2
     && (normalizeName(apps[0]!.role_title).includes(role) || role.includes(normalizeName(apps[0]!.role_title)));
   if (contained) return applyToApplication(db, verdictMsg, apps[0]!);
-  if (exact.length > 1 || apps.length > 0) return review(db, verdictMsg, '연결 불명');
+  if (exact.length > 1 || apps.length > 0) return review(db, verdictMsg, '연결 불명', hint);
   // 결과만 있어도 회사·직무·결과가 명확하면 지원 건을 만든다. 실제 지원일은 만들지 않는다.
   const appId = randomUUID();
   const at = now();

@@ -5,7 +5,7 @@ import { mailBackfillRequestSchema, mailConnectRequestSchema, mailConnectionSche
 import { requireUser } from '../auth.js';
 import { encrypt } from '../secrets.js';
 import { enqueue, latestJob } from '../recommend/jobs.js';
-import { applyToApplication, type StoredMessage } from './apply.js';
+import { applyToApplication, normalizeName, type StoredMessage } from './apply.js';
 import { MailSourceError, type MailSource } from './naver.js';
 
 type ConnRow = { account: string; status: string; consent_at: string; last_success_at: string | null; last_error: string | null; range_incomplete: number; covered_since: string | null; backfill_since: string | null };
@@ -94,9 +94,16 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
   app.get('/reviews', async (request, reply) => {
     const user = requireUser(db, request, reply);
     if (!user) return reply;
-    const rows = db.prepare(`SELECT r.id, r.reason, r.status, r.held, r.created_at, m.id AS message_id, m.message_key, m.subject, m.received_at, m.platform, m.classification, m.evidence
-      FROM review_requests r JOIN mail_messages m ON m.id = r.message_id WHERE r.user_id = ? AND r.status = '대기' ORDER BY r.held, m.received_at DESC`).all(user.id) as ReviewRow[];
-    return rows.map(r => reviewSchema.parse({ id: r.id, reason: r.reason, createdAt: r.created_at, subject: r.subject, receivedAt: r.received_at, platform: r.platform, classification: r.classification, evidence: r.evidence, held: r.held === 1 }));
+    const rows = db.prepare(`SELECT r.id, r.reason, r.status, r.held, r.created_at, r.company, r.role_title, m.id AS message_id, m.message_key, m.subject, m.received_at, m.platform, m.classification, m.evidence
+      FROM review_requests r JOIN mail_messages m ON m.id = r.message_id WHERE r.user_id = ? AND r.status = '대기' ORDER BY r.held, m.received_at DESC`).all(user.id) as (ReviewRow & { company: string | null; role_title: string | null })[];
+    // 같은 회사 지원 건이 하나뿐이면 연결 대상으로 제안만 한다(자동 확정하지 않음).
+    const byCompany = new Map<string, string[]>();
+    for (const a of db.prepare('SELECT id, company FROM applications WHERE user_id = ?').all(user.id) as { id: string; company: string }[]) {
+      const k = normalizeName(a.company); byCompany.set(k, [...(byCompany.get(k) ?? []), a.id]);
+    }
+    const suggest = (company: string | null) => { const ids = company ? byCompany.get(normalizeName(company)) : undefined; return ids?.length === 1 ? ids[0]! : null; };
+    return rows.map(r => reviewSchema.parse({ id: r.id, reason: r.reason, createdAt: r.created_at, subject: r.subject, receivedAt: r.received_at, platform: r.platform, classification: r.classification, evidence: r.evidence, held: r.held === 1,
+      company: r.company, roleTitle: r.role_title, suggestedApplicationId: suggest(r.company) }));
   });
 
   // 확인 목록 처리: 연결·새 지원 건으로 확정·무시만 제공한다. 무시한 근거는 다시 요청하지 않는다.

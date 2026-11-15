@@ -18,7 +18,7 @@ test('HTTP 준비 응답과 파일 DB 재시작·마이그레이션 재실행', 
     try {
       const res = await app.inject({ method: 'GET', url: '/health' });
       assert.equal(res.statusCode, 200);
-      assert.deepEqual(res.json(), { service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: 15 });
+      assert.deepEqual(res.json(), { service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: 16 });
       assert.equal((await app.inject('/users')).statusCode, 404);
       const malformed = await app.inject({ method: 'POST', url: '/echo', headers: { 'content-type': 'application/json' }, payload: '{' });
       assert.equal(malformed.statusCode, 400);
@@ -51,7 +51,7 @@ test('DB 버전 10은 공용 공고를 지우고 링크 공고를 사용자 자�
     openDatabase(path).close();
     // 버전 9 상태(공용 공고 owner NULL·collected_mode)를 재현한다.
     const raw = new DatabaseSync(path);
-    raw.exec("ALTER TABLE documents DROP COLUMN ocr_pages; ALTER TABLE documents DROP COLUMN edited; ALTER TABLE mail_connections DROP COLUMN covered_since; ALTER TABLE mail_connections DROP COLUMN backfill_since; DROP TABLE mail_backfill; ALTER TABLE recommendations DROP COLUMN feedback; ALTER TABLE recommendations DROP COLUMN restored; ALTER TABLE applications DROP COLUMN locked_fields; ALTER TABLE review_requests DROP COLUMN held; ALTER TABLE postings RENAME COLUMN acquired_by TO collected_mode; PRAGMA user_version = 9;");
+    raw.exec("ALTER TABLE documents DROP COLUMN ocr_pages; ALTER TABLE documents DROP COLUMN edited; ALTER TABLE mail_connections DROP COLUMN covered_since; ALTER TABLE mail_connections DROP COLUMN backfill_since; DROP TABLE mail_backfill; ALTER TABLE recommendations DROP COLUMN feedback; ALTER TABLE recommendations DROP COLUMN restored; ALTER TABLE applications DROP COLUMN locked_fields; ALTER TABLE review_requests DROP COLUMN held; ALTER TABLE review_requests DROP COLUMN company; ALTER TABLE review_requests DROP COLUMN role_title; ALTER TABLE postings RENAME COLUMN acquired_by TO collected_mode; PRAGMA user_version = 9;");
     raw.exec("INSERT INTO users (id, email, password_hash, created_at) VALUES ('u1', 'a@example.com', 'x', '2026-01-01')");
     const insert = raw.prepare("INSERT INTO postings (id, source, source_id, owner_user_id, url, title, company, always_hire, careers, collected_mode, checked_at) VALUES (?, 'wanted', ?, ?, 'https://x', 't', 'c', 0, '[]', 'personal', '2026-01-01')");
     insert.run('shared', '1', null);
@@ -70,7 +70,7 @@ test('DB 버전 15는 사용자별 OpenAI 키 표를 지우고 암호문을 파�
     openDatabase(path).close();
     const raw = new DatabaseSync(path);
     raw.exec("INSERT INTO users (id, email, password_hash, created_at) VALUES ('u1', 'a@example.com', 'x', '2026-01-01')");
-    raw.exec("CREATE TABLE ai_settings (user_id TEXT PRIMARY KEY, key_enc TEXT NOT NULL, key_hint TEXT NOT NULL, model TEXT NOT NULL, verified_at TEXT NOT NULL) STRICT; PRAGMA user_version = 14;");
+    raw.exec("CREATE TABLE ai_settings (user_id TEXT PRIMARY KEY, key_enc TEXT NOT NULL, key_hint TEXT NOT NULL, model TEXT NOT NULL, verified_at TEXT NOT NULL) STRICT; ALTER TABLE review_requests DROP COLUMN company; ALTER TABLE review_requests DROP COLUMN role_title; PRAGMA user_version = 14;");
     raw.prepare("INSERT INTO ai_settings VALUES ('u1', ?, '1234', 'gpt-5.5', '2026-01-01')").run('CIPHERTEXT-MARKER-'.repeat(50));
     raw.close();
     openDatabase(path).close();

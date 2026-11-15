@@ -392,3 +392,52 @@ test('열람은 직무명이 없거나 확신이 낮아도 같은 회사 지원 
     } finally { db.close(); }
   } finally { await s.done(); }
 });
+
+test('지원 현황 CSV를 가져오면 중복 없이 등록하고, 연결 불명 확인 요청을 다시 해석해 가져온 지원 건에 붙인다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    s.state.mails = [mail(1, 'hr@n.example', '서류 전형 결과 안내', '결과')];
+    await s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 'tester@naver.com', appPassword: 'app-password', consent: true } });
+    // 직무명 없이 회사만 읽힌 결과 메일은 확인 요청으로 가고, 회사를 남긴다.
+    let answer = { isRecruiting: true, company: '가상회사', roleTitle: null, status: '불합격', confidence: 'low', evidence: '결과' };
+    const sync = async () => {
+      const db = openDatabase(s.path);
+      try { await runNext(db, createMailHandler(db, loadSecretKey(join(s.dir, 'secret.key')), async () => [{ mailbox: 'INBOX', uidValidity: '7', messages: s.state.mails, oldestDate: null, complete: true }], { interpret: async () => answer, bodies: async (_a, _p, list) => new Map(list.map(x => [`${x.mailbox}:${x.uid}`, { text: '결과', links: [], fromAddress: 'hr@n.example' }])) })); } finally { db.close(); }
+    };
+    await sync();
+    let reviews = (await s.app.inject({ url: '/reviews', headers: { cookie: a } })).json();
+    assert.deepEqual(reviews.map(r => [r.reason, r.company, r.suggestedApplicationId]), [['연결 불명', '가상회사', null]]);
+
+    // 합성 지원 현황. 같은 회사·직무 중복 1, 형식 오류(상태 없음) 1.
+    const csv = '\uFEFF회사,직무,상태,공고URL\n(주)가상회사,프론트엔드 개발자,이력서 열람,https://example.com/1\n가상회사,프론트엔드 개발자,지원 완료,\n다른회사,"백엔드, 서버",서류 합격,http://insecure.example\n넷째회사,\\[팀\\] 개발자(2\\~4년),불합격,\n빈상태회사,직무,,\n';
+    const res = await s.app.inject({ method: 'POST', url: '/applications/import', headers: { cookie: a }, payload: { csv } });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.json(), { imported: 3, duplicates: 1, invalid: 1, requeued: 1 });
+    const apps = (await s.app.inject({ url: '/applications', headers: { cookie: a } })).json();
+    const mine = apps.find(x => x.company === '(주)가상회사');
+    assert.deepEqual([mine.status, mine.readStatus, mine.postingUrl], ['지원 완료', '열람', 'https://example.com/1']);
+    assert.deepEqual(apps.find(x => x.company === '다른회사').status, '전형 진행중');
+    assert.equal(apps.find(x => x.company === '다른회사').postingUrl, null);
+    // Notion 내보내기의 마크다운 이스케이프(\[ \~)는 지운다.
+    assert.equal(apps.find(x => x.company === '넷째회사').roleTitle, '[팀] 개발자(2~4년)');
+    // 다시 올려도 중복 없음.
+    assert.equal((await s.app.inject({ method: 'POST', url: '/applications/import', headers: { cookie: a }, payload: { csv } })).json().imported, 0);
+    // 되돌린 메일을 다시 해석하면 여전히 직무명이 없어 확인 요청이지만, 같은 회사 지원 건 하나를 제안한다.
+    await sync();
+    reviews = (await s.app.inject({ url: '/reviews', headers: { cookie: a } })).json();
+    assert.deepEqual(reviews.map(r => r.suggestedApplicationId), [mine.id]);
+    // 직무명이 같게 읽히면 가져온 지원 건에 자동으로 붙는다.
+    answer = { ...answer, roleTitle: '프론트엔드 개발자', confidence: 'high' };
+    await s.app.inject({ method: 'POST', url: '/applications/import', headers: { cookie: a }, payload: { csv: '회사,직무,상태\n셋째회사,QA,지원 완료\n' } });
+    await sync();
+    assert.equal((await s.app.inject({ url: '/reviews', headers: { cookie: a } })).json().length, 0);
+    const after = (await s.app.inject({ url: `/applications/${mine.id}`, headers: { cookie: a } })).json();
+    assert.equal(after.status, '불합격');
+    assert.deepEqual(after.events.map(e => e.source).sort(), ['import', 'import', 'mail']);
+    // 다른 사용자는 가져온 지원 건을 보지 못한다.
+    const b = await s.signup('b@example.com');
+    assert.equal((await s.app.inject({ url: '/applications', headers: { cookie: b } })).json().length, 0);
+    assert.equal((await s.app.inject({ method: 'POST', url: '/applications/import', headers: { cookie: b }, payload: { csv: '이름\n값\n' } })).statusCode, 400);
+  } finally { await s.done(); }
+});
