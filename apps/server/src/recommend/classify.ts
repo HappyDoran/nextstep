@@ -6,7 +6,8 @@ import type { Judgement } from '../prompts/recommend.js';
 
 // 추천 분류 규칙(기술 설계 D절, 사용자 확정 2026-11-07). 모델은 사실만 뽑고 분류는 여기서 정한다.
 // 우선순위: 제외 > 도전 > 미확인 > 기본. 같은 입력이면 같은 분류가 나온다.
-export const RULES_VERSION = 'rules-2026-11-14h';
+// 규칙을 바꾸면 반드시 올린다. 저장된 추천은 이 값이 바뀌어야 다시 판정된다(2026-11-15 올리지 않아 재판정 누락).
+export const RULES_VERSION = 'rules-2026-11-15c';
 
 export type Seeker = { jobFamilies: string[]; regions: string[]; remoteOk: boolean };
 export type PostingInput = {
