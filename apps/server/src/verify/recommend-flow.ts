@@ -11,10 +11,11 @@ import { extractResumeText } from '../documents/extract-resume.js';
 import { enqueue, runNext } from '../recommend/jobs.js';
 import { createHandler } from '../recommend/pipeline.js';
 import { usageTotals } from '../ai/llm.js';
+import { jobFamilySchema } from '@nextstep/contracts';
 
 async function main() {
   const links = process.argv.slice(2).filter(a => a.startsWith('https://'));
-  // --all-families: 네 직무 전체로 실행한다(기본은 프론트엔드·앱 개발).
+  // --all-families: 여섯 직무 전체로 실행한다(기본은 프론트엔드·앱 개발).
   const personal = process.argv.includes('--all-families');
   const dir = mkdtempSync(join(tmpdir(), 'nextstep-rec-verify-'));
   try {
@@ -26,7 +27,7 @@ async function main() {
     const resume = await extractResumeText(new Uint8Array(readFileSync(new URL('../../tests/fixtures/resume-text.pdf', import.meta.url))), 'resume.pdf');
     if (!resume.ok) throw new Error('fixture');
     db.prepare("INSERT INTO documents (id, user_id, kind, filename, size, storage_key, text, created_at) VALUES (?, ?, 'resume', 'resume.pdf', 0, 'none', ?, ?)").run(randomUUID(), userId, resume.text, at);
-    db.prepare('INSERT INTO profiles (user_id, data, updated_at) VALUES (?, ?, ?)').run(userId, JSON.stringify({ jobFamilies: personal ? ['프론트엔드', '앱 개발', '디자인', '기획'] : ['프론트엔드', '앱 개발'], experiences: [{ jobFamily: '프론트엔드', years: 3 }], regions: ['서울'], remoteOk: true, employmentTypes: ['정규직'], skills: ['React', 'TypeScript', 'Next.js'], summary: '프론트엔드 개발 3년' }), at);
+    db.prepare('INSERT INTO profiles (user_id, data, updated_at) VALUES (?, ?, ?)').run(userId, JSON.stringify({ jobFamilies: personal ? jobFamilySchema.options : ['프론트엔드', '앱 개발'], experiences: [{ jobFamily: '프론트엔드', years: 3 }], regions: ['서울'], remoteOk: true, employmentTypes: ['정규직'], skills: ['React', 'TypeScript', 'Next.js'], summary: '프론트엔드 개발 3년' }), at);
     const handler = createHandler(db);
     const started = Date.now();
     const jobs = [];

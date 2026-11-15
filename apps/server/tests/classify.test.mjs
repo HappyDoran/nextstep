@@ -62,3 +62,16 @@ test('작은 모델 보정: 조건 원문의 기술 실무 연차·직무 이름
   assert.equal(run({ required: [req('experience', ['서비스 운영'], { text: 'React·TypeScript 기반 서비스 운영 경험' })] }), '기본');
   assert.equal(run({ title: '가상데이터 데이터 엔지니어', families: ['백엔드'] }), '제외');
 });
+
+test('직무 없이 지원 자격만 말하는 필수 문구는 다른 직무 경력으로 제외하지 않는다(2026-11-15 실제 흐름)', () => {
+  for (const text of ['신입 가능', '경력무관', '신입 / 경력 3년 이하', '신입·주니어도 지원할 수 있습니다.', '2026년 11월 수시채용', '경력 2년 이상']) {
+    assert.equal(run({ required: [{ text, type: 'career', keys: [text], years: null, practical: false }] }), '기본', text);
+  }
+  assert.equal(run({ required: [{ text: '경력 5년 이상', type: 'career', keys: ['경력'], years: 5, practical: false }] }), '도전');
+  // 직무가 붙은 다른 성격 경력은 그대로 제외.
+  assert.equal(run({ required: [{ text: '정보보호 경력 3년 이하', type: 'career', keys: ['정보보호'], years: null, practical: false }] }), '제외');
+  // 조사: 3년으로, 0년으로, 6개월로
+  const reason = c => classify(at, seeker, { ...cand, careers: c }, { ...base, careers: [{ type: 'EXPERIENCED', fromYears: 4, toYears: null }] }).reason;
+  assert.equal(reason(cand.careers), '직무 경력 3년으로 요구 4년보다 부족');
+  assert.equal(reason([{ family: '프론트엔드', months: 30, stack: [] }]), '직무 경력 2년 6개월로 요구 4년보다 부족');
+});
