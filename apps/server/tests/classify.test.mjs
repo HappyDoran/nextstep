@@ -67,6 +67,8 @@ test('직무 없이 지원 자격만 말하는 필수 문구는 다른 직무 �
   for (const text of ['신입 가능', '경력무관', '신입 / 경력 3년 이하', '신입·주니어도 지원할 수 있습니다.', '2026년 11월 수시채용', '경력 2년 이상']) {
     assert.equal(run({ required: [{ text, type: 'career', keys: [text], years: null, practical: false }] }), '기본', text);
   }
+  assert.equal(run({ required: [{ text: '경력: 2년 이상', type: 'career', keys: ['경력'], years: 2, practical: false }] }), '기본');
+  assert.equal(run({ required: [{ text: '경력 3년 이하', type: 'experience', keys: ['경력'], years: null, practical: false }] }), '기본');
   assert.equal(run({ required: [{ text: '경력 5년 이상', type: 'career', keys: ['경력'], years: 5, practical: false }] }), '도전');
   // 직무가 붙은 다른 성격 경력은 그대로 제외.
   assert.equal(run({ required: [{ text: '정보보호 경력 3년 이하', type: 'career', keys: ['정보보호'], years: null, practical: false }] }), '제외');

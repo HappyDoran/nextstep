@@ -70,7 +70,7 @@ const span = (m: number) => (m % 12 ? `${Math.floor(m / 12)}년 ${m % 12}개월`
 const ro = (word: string) => { const code = word.charCodeAt(word.length - 1) - 0xac00; const final = code >= 0 && code < 11172 ? code % 28 : 0; return `${word}${final === 0 || final === 8 ? '로' : '으로'}`; };
 // '신입 가능'·'경력무관'·'경력 3년 이상'처럼 직무 없이 지원 자격만 말하는 문구(작은 모델이 필수 경력으로 뽑음, 2026-11-15 실제 흐름에서 제외 53건 중 16건).
 // 다른 직무 경력으로 보지 않는다: 연차 하한만 직무 경력과 비교하고 나머지는 충족으로 둔다.
-const ELIGIBILITY = /^(?:신입|경력\s*무관|무관|주니어|경력\s*(?:\/|·|및)?\s*신입|경력\s*\d+\s*년|\d+\s*년\s*(?:이상|이하|차)|\d{4}\s*년\s*\d+\s*월\s*(?:수시|정기)\s*채용)/;
+const ELIGIBILITY = /^(?:신입|경력\s*무관|무관|주니어|경력\s*(?:\/|·|및)?\s*신입|경력\s*:?\s*\d+\s*년|\d+\s*년\s*(?:이상|이하|차)|\d{4}\s*년\s*\d+\s*월\s*(?:수시|정기)\s*채용)/;
 
 export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: PostingInput): Judgement {
   const met: string[] = [], unmet: string[] = [], unknown: string[] = [], unsureWhy: string[] = [];
@@ -125,7 +125,8 @@ export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: P
     const years = original.years ?? yearsIn(original.text);
     const r = tech.length && years && /실무|경력/.test(original.text) ? { ...original, type: 'skill' as const, keys: tech, years, practical: true }
       : original.type === 'career' ? { ...original, keys: [...original.keys, ...TARGET_KEYS.filter(t => norm(original.text).includes(t))] } : original;
-    if (r.type === 'career' && ELIGIBILITY.test(r.text.trim())) {
+    // '경력 3년 이하'는 작은 모델이 경험 항목으로도 뽑는다.
+    if ((r.type === 'career' || (r.type === 'experience' || r.type === 'role') && /^경력\s*:?\s*\d/.test(r.text.trim())) && ELIGIBILITY.test(r.text.trim())) {
       const min = /이상/.test(r.text) ? yearsIn(r.text) : null;
       if (min && have < min * 12) out('challenge', `${r.text}: 직무 경력 ${span(have)}`);
       else out('met', `지원 자격 ${r.text}`);
