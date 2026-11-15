@@ -307,7 +307,7 @@ test('AI가 플랫폼 이름이나 지시문이 섞인 문자열을 회사로 �
     const db = openDatabase(s.path);
     try {
       const userId = db.prepare('SELECT id FROM users').get().id;
-      for (const [i, company] of [['1', '원티드'], ['2', '(주)가상: 1. 지원한 회사 이름을 정확히 추출']]) {
+      for (const [i, company] of [['1', '원티드'], ['2', '(주)가상: 1. 지원한 회사 이름을 정확히 추출'], ['3', '원티드랩'], ['4', 'jumpit.co.kr']]) {
         const id = `m${i}`;
         db.prepare("INSERT INTO mail_messages (id, user_id, provider, message_key, received_at, subject, classification, outcome, processed_at) VALUES (?, ?, 'naver', ?, NULL, '결과 안내', '불합격', 'unlinked', '2026-11-14')").run(id, userId, `<k${i}>`);
         const out = applyInterpretation(db, { id, userId, messageKey: `<k${i}>`, subject: '결과 안내', receivedAt: null, verdict: { status: '불합격', evidence: null, platform: null, postingKeys: [] } }, { isRecruiting: true, company, roleTitle: '프론트엔드 개발자', status: '불합격', confidence: 'high' });

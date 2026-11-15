@@ -44,7 +44,9 @@ function GroupedReviews({ reviews, me, apps }: { reviews: Review[]; me: Me; apps
 
 function ReviewGroup({ company, items, me, apps }: { company: string; items: Review[]; me: Me; apps: AppOption[] }) {
   const client = useQueryClient();
-  const linkable = items.filter(r => r.suggestedApplicationId && r.classification !== '모호' && !r.held);
+  // 묶음 연결은 지원 건 상태가 바뀌지 않는 메일(더 앞 단계이거나 같은 결과)만 대상으로 하고 현재 상태를 그대로 보낸다.
+  // 확인 목록 확정은 고른 상태로 덮어쓰므로, 메일 상태를 보내면 불합격이 지원 완료로 되돌아갈 수 있다.
+  const linkable = items.filter(r => !r.held && keepsStatus(r, apps.find(a => a.id === r.suggestedApplicationId)));
   const target = apps.find(a => a.id === linkable[0]?.suggestedApplicationId);
   // 한 건씩 차례로 보낸다. 중간에 실패하면 멈추고 남은 항목은 목록에 그대로 둔다.
   const bulk = useMutation({
@@ -54,7 +56,7 @@ function ReviewGroup({ company, items, me, apps }: { company: string; items: Rev
   return <section aria-label={`${company} 확인 요청`} className="flex flex-col gap-3">
     <div className="flex flex-wrap items-center gap-3">
       <h2 className="text-title">{company} <span className="text-body-sm text-muted-foreground">{items.length}건</span></h2>
-      {target && <Button disabled={bulk.isPending} onClick={() => bulk.mutate({ list: linkable, body: linkBody })}>제안대로 {linkable.length}건 연결 ({target.company} · {target.roleTitle})</Button>}
+      {target && linkable.length > 0 && <Button disabled={bulk.isPending} onClick={() => bulk.mutate({ list: linkable, body: r => ({ action: 'link', applicationId: r.suggestedApplicationId, status: apps.find(a => a.id === r.suggestedApplicationId)!.status }) })}>제안대로 {linkable.length}건 연결 ({target.company} · {target.roleTitle})</Button>}
       {items.length > 1 && <Button disabled={bulk.isPending} className="!bg-transparent !text-foreground border-border"
         onClick={() => { if (window.confirm(`${company} ${items.length}건을 모두 무시할까요? 무시한 메일은 다시 묻지 않습니다.`)) bulk.mutate({ list: items, body: ignoreBody }); }}>모두 무시</Button>}
     </div>
@@ -62,13 +64,18 @@ function ReviewGroup({ company, items, me, apps }: { company: string; items: Rev
     <ul className="flex flex-col gap-3">{items.map(r => <ReviewItem key={r.id} review={r} me={me} apps={apps} />)}</ul>
   </section>;
 }
-const linkBody = (r: Review) => ({ action: 'link', applicationId: r.suggestedApplicationId, status: r.classification });
+const RANK: Record<string, number> = { 미지원: 0, '지원 완료': 1, '전형 진행중': 2, 합격: 3, 불합격: 3 };
+// 메일 상태가 지원 건 상태보다 앞 단계이거나 같으면 연결해도 상태가 바뀌지 않는다. 최종 결과끼리 다르면 충돌이라 제외한다.
+const keepsStatus = (r: Review, app?: AppOption) => !!app && r.classification !== '모호'
+  && (r.classification === app.status || RANK[r.classification]! < RANK[app.status]! || (r.classification === '열람'));
 const ignoreBody = () => ({ action: 'ignore' });
 
 function ReviewItem({ review, me, apps }: { review: Review; me: Me; apps: AppOption[] }) {
   const client = useQueryClient();
   const [mode, setMode] = useState<'link' | 'create'>('link');
-  const [status, setStatus] = useState<string>(review.classification === '모호' ? '' : review.classification);
+  // 제안된 지원 건이 이미 더 뒤 단계면 그 상태를 기본값으로 둬 오래된 메일로 되돌리지 않게 한다.
+  const suggested = apps.find(a => a.id === review.suggestedApplicationId);
+  const [status, setStatus] = useState<string>(review.classification === '모호' ? '' : suggested && keepsStatus(review, suggested) && review.classification !== '열람' ? suggested.status : review.classification);
   const [target, setTarget] = useState(review.suggestedApplicationId ?? '');
   const [company, setCompany] = useState(review.company ?? '');
   const [role, setRole] = useState(review.roleTitle ?? '');

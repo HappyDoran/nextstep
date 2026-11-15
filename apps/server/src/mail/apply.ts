@@ -94,8 +94,8 @@ export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp
   if (db.prepare('SELECT 1 FROM evidence_suppressions WHERE user_id = ? AND message_key = ?').get(msg.userId, msg.messageKey)) return 'suppressed';
   const status = interp.status as MailVerdict['status'];
   const verdictMsg: StoredMessage = { ...msg, verdict: { ...msg.verdict, status } };
-  // 작은 모델이 플랫폼 이름을 회사로 쓰거나 지시문을 섞어 내는 경우가 있어(2026-11-14 실제 해석) 그런 회사명은 확정하지 않는다.
-  const badCompany = !interp.company || /^(원티드|잡코리아|사람인|점핏|자소설닷컴|wanted|jobkorea|saramin|jumpit)$/i.test(normalizeName(interp.company)) || /[:\n]/.test(interp.company) || interp.company.length > 60;
+  // 작은 모델이 플랫폼 이름(원티드랩·jumpit.co.kr 등, 2026-11-15 실제 해석)을 회사로 쓰거나 지시문을 섞어 내는 경우가 있어(2026-11-14 실제 해석) 그런 회사명은 확정하지 않는다.
+  const badCompany = !interp.company || /^(원티드(랩)?|잡코리아|사람인|점핏|자소설닷컴|(www\.)?(wanted|jobkorea|saramin|jumpit|jasoseol)(lab)?(\.co\.kr|\.com)?)$/i.test(normalizeName(interp.company)) || /[:\n]/.test(interp.company) || interp.company.length > 60;
   const appsOf = (name: string) => (db.prepare('SELECT id, company, role_title, status, read_status, posting_url, locked_fields FROM applications WHERE user_id = ?').all(msg.userId) as (AppRow & { company: string; role_title: string })[])
     .filter(a => normalizeName(a.company) === normalizeName(name));
   if (status === '열람') {
