@@ -1,11 +1,11 @@
 # 디자인 기초
 
-NextStep의 브랜드 색상은 인디고이며 기본색은 #4F46E5로 선택했다. Light/Dark의 액션·포커스·보조 면에 같은 계열을 사용하고 성공·경고 등 상태색은 별도 의미를 유지한다. Storybook에서 선택한 인디고와 이전 후보를 비교할 수 있다. 타입 크기·테마의 세부 조정과 제품 화면 설계는 아직 진행 중이다. 실제 계정·공고·메일 데이터는 사용하지 않는다.
+NextStep의 브랜드 색상은 인디고이며 기본색은 #4F46E5로 선택했다. Light/Dark의 액션·포커스·보조 면에 같은 계열을 사용하고 성공·경고 등 상태색은 별도 의미를 유지한다. Storybook에서 선택한 인디고와 이전 후보를 비교할 수 있다. 제품 화면은 2026-11-19 화면 개편(P1-16)으로 이 토큰·공통 컴포넌트를 쓴다. 실제 계정·공고·메일 데이터는 사용하지 않는다.
 
 ## 값과 사용처
 
 - `src/primitives.css`: 원시 팔레트, 간격, 폰트 크기·두께, radius, shadow, duration·easing의 소유자.
-- `src/tokens.css`: 배경·글자·액션·피드백·포커스, 타입 역할, 크기의 의미 토큰. Light가 기본이며 `data-ns-theme="dark"` 범위에서 테마 값을 바꾼다. 앱 설정 기능은 아직 없다.
+- `src/tokens.css`: 배경·글자·액션·피드백·포커스, 타입 역할, 크기의 의미 토큰. Light가 기본이며 `data-ns-theme="dark"` 범위에서 테마 값을 바꾼다. 웹은 첫 그리기 전에 운영체제 설정(prefers-color-scheme)을 읽어 `<html data-ns-theme>`를 정하고 설정이 바뀌면 따라간다(2026-11-19). 앱 안 테마 전환은 없다. Dark에서만 다른 색이 필요하면 `[[data-ns-theme=dark]_&]:` 변형을 쓴다.
 - `src/styles.css`: 로컬 Pretendard Variable과 토큰을 불러오는 전역 진입점. 컴포넌트·타입·아이콘 CSS 클래스는 정의하지 않는다.
 - `src/tailwind-preset.ts`: CSS 값을 복제하지 않고 색상·타입·간격·크기·stroke·포커스·그림자·모션의 Tailwind 이름에 연결한다.
 - `src/Foundations.stories.tsx`: 기초 항목과 브랜드 후보의 시각 비교. 후보별 override는 Storybook에만 둔다.

@@ -17,8 +17,8 @@ const time = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'nu
 /** 로그인 전 화면: 왼쪽 인디고 소개 면, 오른쪽 양식. 좁은 창에서는 소개 면을 위로 접는다. */
 export function AuthLayout({ children }: { children: ReactNode }) {
   return <div className="grid min-h-dvh bg-background text-foreground md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
-    <aside className="flex flex-col justify-between gap-10 bg-primary px-10 py-10 text-primary-foreground md:px-16 md:py-16">
-      <p className="flex items-center gap-2 text-title font-extrabold"><span aria-hidden="true" className="size-2.5 rotate-45 rounded-xs bg-primary-foreground" />NextStep</p>
+    <aside className="flex flex-col justify-between gap-10 bg-primary px-10 py-10 text-primary-foreground md:px-16 md:py-16 [[data-ns-theme=dark]_&]:bg-secondary [[data-ns-theme=dark]_&]:text-secondary-foreground">
+      <p className="flex items-center gap-2 text-title font-extrabold"><span aria-hidden="true" className="size-2.5 rotate-45 rounded-xs bg-current" />NextStep</p>
       <div className="hidden md:block">
         <p className="text-display">마감 전에,<br />맞는 공고부터.</p>
         <p className="mt-3 text-body opacity-80">서류로 고르고, 메일로 따라가는 개인 지원 관리</p>

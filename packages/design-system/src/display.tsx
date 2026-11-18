@@ -22,9 +22,10 @@ export function ClassLabel({ classification }: { classification: Classification 
 export function Lane({ title, hint, count, expanded = true, onToggle, children }: PropsWithChildren<{ title: ReactNode; hint?: ReactNode; count: ReactNode; expanded?: boolean; onToggle?: () => void }>) {
   return <section className="mb-7">
     <div className="mb-2.5 flex items-center gap-2.5">
-      {onToggle
-        ? <button type="button" aria-expanded={expanded} onClick={onToggle} className={join('inline-flex cursor-pointer items-center gap-1.5 text-body-sm font-extrabold text-foreground', focus)}><ChevronDown className={join('size-icon-sm shrink-0 stroke-emphasis transition-transform duration-fast motion-reduce:transition-none', !expanded && '-rotate-90')} aria-hidden="true" focusable="false" />{title}</button>
-        : <h3 className="text-body-sm font-extrabold text-foreground">{title}</h3>}
+      {/* 화면 제목(h1) 아래 묶음 제목이라 h2. 접을 수 있으면 제목 안에 버튼을 둔다. */}
+      <h2 className="text-body-sm font-extrabold text-foreground">{onToggle
+        ? <button type="button" aria-expanded={expanded} onClick={onToggle} className={join('inline-flex cursor-pointer items-center gap-1.5', focus)}><ChevronDown className={join('size-icon-sm shrink-0 stroke-emphasis transition-transform duration-fast motion-reduce:transition-none', !expanded && '-rotate-90')} aria-hidden="true" focusable="false" />{title}</button>
+        : title}</h2>
       {hint ? <span className="text-caption text-muted-foreground">{hint}</span> : null}
       <span className="h-px flex-1 bg-border" aria-hidden="true" />
       <span className="text-caption font-semibold tabular-nums text-muted-foreground">{count}</span>
@@ -56,7 +57,7 @@ export function DueDate({ days, date }: { days: number | null; date?: string }) 
 /** 빈 상태와 오류. 오류는 다시 시도 같은 행동을 함께 준다. */
 export function StatePanel({ tone = 'empty', title, description, actions }: { tone?: 'empty' | 'error'; title: ReactNode; description: ReactNode; actions?: ReactNode }) {
   return <div role={tone === 'error' ? 'alert' : undefined} className={join('max-w-2xl rounded-surface px-11 py-10', tone === 'error' ? 'bg-destructive-muted' : 'border-2 border-dashed border-border-strong bg-card')}>
-    <h3 className={join('text-body-lg font-extrabold', tone === 'error' ? 'text-destructive' : 'text-foreground')}>{title}</h3>
+    <h2 className={join('text-body-lg font-extrabold', tone === 'error' ? 'text-destructive' : 'text-foreground')}>{title}</h2>
     <p className="mt-1.5 text-body-sm text-muted-foreground">{description}</p>
     {actions ? <div className="mt-5 flex flex-wrap gap-2">{actions}</div> : null}
   </div>;
