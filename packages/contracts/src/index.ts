@@ -187,6 +187,8 @@ export const reviewSchema = z.object({
   suggestedApplicationId: z.string().nullable().default(null),
 });
 export type Review = z.infer<typeof reviewSchema>;
+// 메일 전체 보기 응답. 서버는 저장하지 않고 열 때마다 메일함에서 읽는다.
+export const reviewBodySchema = z.object({ text: z.string(), fromAddress: z.string() });
 const reviewStatus = z.enum(['지원 완료', '전형 진행중', '합격', '불합격', '열람']).optional();
 export const reviewActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('link'), applicationId: z.string().min(1), status: reviewStatus }).strict(),

@@ -33,8 +33,16 @@ test('네이버 연결 동의 필수·연결 상태 표시와 확인 목록 처�
     await page.route('**/api/reviews', route => route.fulfill({ json: [{ id: 'r1', reason: '연결 불명', createdAt: '2026-11-07T00:00:00.000Z', subject: '서류 전형 결과 안내', receivedAt: '2026-11-06T00:00:00.000Z', platform: null, classification: '불합격', evidence: '아쉽게도 함께하기 어렵습니다' }] }));
     await page.route('**/api/reviews/r1', route => { posted = route.request().postDataJSON(); return route.fulfill({ status: 204 }); });
     await page.goto('/reviews');
-    const item = page.getByRole('listitem').filter({ hasText: '서류 전형 결과 안내' });
+    // 왼쪽 대기열의 첫 항목이 오른쪽에 열린다. 전체 본문은 누를 때만 읽는다.
+    const item = page.getByRole('region', { name: '선택한 메일' });
     await expect(item).toContainText('근거: 아쉽게도 함께하기 어렵습니다');
+    let bodyRequests = 0;
+    await page.route('**/api/reviews/r1/body', route => { bodyRequests += 1; return route.fulfill({ json: { text: '가상회사 서류 전형 결과를 안내드립니다. 아쉽게도 함께하기 어렵습니다.', fromAddress: 'hr@example.com' } }); });
+    expect(bodyRequests).toBe(0);
+    await item.getByRole('button', { name: '메일 전체 보기' }).click();
+    await expect(item).toContainText('가상회사 서류 전형 결과를 안내드립니다.');
+    expect(bodyRequests).toBe(1);
+    await item.getByRole('button', { name: '접기' }).click();
     await item.getByRole('button', { name: '새 지원 건으로 확정' }).click();
     await item.getByLabel('회사').fill('가상회사');
     await item.getByLabel('직무').fill('디자이너');

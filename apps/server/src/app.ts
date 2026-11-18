@@ -14,11 +14,11 @@ import { startScheduler } from './schedule.js';
 import { loadSecretKey } from './secrets.js';
 import { registerMail } from './mail/routes.js';
 import { createMailHandler } from './mail/sync.js';
-import { naverBackfill, naverBodies, naverSource, type BackfillSource, type MailSource } from './mail/naver.js';
+import { naverBackfill, naverBodies, naverSource, type BackfillSource, type MailBodySource, type MailSource } from './mail/naver.js';
 import { ollamaModel } from './ai/llm.js';
 import { interpretMail } from './prompts/mail.js';
 
-export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; scheduleHour?: number; deps?: PipelineDeps; mailSource?: MailSource; mailBackfill?: BackfillSource } = {}) {
+export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; scheduleHour?: number; deps?: PipelineDeps; mailSource?: MailSource; mailBackfill?: BackfillSource; mailBodies?: MailBodySource } = {}) {
   const db = openDatabase(databasePath);
   // 원본 파일은 DB 옆 비공개 디렉터리에 둔다(Git 제외 경로).
   const filesDir = options.filesDir ?? join(dirname(databasePath), 'files');
@@ -39,7 +39,7 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
   // AI는 서버의 로컬 LLM 하나로 처리한다. 설정 화면에는 모델 이름만 보여 준다.
   app.get('/settings/ai', async (request, reply) => (requireUser(db, request, reply) ? aiSettingsSchema.parse({ model: ollamaModel() }) : reply));
   const mailSource = options.mailSource ?? naverSource;
-  registerMail(app, db, secretKey, mailSource);
+  registerMail(app, db, secretKey, mailSource, options.mailBodies ?? naverBodies);
   // 수집·추천 작업은 요청 경로 밖의 작업자가 처리한다. 테스트는 worker:false로 끄고 직접 실행한다.
   if (options.worker) {
     const recommend = createHandler(db, options.deps);

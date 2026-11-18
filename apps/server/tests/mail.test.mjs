@@ -48,7 +48,12 @@ async function setup() {
     const last = cursors.get('INBOX')?.lastUid ?? 0;
     return [{ mailbox: 'INBOX', uidValidity: '0', messages: state.mails.filter(m => m.uid > last), oldestDate: new Date(Date.now() - 30 * 86_400_000).toISOString(), complete: true }];
   };
-  const app = createApp(path, { mailSource: source });
+  // 메일 전체 보기용 본문 조회(읽기 전용, 저장 안 함). 비밀번호가 맞을 때만 돌려준다.
+  const mailBodies = async (_account, password, refs) => {
+    if (password !== 'app-password') throw new MailSourceError('auth_failed');
+    return new Map(refs.map(r => [`${r.mailbox}:${r.uid}`, { text: `본문 전체 ${r.uid}`, links: [], fromAddress: 'hr@example.com' }]));
+  };
+  const app = createApp(path, { mailSource: source, mailBodies });
   const signup = async email => {
     const db = openDatabase(path); const inviteCode = createInvite(db); db.close();
     return (await app.inject({ method: 'POST', url: '/auth/signup', payload: { inviteCode, email, password: 'correct horse battery' } })).headers['set-cookie'].split(';')[0];
@@ -108,6 +113,16 @@ test('연결 검사·암호화 저장·증분 조회·중복 방지·상태 순�
     assert.deepEqual(reviews.map(r => r.reason).sort(), ['모호', '최종 결과 충돌']);
     assert.deepEqual((await s.app.inject({ url: '/reviews', headers: { cookie: b } })).json(), []);
     const unknown = reviews.find(r => r.reason === '모호');
+    // 메일 전체 보기: 본인 확인 요청만, 열 때 읽고 DB에는 남기지 않는다.
+    const body = await s.app.inject({ url: `/reviews/${unknown.id}/body`, headers: { cookie: a } });
+    assert.equal(body.statusCode, 200);
+    assert.match(body.json().text, /^본문 전체 \d+$/);
+    assert.equal(body.headers['cache-control'], 'no-store');
+    assert.equal((await s.app.inject({ url: `/reviews/${unknown.id}/body`, headers: { cookie: b } })).statusCode, 404);
+    assert.equal((await s.app.inject({ url: `/reviews/${unknown.id}/body` })).statusCode, 401);
+    const stored = new DatabaseSync(s.path);
+    assert.equal(JSON.stringify(stored.prepare('SELECT * FROM mail_messages').all()).includes('본문 전체'), false);
+    stored.close();
     assert.equal((await s.app.inject({ method: 'POST', url: `/reviews/${unknown.id}`, headers: { cookie: b }, payload: { action: 'ignore' } })).statusCode, 404);
     assert.equal((await s.app.inject({ method: 'POST', url: `/reviews/${unknown.id}`, headers: { cookie: a }, payload: { action: 'create', company: '다른회사', roleTitle: '디자이너' } })).statusCode, 400);
     assert.equal((await s.app.inject({ method: 'POST', url: `/reviews/${unknown.id}`, headers: { cookie: a }, payload: { action: 'create', company: '다른회사', roleTitle: '디자이너', status: '불합격' } })).statusCode, 204);

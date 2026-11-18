@@ -1,17 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
-import { mailBackfillRequestSchema, mailConnectRequestSchema, mailConnectionSchema, reviewActionSchema, reviewSchema } from '@nextstep/contracts';
+import { mailBackfillRequestSchema, mailConnectRequestSchema, mailConnectionSchema, reviewActionSchema, reviewBodySchema, reviewSchema } from '@nextstep/contracts';
 import { requireUser } from '../auth.js';
-import { encrypt } from '../secrets.js';
+import { decrypt, encrypt } from '../secrets.js';
 import { enqueue, latestJob } from '../recommend/jobs.js';
 import { applyToApplication, sameCompany, type StoredMessage } from './apply.js';
-import { MailSourceError, type MailSource } from './naver.js';
+import { bodyKey, MailSourceError, type MailBodySource, type MailSource } from './naver.js';
 
 type ConnRow = { account: string; status: string; consent_at: string; last_success_at: string | null; last_error: string | null; range_incomplete: number; covered_since: string | null; backfill_since: string | null };
 type ReviewRow = { id: string; reason: string; status: string; held: number; created_at: string; message_id: string; message_key: string; subject: string; received_at: string | null; platform: string | null; classification: string; evidence: string | null };
 
-export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: Buffer, source: MailSource) {
+export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: Buffer, source: MailSource, bodies: MailBodySource) {
   app.get('/mail/connection', async (request, reply) => {
     const user = requireUser(db, request, reply);
     if (!user) return reply;
@@ -104,6 +104,29 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
   });
 
   // 확인 목록 처리: 연결·새 지원 건으로 확정·무시만 제공한다. 무시한 근거는 다시 요청하지 않는다.
+  // 메일 전체 보기: 사용자가 열 때만 메일함에서 본문을 읽기 전용으로 다시 읽어 보여 주고 저장하지 않는다(최소 근거 저장 유지).
+  app.get<{ Params: { id: string } }>('/reviews/:id/body', async (request, reply) => {
+    const user = requireUser(db, request, reply);
+    if (!user) return reply;
+    const ref = db.prepare(`SELECT m.mailbox, m.uid_validity, m.uid FROM review_requests r JOIN mail_messages m ON m.id = r.message_id
+      WHERE r.id = ? AND r.user_id = ? AND m.user_id = ?`).get(request.params.id, user.id, user.id) as { mailbox: string | null; uid_validity: string | null; uid: number | null } | undefined;
+    if (!ref) return reply.status(404).send({ message: '확인 요청을 찾을 수 없습니다.' });
+    if (!ref.mailbox || ref.uid === null) return reply.status(404).send({ message: '이 메일은 메일함 위치가 남아 있지 않아 다시 읽을 수 없습니다.' });
+    const conn = db.prepare('SELECT account, secret FROM mail_connections WHERE user_id = ?').get(user.id) as { account: string; secret: string } | undefined;
+    if (!conn) return reply.status(409).send({ message: '메일 연결이 없어 본문을 읽을 수 없습니다.' });
+    let found;
+    try {
+      found = await bodies(conn.account, decrypt(secretKey, conn.secret), [{ mailbox: ref.mailbox, uidValidity: ref.uid_validity ?? '', uid: ref.uid }]);
+    } catch (error) {
+      const code = error instanceof MailSourceError ? error.code : 'protocol';
+      return reply.status(502).send({ message: code === 'auth_failed' ? '네이버 메일 인증에 실패했습니다. 설정에서 다시 연결하세요.' : '메일함에 연결하지 못했습니다. 잠시 후 다시 시도하세요.' });
+    }
+    const body = found.get(bodyKey({ mailbox: ref.mailbox, uid: ref.uid }));
+    if (!body) return reply.status(404).send({ message: '메일함에서 이 메일을 찾지 못했습니다. 지워졌거나 다른 편지함으로 옮겨졌을 수 있습니다.' });
+    void reply.header('cache-control', 'no-store');
+    return reviewBodySchema.parse({ text: body.text.slice(0, 50_000), fromAddress: body.fromAddress });
+  });
+
   app.post<{ Params: { id: string } }>('/reviews/:id', async (request, reply) => {
     const user = requireUser(db, request, reply);
     if (!user) return reply;
