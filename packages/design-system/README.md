@@ -38,6 +38,17 @@ spring 설계값과 애니메이션 라이브러리는 제스처 동작을 구�
 
 진입은 ease-out, 위치 전환은 ease-in-out, hover는 ease를 기본으로 한다. ease-in으로 진입을 늦추지 않는다. 반복 키보드 작업은 진입 애니메이션을 생략한다. 이동은 transform·opacity로 처리하고 레이아웃 크기를 애니메이션하지 않는다. 동작 감소 설정에서는 이동·spring·회전을 없애고, 필요한 시각 전환만 base 길이의 opacity로 처리한다. 실제로 존재하는 버튼·로더에는 현재 가능한 범위의 포커스·전환·동작 감소 처리를 적용했다. 팝오버·모달·드래그 등은 실제 구현 시 이 기준으로 검증한다.
 
+## 공통 컴포넌트
+
+`@nextstep/design-system`에서 가져온다. 상태·API·분류 판정은 넣지 않고 화면이 값을 넘긴다. Storybook `공통/버튼`, `공통/화면 부품`에서 기본·비활성·오류·빈 상태·Light/Dark를 확인한다.
+
+- 입력: `Button`(primary·secondary·quiet·danger, md·sm), `Field`(라벨·도움말·오류)와 `Input`·`Select`·`Textarea`, `Toggle`(스위치), `OptionChip`(여러 개 고르기), `Segmented`(하나 고르기).
+- 표시: `Tag`·`ClassLabel`(분류는 색과 글자를 함께), `Lane`(마감·상태 묶음, 접기), `RowList`·`Row`·`RowTrigger`(카드 줄), `DueDate`(D-day, 3일 이하 강조), `StatePanel`(빈 상태·오류), `Skeleton`, `Toast`.
+- 창: `Sheet`. 네이티브 `<dialog>`의 `showModal`로 포커스 가두기·Esc·바깥 비활성을 처리하며 주된 행동은 `footer`에 둔다.
+- 틀: `AppShell`, `Rail`·`NavItem`(Next.js `Link`를 `link`로 넘김), `PageHeader`, `StatusBar`.
+
+줄 전체를 누르게 할 때 버튼 안에 다른 조작을 넣지 않는다. `RowTrigger`가 줄을 덮고, 줄 안의 선택칸 등은 `relative z-10`으로 그 위에 둔다.
+
 ## Tailwind 사용 계약
 
 화면·공통 컴포넌트·Storybook은 같은 Tailwind preset을 사용한다. styled-components나 다른 CSS-in-JS 런타임은 사용하지 않는다. CSS 변수로 값을 보관하는 것은 별도 스타일링 프레임워크 도입이 아니다. 테마 값을 바꾸면 같은 유틸리티를 사용하는 화면에 적용된다.
