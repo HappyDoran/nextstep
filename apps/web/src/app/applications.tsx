@@ -60,7 +60,7 @@ export function Applications({ me }: { me: Me }) {
 
     <ImportCsv userKey={key} />
     <section aria-labelledby="application-list">
-      <h2 id="application-list" className="mb-4 text-title">지원 현황</h2>
+      <h2 id="application-list" className="mb-4 text-title">지원 목록</h2>
       <div className="mb-4 grid gap-4 md:grid-cols-[1fr_auto]">
         <label className={label}>검색 (회사·직무)<input type="search" value={query} onChange={e => setQuery(e.target.value)} className={fieldClass} /></label>
         <label className={label}>상태 필터<select value={status} onChange={e => setStatus(e.target.value as ApplicationStatus | '전체')} className={fieldClass}>

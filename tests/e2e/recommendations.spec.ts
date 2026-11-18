@@ -48,9 +48,11 @@ test('추천 목록 표시·관심 없음·지원 현황 저장과 작업 실패
     // 이력서·프로필이 없으면 갱신 작업이 이유와 함께 실패로 끝난다(실제 작업자 처리).
     await page.getByRole('button', { name: '새로 가져오기' }).click();
     await expect(page.getByRole('status').filter({ hasText: '실패' })).toContainText('이력서와 프로필을 먼저 저장하세요', { timeout: 15_000 });
-    await page.getByLabel(/공고 링크로 판정/).fill('https://www.saramin.co.kr/x');
-    await page.getByRole('button', { name: '판정' }).click();
+    await page.getByRole('button', { name: '링크로 판정' }).click();
+    await page.getByLabel('공고 링크', { exact: true }).fill('https://www.saramin.co.kr/x');
+    await page.getByRole('button', { name: '판정', exact: true }).click();
     await expect(alert(page)).toContainText('공고 상세 링크');
+    await page.getByRole('button', { name: '취소' }).click();
 
     // 판정 결과 화면은 응답을 모의로 바꿔 표시 규칙만 확인한다(실제 수집·AI 검증 아님).
     const item = { postingId: 'p1', source: 'wanted', linkOnly: true, url: 'https://www.wanted.co.kr/wd/1', externalApplyUrl: null, title: '가상 프론트엔드', company: '가상회사', deadline: null, alwaysHire: false, postingStatus: '미확인', companyType: null, employeeCount: null, checkedAt: '2026-11-07T00:00:00.000Z', classification: '미확인', met: ['React 실무 3년'], unmet: [], unknown: ['기업 유형·규모 미기재'], reason: '필수 기술 일부 확인 불가', hidden: false, evaluatedAt: '2026-11-07T00:00:00.000Z' };
@@ -59,24 +61,30 @@ test('추천 목록 표시·관심 없음·지원 현황 저장과 작업 실패
     let feedbackBody: unknown;
     await page.route('**/api/recommendations/p2/feedback', route => { feedbackBody = route.request().postDataJSON(); return route.fulfill({ json: { feedback: null, restored: true, hidden: false } }); });
     await page.reload();
-    const card = page.getByRole('listitem').filter({ hasText: '가상 프론트엔드' });
+    // 줄을 누르면 상세 창이 열리고 근거·행동은 창에서 본다.
+    const row = (title: string) => page.getByRole('button', { name: new RegExp(title) });
+    await row('가상 프론트엔드').click();
+    const card = page.getByRole('dialog');
     await expect(card).toContainText('마감 미확인');
     await expect(card).toContainText('기업 유형·규모 미확인');
     await expect(card).toContainText('원티드 · 링크 판정');
-    await expect(card.getByRole('link', { name: /지원하기/ })).toHaveAttribute('href', 'https://www.wanted.co.kr/wd/1');
+    await expect(card.getByRole('link', { name: /지원 페이지 열기/ })).toHaveAttribute('href', 'https://www.wanted.co.kr/wd/1');
     await card.getByRole('button', { name: '지원 현황에 저장' }).click();
     await expect(card.getByRole('button', { name: '지원 현황에 저장됨' })).toBeVisible();
+    await card.getByRole('button', { name: '닫기' }).click();
     // 분류별 건수와 고급 필터(출처·검색).
     await expect(page.getByRole('button', { name: '제외 1' })).toBeVisible();
     await page.getByLabel('출처').selectOption('jobkorea');
-    await expect(page.getByRole('listitem').filter({ hasText: '가상 프론트엔드' })).toHaveCount(0);
+    await expect(row('가상 프론트엔드')).toHaveCount(0);
     await page.getByLabel('출처').selectOption('전체');
     await page.getByLabel('검색(제목·회사)').fill('다른회사');
-    await expect(page.getByRole('listitem').filter({ hasText: '가상 백엔드' })).toBeVisible();
-    await expect(page.getByRole('listitem').filter({ hasText: '가상 프론트엔드' })).toHaveCount(0);
-    // 제외 공고는 직접 복구할 수 있다.
-    await page.getByRole('listitem').filter({ hasText: '가상 백엔드' }).getByRole('button', { name: '제외 복구' }).click();
+    await expect(row('가상 백엔드')).toBeVisible();
+    await expect(row('가상 프론트엔드')).toHaveCount(0);
+    // 제외 공고는 상세 창에서 직접 복구할 수 있다.
+    await row('가상 백엔드').click();
+    await page.getByRole('dialog').getByRole('button', { name: '제외 복구' }).click();
     await expect.poll(() => feedbackBody).toEqual({ restored: true });
+    await page.getByRole('dialog').getByRole('button', { name: '닫기' }).click();
     await page.getByLabel('검색(제목·회사)').fill('');
     await page.getByRole('button', { name: '도전' }).click();
     await expect(page.getByRole('status').filter({ hasText: '조건에 맞는 추천이 없습니다.' })).toBeVisible();

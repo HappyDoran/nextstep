@@ -25,7 +25,8 @@ export function Sheet({ open, onClose, title, eyebrow, meta, classification, foo
       {meta ? <p className="mt-1 text-body-sm text-muted-foreground">{meta}</p> : null}
       <button type="button" onClick={onClose} aria-label="닫기" className="absolute right-4 top-4 grid size-9 cursor-pointer place-items-center rounded-full bg-muted text-muted-foreground focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus"><X className="size-icon-base shrink-0 stroke-emphasis" aria-hidden="true" focusable="false" /></button>
     </header>
-    <div className="grid min-h-0 gap-5 overflow-auto px-8 py-6">{children}</div>
+    {/* 넘치면 본문만 스크롤한다. 자식은 줄어들지 않게 둔다(overflow-hidden 자식이 잘리는 문제). */}
+    <div className="flex min-h-0 flex-col gap-5 overflow-auto px-8 py-6 [&>*]:shrink-0">{children}</div>
     {footer ? <footer className="flex items-center gap-2 border-t border-border bg-background px-8 py-4">{footer}</footer> : null}
   </dialog>;
 }

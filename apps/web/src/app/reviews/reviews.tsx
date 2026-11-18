@@ -5,15 +5,16 @@ import { Button } from '@nextstep/design-system';
 import { applicationSchema, reviewSchema, type Me, type Review } from '@nextstep/contracts';
 import { call, fieldClass, useMe } from '../api-client';
 import { Account } from '../account';
+import { Frame, LegacyLayout } from '../frame';
 
 const STATUSES = ['지원 완료', '전형 진행중', '합격', '불합격', '열람'] as const;
 const label = 'flex flex-col gap-2 text-body-sm';
 
 export function Reviews() {
   const me = useMe();
-  if (me.isPending) return <p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p>;
-  if (!me.data) return <div className="flex flex-col gap-4"><h1 className="text-title-lg">확인 목록</h1><Account /></div>;
-  return <ReviewList me={me.data} />;
+  if (me.isPending) return <LegacyLayout><p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p></LegacyLayout>;
+  if (!me.data) return <LegacyLayout><div className="flex flex-col gap-4"><h1 className="text-title-lg">확인 목록</h1><Account /></div></LegacyLayout>;
+  return <Frame me={me.data} title="확인 목록" description="메일에서 애매하게 읽힌 것만 모았어요"><ReviewList me={me.data} /></Frame>;
 }
 
 // 사용자 행동이 필요한 메일만 남긴다. 처리하지 않아도 재촉하지 않고 목록에 그대로 둔다.
@@ -21,7 +22,6 @@ function ReviewList({ me }: { me: Me }) {
   const reviews = useQuery({ queryKey: ['reviews', me.id], queryFn: async () => reviewSchema.array().parse(await call('reviews')), retry: false });
   const apps = useQuery({ queryKey: ['applications', me.id], queryFn: async () => applicationSchema.array().parse(await call('applications')), retry: false });
   return <div className="flex flex-col gap-6">
-    <h1 className="text-title-lg">확인 목록</h1>
     <p className="text-body-sm text-muted-foreground">메일만으로 대상이나 결과를 확정할 수 없는 항목입니다. 지원 건에 연결하거나, 새 지원 건으로 확정하거나, 나중에 보려면 보류하거나, 무시하세요. 보류한 항목은 목록 아래에 남고, 무시한 메일은 다시 묻지 않습니다.</p>
     {reviews.isPending ? <p role="status" className="text-muted-foreground">불러오고 있습니다.</p>
       : reviews.isError ? <div><p role="alert" className="mb-3 text-destructive">{reviews.error.message}</p><Button onClick={() => { void reviews.refetch(); }}>다시 시도</Button></div>

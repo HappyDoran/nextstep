@@ -4,17 +4,20 @@ const focus = 'focus-visible:outline focus-visible:outline-focus focus-visible:o
 const join = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(' ');
 
 const buttonVariant = {
-  primary: 'border-primary bg-primary text-primary-foreground enabled:hover:bg-primary-hover enabled:active:bg-primary-active',
-  secondary: 'border-border-strong bg-card text-foreground enabled:hover:bg-muted',
-  quiet: 'border-transparent bg-transparent text-muted-foreground font-medium enabled:hover:bg-muted',
+  primary: 'border-primary bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-active',
+  secondary: 'border-border-strong bg-card text-foreground hover:enabled:bg-muted',
+  quiet: 'border-transparent bg-transparent text-muted-foreground font-medium hover:enabled:bg-muted',
   danger: 'border-transparent bg-transparent text-destructive font-medium enabled:hover:bg-destructive-muted',
 } as const;
 const buttonSize = { md: 'h-control px-4 text-body-sm', sm: 'h-control-sm px-3 text-caption' } as const;
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof buttonVariant; size?: keyof typeof buttonSize };
 /** 화면마다 주된 행동 하나만 primary로 둔다. 아이콘만 있으면 aria-label을 준다. */
+/** 버튼 모양의 링크(외부 지원 페이지 등)에 같은 모양을 쓴다. */
+export const buttonClass = (variant: keyof typeof buttonVariant = 'primary', size: keyof typeof buttonSize = 'md', className?: string) =>
+  join('inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-control border font-sans font-semibold transition-colors duration-fast ease-hover disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none', buttonVariant[variant], buttonSize[size], focus, className);
 export function Button({ variant = 'primary', size = 'md', className, ...props }: ButtonProps) {
-  return <button type="button" {...props} className={join('inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-control border font-sans font-semibold transition-colors duration-fast ease-hover disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none', buttonVariant[variant], buttonSize[size], focus, className)} />;
+  return <button type="button" {...props} className={buttonClass(variant, size, className)} />;
 }
 
 const control = join('w-full rounded-control border border-border-strong bg-card px-3 text-body-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none aria-[invalid=true]:border-destructive disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground', focus);
