@@ -44,16 +44,16 @@ export function MailSetting({ me }: { me: Me }) {
     const submit = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); connect.mutate(new FormData(e.currentTarget)); };
     return <form onSubmit={submit} className="flex flex-col gap-4">
       <p className="text-body-sm text-muted-foreground">채용 메일로 지원 상태를 자동으로 반영합니다. 연결하지 않아도 지원 건을 직접 관리할 수 있습니다.</p>
-      <section aria-labelledby="mail-steps" className="rounded-control border border-border p-4">
-        <h3 id="mail-steps" className="mb-2 text-body font-semibold">연결 준비 (네이버에서 한 번만)</h3>
+      <section aria-labelledby="mail-steps" className="rounded-surface border border-border bg-background p-5">
+        <h3 id="mail-steps" className="mb-2 text-body-sm font-extrabold">연결 준비 (네이버에서 한 번만)</h3>
         <ol className="flex list-decimal flex-col gap-1 pl-5 text-body-sm">
           <li>네이버 메일 &gt; 환경설정 &gt; POP3/IMAP 설정 &gt; IMAP/SMTP 설정에서 &lsquo;IMAP/SMTP 사용&rsquo;을 사용함으로 저장합니다.</li>
           <li>네이버 내정보 &gt; 보안설정에서 2단계 인증을 켭니다.</li>
           <li>2단계 인증 관리 &gt; 애플리케이션 비밀번호 관리에서 새 비밀번호를 만들어 아래에 붙여 넣습니다. 네이버 로그인 비밀번호는 넣지 마세요.</li>
         </ol>
       </section>
-      <section aria-labelledby="mail-scope" className="rounded-control border border-border p-4">
-        <h3 id="mail-scope" className="mb-2 text-body font-semibold">NextStep이 하는 일과 하지 않는 일</h3>
+      <section aria-labelledby="mail-scope" className="rounded-surface border border-border bg-background p-5">
+        <h3 id="mail-scope" className="mb-2 text-body-sm font-extrabold">NextStep이 하는 일과 하지 않는 일</h3>
         <ul className="flex list-disc flex-col gap-1 pl-5 text-body-sm">
           <li>받은 메일을 읽기만 합니다. 읽음 처리·이동·삭제·발송을 하지 않습니다.</li>
           <li>채용 메일의 제목 앞부분·짧은 근거·수신 시각만 저장하고 본문은 저장하지 않습니다.</li>
@@ -62,9 +62,9 @@ export function MailSetting({ me }: { me: Me }) {
           <li>네이버에서 애플리케이션 비밀번호를 삭제하면 그 즉시 NextStep의 접근도 끊깁니다.</li>
         </ul>
       </section>
-      <label className="flex flex-col gap-2 text-body-sm">네이버 메일 주소<input name="account" type="email" required autoComplete="off" className={fieldClass} /></label>
-      <label className="flex flex-col gap-2 text-body-sm">애플리케이션 비밀번호<input name="appPassword" type="password" required autoComplete="off" className={fieldClass} /></label>
-      <label className="flex flex-col gap-2 text-body-sm">처음 조회할 기간
+      <label className="flex flex-col gap-1.5 text-body-sm font-semibold">네이버 메일 주소<input name="account" type="email" required autoComplete="off" className={fieldClass} /></label>
+      <label className="flex flex-col gap-1.5 text-body-sm font-semibold">애플리케이션 비밀번호<input name="appPassword" type="password" required autoComplete="off" className={fieldClass} /></label>
+      <label className="flex flex-col gap-1.5 text-body-sm font-semibold">처음 조회할 기간
         <select name="days" defaultValue="90" className={fieldClass}>{PERIODS.map(([d, t]) => <option key={d} value={d}>{t}</option>)}</select>
       </label>
       <label className="flex items-start gap-2 text-body-sm"><input name="consent" type="checkbox" required className="mt-1 size-icon-md accent-primary" />고른 기간의 받은 메일(보낸·임시·휴지통·스팸 제외)을 읽기 전용으로 조회하고, 이후 새 메일을 1시간마다 확인하는 데 동의합니다.</label>
@@ -76,7 +76,7 @@ export function MailSetting({ me }: { me: Me }) {
   const result = job?.result as { stored?: number; applied?: number; created?: number; review?: number; more?: boolean; aiFailures?: number; aiFailureCodes?: Record<string, number> } | null | undefined;
   const aiCause = Object.keys(result?.aiFailureCodes ?? {}).map(c => AI_CAUSES[c] ?? c).join(', ');
   return <div className="flex flex-col gap-4">
-    <p role="status" className="text-muted-foreground">
+    <p role="status" className="text-body-sm font-semibold">
       {conn.account} · {conn.status}{conn.lastSuccessAt ? ` · 최근 성공 ${new Date(conn.lastSuccessAt).toLocaleString('ko-KR')}` : ''}
       {job ? ` · ${ACTIVE.includes(job.status) ? '메일을 확인하고 있습니다' : `${job.status}${job.errorCode ? `(${ERRORS[job.errorCode] ?? job.errorCode})` : ''}: 채용 메일 ${result?.stored ?? 0}건, 반영 ${(result?.applied ?? 0) + (result?.created ?? 0)}건, 확인 필요 ${result?.review ?? 0}건${result?.aiFailures ? `, AI 해석 실패(${aiCause}) — 해결 후 다시 확인하면 이어서 해석` : ''}${result?.more ? ', 남은 메일은 다음 조회에서 이어서 처리' : ''}`}` : ''}
     </p>
@@ -86,12 +86,12 @@ export function MailSetting({ me }: { me: Me }) {
       <Button disabled={sync.isPending || Boolean(job && ACTIVE.includes(job.status))} onClick={() => sync.mutate()}>지금 메일 확인</Button>
     </div>
     {!conn.backfillSince && <div className="flex flex-wrap items-end gap-3">
-      <label className="flex flex-col gap-2 text-body-sm">과거 범위 넓히기
+      <label className="flex flex-col gap-1.5 text-body-sm font-semibold">과거 범위 넓히기
         <select value={pastDays} onChange={e => setPastDays(Number(e.target.value))} className={fieldClass}>{PAST.map(([d, t]) => <option key={d} value={d}>{t}</option>)}</select>
       </label>
-      <Button disabled={backfill.isPending || Boolean(job && ACTIVE.includes(job.status))} onClick={() => backfill.mutate()}>더 오래된 메일 가져오기</Button>
+      <Button variant="secondary" disabled={backfill.isPending || Boolean(job && ACTIVE.includes(job.status))} onClick={() => backfill.mutate()}>더 오래된 메일 가져오기</Button>
     </div>}
-    <fieldset className="flex flex-col gap-2 text-body-sm"><legend className="mb-1">연결 해제 시 메일로 만든 지원 건</legend>
+    <fieldset className="flex flex-col gap-1.5 text-body-sm font-semibold"><legend className="mb-1">연결 해제 시 메일로 만든 지원 건</legend>
       <label className="flex items-center gap-2"><input type="radio" checked={keep} onChange={() => setKeep(true)} className="accent-primary" />유지</label>
       <label className="flex items-center gap-2"><input type="radio" checked={!keep} onChange={() => setKeep(false)} className="accent-primary" />삭제</label>
     </fieldset>

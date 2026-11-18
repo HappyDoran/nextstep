@@ -49,7 +49,7 @@ export function Account() {
     return <div>
       <p role="status" className="mb-5 text-muted-foreground">{me.data.email} 계정으로 로그인했습니다.</p>
       <div className="flex flex-wrap gap-3">
-        <Button disabled={busy} onClick={() => logout.mutate()}>로그아웃</Button>
+        <Button variant="secondary" disabled={busy} onClick={() => logout.mutate()}>로그아웃</Button>
         <Button disabled={busy} variant="danger" onClick={() => {
           if (window.confirm('계정과 저장한 지원 건을 모두 삭제합니다. 되돌릴 수 없습니다.')) remove.mutate();
         }}>계정 삭제</Button>
@@ -62,15 +62,15 @@ export function Account() {
   return <div>
     <div role="tablist" aria-label="계정" className="mb-5 flex gap-2">
       {(['login', 'signup'] as const).map(value => <button key={value} type="button" role="tab" aria-selected={mode === value}
-        className={`min-h-control rounded-control px-4 text-body ${mode === value ? 'bg-muted font-semibold' : 'text-muted-foreground'}`}
+        className={`h-control-sm cursor-pointer rounded-full border px-4 text-body-sm ${mode === value ? 'border-foreground bg-foreground font-semibold text-background' : 'border-border-strong bg-card text-muted-foreground hover:bg-muted'}`}
         onClick={() => { setMode(value); auth.reset(); }}>{value === 'login' ? '로그인' : '초대 코드로 가입'}</button>)}
     </div>
     <form onSubmit={submit} className="flex max-w-md flex-col gap-4">
       {mode === 'signup' && (linkCode
         ? <p className="text-body-sm text-muted-foreground"><input type="hidden" name="inviteCode" value={linkCode} />초대 링크로 가입합니다. 로그인에 쓸 이메일과 비밀번호를 정하세요.</p>
-        : <label className="flex flex-col gap-2 text-body-sm">초대 코드<input name="inviteCode" required autoComplete="off" className={field} /></label>)}
-      <label className="flex flex-col gap-2 text-body-sm">이메일<input name="email" type="email" required autoComplete="email" className={field} /></label>
-      <label className="flex flex-col gap-2 text-body-sm">비밀번호<input name="password" type="password" required minLength={10} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} className={field} /></label>
+        : <label className="flex flex-col gap-1.5 text-body-sm font-semibold">초대 코드<input name="inviteCode" required autoComplete="off" className={field} /></label>)}
+      <label className="flex flex-col gap-1.5 text-body-sm font-semibold">이메일<input name="email" type="email" required autoComplete="email" className={field} /></label>
+      <label className="flex flex-col gap-1.5 text-body-sm font-semibold">비밀번호<input name="password" type="password" required minLength={10} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} className={field} /></label>
       <Button type="submit" disabled={auth.isPending}>{mode === 'login' ? '로그인' : '가입'}</Button>
       {auth.isError && <p role="alert" className="text-body-sm text-destructive">{auth.error.message}</p>}
     </form>

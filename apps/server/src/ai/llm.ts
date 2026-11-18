@@ -21,6 +21,17 @@ const think = () => process.env.NEXTSTEP_OLLAMA_THINK === '1';
 const ollamaUrl = () => process.env.NEXTSTEP_OLLAMA_URL ?? 'http://127.0.0.1:11434';
 export const ollamaModel = () => process.env.NEXTSTEP_OLLAMA_MODEL ?? 'qwen3:1.7b';
 
+// 연결 상태 확인: 모델 목록을 짧게 묻는다(본문 없음).
+export async function ollamaStatus(): Promise<'정상' | '모델 없음' | '연결 실패'> {
+  if (fake()) return '정상';
+  try {
+    const response = await fetch(`${ollamaUrl()}/api/tags`, { signal: AbortSignal.timeout(3000) });
+    if (!response.ok) return '연결 실패';
+    const { models } = await response.json() as { models?: { name?: string; model?: string }[] };
+    return models?.some(m => m.name === ollamaModel() || m.model === ollamaModel()) ? '정상' : '모델 없음';
+  } catch { return '연결 실패'; }
+}
+
 export async function structured<T extends z.ZodType>(name: string, schema: T, instructions: string, input: string): Promise<z.infer<T>> {
   if (fake()) {
     try { return schema.parse(fakeValue(jsonSchema(schema))); } catch { throw new AiError('ai_invalid_output'); }

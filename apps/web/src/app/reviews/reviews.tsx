@@ -6,7 +6,7 @@ import { Button, Field, Input, Segmented, Select, StatePanel, Tag } from '@nexts
 import { applicationSchema, reviewBodySchema, reviewSchema, type Me, type Review } from '@nextstep/contracts';
 import { call, useMe } from '../api-client';
 import { Account } from '../account';
-import { Frame, LegacyLayout } from '../frame';
+import { Frame, AuthLayout } from '../frame';
 
 const STATUSES = ['지원 완료', '전형 진행중', '합격', '불합격', '열람'] as const;
 const NO_COMPANY = '회사 미확인';
@@ -15,8 +15,8 @@ const when = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'nu
 
 export function Reviews() {
   const me = useMe();
-  if (me.isPending) return <LegacyLayout><p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p></LegacyLayout>;
-  if (!me.data) return <LegacyLayout><div className="flex flex-col gap-4"><h1 className="text-title-lg">확인 목록</h1><Account /></div></LegacyLayout>;
+  if (me.isPending) return <AuthLayout><p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p></AuthLayout>;
+  if (!me.data) return <AuthLayout><div className="flex flex-col gap-4"><h1 className="text-title-lg">확인 목록</h1><Account /></div></AuthLayout>;
   return <ReviewList me={me.data} />;
 }
 

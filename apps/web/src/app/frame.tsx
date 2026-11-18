@@ -7,16 +7,25 @@ import { AlertCircle, BriefcaseBusiness, Check, Inbox, LoaderCircle, Mail, Setti
 import { AppShell, NavItem, PageHeader, Rail, StatusBar } from '@nextstep/design-system';
 import { latestRefreshSchema, mailConnectionSchema, reviewSchema, type Me } from '@nextstep/contracts';
 import { call, RequestError } from './api-client';
-import { Nav } from './nav';
 
 const icon = 'size-icon-md shrink-0 stroke-icon';
 const small = 'size-icon-sm shrink-0 stroke-icon';
 const ACTIVE: string[] = ['대기', '실행중'];
 const time = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-/** 로그인 전 화면은 기존처럼 가운데 단과 위쪽 메뉴를 쓴다. */
-export function LegacyLayout({ children }: { children: ReactNode }) {
-  return <main className="mx-auto max-w-content px-6 py-12 md:py-24"><Nav />{children}</main>;
+/** 로그인 전 화면: 왼쪽 인디고 소개 면, 오른쪽 양식. 좁은 창에서는 소개 면을 위로 접는다. */
+export function AuthLayout({ children }: { children: ReactNode }) {
+  return <div className="grid min-h-dvh bg-background text-foreground md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+    <aside className="flex flex-col justify-between gap-10 bg-primary px-10 py-10 text-primary-foreground md:px-16 md:py-16">
+      <p className="flex items-center gap-2 text-title font-extrabold"><span aria-hidden="true" className="size-2.5 rotate-45 rounded-xs bg-primary-foreground" />NextStep</p>
+      <div className="hidden md:block">
+        <p className="text-display">마감 전에,<br />맞는 공고부터.</p>
+        <p className="mt-3 text-body opacity-80">서류로 고르고, 메일로 따라가는 개인 지원 관리</p>
+      </div>
+      <p className="hidden text-body-sm opacity-80 md:block">초대받은 사람만 쓸 수 있어요</p>
+    </aside>
+    <main className="flex items-center justify-center px-6 py-12"><div className="grid w-full max-w-md gap-8">{children}</div></main>
+  </div>;
 }
 
 /** 로그인 후 앱 틀: 왼쪽 아이콘 메뉴 · 화면 머리 · 하단 상태바(메일 확인과 공고 갱신 결과). */

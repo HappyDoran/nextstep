@@ -52,11 +52,11 @@ export function ResumeSetting({ me, kind = 'resume' }: { me: Me; kind?: Document
   const remove = useMutation({ mutationFn: () => call(`documents/${kind}`, { method: 'DELETE' }), onSuccess: () => client.setQueryData(key, null) });
   const error = save.error ?? edit.error ?? remove.error;
   return <div className="flex flex-col gap-4">
-    <p role="status" className="text-muted-foreground">
+    <p role="status" className="text-body-sm font-semibold">
       {query.isPending ? `${label}를 확인하고 있습니다.` : query.isError ? `${label}를 불러오지 못했습니다.`
         : doc ? `등록된 ${label}: ${doc.filename} (${Math.ceil(doc.size / 1024)}KB, ${new Date(doc.createdAt).toLocaleString('ko-KR')})${doc.edited ? ' · MD 수정함' : ''}` : `등록한 ${label}가 없습니다.`}
     </p>
-    <label className="flex flex-col gap-2 text-body-sm">{label} 파일 (PDF·MD·Notion ZIP. 이미지 쪽은 글자 인식으로 MD 변환)
+    <label className="flex flex-col gap-1.5 text-body-sm font-semibold">{label} 파일 (PDF·MD·Notion ZIP. 이미지 쪽은 글자 인식으로 MD 변환)
       <input type="file" accept=".pdf,.md,.markdown,.zip,application/pdf,text/markdown,application/zip" onChange={e => setFile(e.target.files?.[0] ?? null)} className="text-body" />
     </label>
     <div className="flex flex-wrap gap-3">
@@ -77,10 +77,10 @@ export function ResumeSetting({ me, kind = 'resume' }: { me: Me; kind?: Document
 
 function MdEditor({ doc, label, saving, onSave }: { doc: Resume; label: string; saving: boolean; onSave: (text: string) => void }) {
   const [draft, setDraft] = useState(doc.text);
-  return <details className="rounded-control border border-border p-4">
-    <summary className="cursor-pointer text-body-sm">변환된 MD 확인·수정</summary>
+  return <details className="rounded-surface border border-border bg-background p-4">
+    <summary className="cursor-pointer text-body-sm font-semibold">변환된 MD 확인·수정</summary>
     <label className="mt-3 flex flex-col gap-2 text-body-sm">{label} MD
-      <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={14} className="rounded-control border border-border bg-background p-3 font-mono text-body-sm" />
+      <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={14} className="rounded-control border border-border-strong bg-card p-3 font-mono text-caption focus:border-primary focus:outline-none" />
     </label>
     <Button className="mt-3" disabled={saving || draft.trim() === doc.text.trim() || !draft.trim()} onClick={() => onSave(draft)}>MD 저장</Button>
   </details>;

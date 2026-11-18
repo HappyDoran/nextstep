@@ -6,7 +6,7 @@ import { Button, buttonClass, ClassLabel, DueDate, Field, Input, Lane, Row, RowL
 import { jobSchema, profileSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
 import { call, useMe } from '../api-client';
 import { Account } from '../account';
-import { Frame, LegacyLayout } from '../frame';
+import { Frame, AuthLayout } from '../frame';
 import { AI_CAUSES } from '../settings/ai';
 
 const CLASSES = recommendationClassSchema.options;
@@ -41,8 +41,8 @@ function JobStatus({ job }: { job: Job | null }) {
 
 export function Recommendations() {
   const me = useMe();
-  if (me.isPending) return <LegacyLayout><p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p></LegacyLayout>;
-  if (!me.data) return <LegacyLayout><div className="flex flex-col gap-4"><h1 className="text-title-lg">추천</h1><p>로그인 후 이용하세요.</p><Account /></div></LegacyLayout>;
+  if (me.isPending) return <AuthLayout><p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p></AuthLayout>;
+  if (!me.data) return <AuthLayout><div className="flex flex-col gap-4"><h1 className="text-title-lg">추천</h1><p>로그인 후 이용하세요.</p><Account /></div></AuthLayout>;
   return <RecommendationList me={me.data} />;
 }
 

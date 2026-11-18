@@ -74,6 +74,16 @@ test('갱신 작업: 세 출처를 수집하고 원문 없이 조건·판정을 
     const other = await s.signup('latest-other@example.com');
     assert.deepEqual((await s.app.inject({ url: '/jobs/latest', headers: { cookie: other } })).json(), { job: null, counts: null });
     assert.equal((await s.app.inject({ url: '/jobs/latest' })).statusCode, 401);
+    // 연결 상태: 출처는 마지막 갱신의 실패로(가짜 사람인 상세 실패), AI는 닿지 않는 주소면 연결 실패, 메일은 연결 전.
+    process.env.NEXTSTEP_OLLAMA_URL = 'http://127.0.0.1:9';
+    const conn = (await s.app.inject({ url: '/settings/connections', headers: { cookie: a } })).json();
+    delete process.env.NEXTSTEP_OLLAMA_URL;
+    assert.equal(conn.ai.status, '연결 실패');
+    assert.equal(conn.mail, null);
+    assert.equal(conn.sources.find(x => x.source === 'saramin').status, '실패');
+    assert.equal(conn.sources.find(x => x.source === 'jobkorea').status, '정상');
+    assert.deepEqual((await s.app.inject({ url: '/settings/connections', headers: { cookie: other } })).json().sources.map(x => x.status), ['확인 전', '확인 전', '확인 전', '확인 전', '확인 전']);
+    assert.equal((await s.app.inject({ url: '/settings/connections' })).statusCode, 401);
     const raw = new DatabaseSync(s.path);
     assert.equal(JSON.stringify(raw.prepare('SELECT * FROM postings').all()).includes('필수: React 3년'), false);
     raw.close();

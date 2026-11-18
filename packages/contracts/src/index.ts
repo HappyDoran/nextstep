@@ -206,3 +206,11 @@ export const automationStatusSchema = z.object({
 // 서버가 쓰는 로컬 LLM 모델 이름(설정 화면 표시용). 사용자별 AI 설정은 없다(P1-10).
 export const aiSettingsSchema = z.object({ model: z.string() });
 export type AiSettings = z.infer<typeof aiSettingsSchema>;
+// 설정 '연결 상태': 로컬 AI는 확인할 때마다 실제로 묻고, 메일·공고 출처는 마지막 실행 결과를 보여 준다.
+export const connectionStatusSchema = z.object({
+  checkedAt: z.string(),
+  ai: z.object({ model: z.string(), status: z.enum(['정상', '모델 없음', '연결 실패']) }),
+  mail: z.object({ status: z.enum(['정상', '인증 실패']), lastSuccessAt: z.string().nullable(), lastError: z.string().nullable() }).nullable(),
+  sources: z.array(z.object({ source: sourceIdSchema, status: z.enum(['정상', '실패', '확인 전']), codes: z.array(z.string()), finishedAt: z.string().nullable() })),
+});
+export type ConnectionStatus = z.infer<typeof connectionStatusSchema>;

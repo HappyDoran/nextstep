@@ -136,7 +136,7 @@ function ImportCsv({ open, userKey, onClose }: { open: boolean; userKey: string[
   });
   return <Sheet open={open} onClose={onClose} size="sm" title="CSV로 한 번에 등록" meta="엑셀·Notion에서 내보낸 지원 현황">
     <p className="text-body-sm text-muted-foreground">필요한 열은 회사·직무·상태(지원 완료·이력서 열람·서류 합격·불합격 등)이고 공고URL은 선택입니다. 이미 있는 회사·직무는 건너뛰고, 확인 목록의 연결 불명 메일은 가져온 지원 건으로 다시 연결해 봅니다. 파일은 서버에 남기지 않습니다.</p>
-    <Field label="CSV 파일"><input type="file" accept=".csv,text/csv" disabled={run.isPending} onChange={e => { const file = e.target.files?.[0]; if (file) run.mutate(file); e.target.value = ''; }} className="text-body-sm" /></Field>
+    <Field label="CSV 파일"><input type="file" accept=".csv,text/csv" disabled={run.isPending} onChange={e => { const file = e.target.files?.[0]; if (file) run.mutate(file); e.target.value = ''; }} className="w-full cursor-pointer rounded-control border-2 border-dashed border-border-strong bg-background p-4 text-body-sm text-muted-foreground file:mr-3 file:h-control-sm file:cursor-pointer file:rounded-control file:border file:border-border-strong file:bg-card file:px-3 file:font-semibold file:text-foreground" /></Field>
     {run.isPending && <p role="status" className="text-body-sm text-muted-foreground">가져오고 있습니다.</p>}
     {run.data && <p role="status" className="text-body-sm">등록 {run.data.imported}건 · 이미 있음 {run.data.duplicates}건 · 형식 오류 {run.data.invalid}건{run.data.requeued ? ` · 확인 요청 ${run.data.requeued}건을 다시 연결하는 중` : ''}</p>}
     {run.isError && <p role="alert" className="text-body-sm text-destructive">{run.error.message}</p>}

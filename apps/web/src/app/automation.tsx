@@ -1,6 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { automationStatusSchema, type Me } from '@nextstep/contracts';
+import { Toggle } from '@nextstep/design-system';
 import { call } from './api-client';
 
 // 자동 갱신 ON/OFF 저장. 서버 예약 실행은 P1-06에서 이 값을 사용한다.
@@ -14,10 +15,7 @@ export function AutomationSetting({ me }: { me: Me }) {
   });
   const checked = save.isPending ? save.variables : query.data?.enabled;
   return <div>
-    <label className="flex items-center gap-3 text-body">
-      <input type="checkbox" role="switch" checked={checked ?? false} disabled={!query.data || save.isPending} onChange={e => save.mutate(e.target.checked)} className="size-icon-md accent-primary" />
-      자동 갱신
-    </label>
+    <Toggle checked={checked ?? false} disabled={!query.data || save.isPending} onChange={e => save.mutate(e.target.checked)} className="font-semibold">자동 갱신</Toggle>
     <p role="status" className="mt-2 text-body-sm text-muted-foreground">
       {query.isPending ? '설정을 불러오고 있습니다.'
         : query.isError ? '설정을 불러오지 못했습니다.'

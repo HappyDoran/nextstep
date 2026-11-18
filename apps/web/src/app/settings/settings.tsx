@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, type ReactNode } from 'react';
-import { Panel, Segmented } from '@nextstep/design-system';
+import { Segmented } from '@nextstep/design-system';
 import type { Me } from '@nextstep/contracts';
 import { useMe } from '../api-client';
 import { Account } from '../account';
@@ -10,7 +10,8 @@ import { AiSetting } from './ai';
 import { ProfileSetting } from './profile';
 import { MailSetting } from './mail';
 import { ConnectionStatus } from '../status';
-import { Frame, LegacyLayout } from '../frame';
+import { ConnectionPanel } from './connections';
+import { Frame, AuthLayout } from '../frame';
 
 // 한 번에 한 구역만 보여 준다(기획서 4절). 주소의 #구역으로 바로 열 수 있다(상태바 '연결 확인' → #status).
 const SECTIONS = [
@@ -26,11 +27,11 @@ const isSection = (v: string): v is Section => SECTIONS.some(s => s.value === v)
 
 export function Settings() {
   const me = useMe();
-  if (!me.data) return <LegacyLayout><div className="flex flex-col gap-6">
+  if (!me.data) return <AuthLayout>
     <h1 className="text-title-lg">설정</h1>
-    <Panel><h2 className="mb-3 text-title">계정</h2><Account /></Panel>
-    <Panel><h2 className="mb-3 text-title">서비스 연결 확인</h2><ConnectionStatus /></Panel>
-  </div></LegacyLayout>;
+    <Account />
+    <section aria-labelledby="service-check" className="border-t border-border pt-6"><h2 id="service-check" className="mb-3 text-body-sm font-extrabold">서비스 연결 확인</h2><ConnectionStatus /></section>
+  </AuthLayout>;
   return <SettingSections me={me.data} />;
 }
 
@@ -57,7 +58,7 @@ function SettingSections({ me }: { me: Me }) {
     </div>,
     profile: card('profile', '프로필·필터', '필터는 공고를 가져올 때와 추천 목록에 그대로 써요.', <><ProfileSetting me={me} /><AiSetting me={me} /></>),
     automation: card('automation', '자동 갱신', null, <AutomationSetting me={me} />),
-    status: card('status', '연결 상태', '공고·메일을 가져오는 데 필요한 연결을 확인해요. 문제가 있으면 하단 상태바에도 표시돼요.', <div className="grid gap-5"><ConnectionStatus /><div><h3 className="mb-1 text-body-sm font-extrabold">AI 처리</h3><AiSetting me={me} /></div></div>),
+    status: card('status', '연결 상태', '공고·메일을 가져오는 데 필요한 연결을 확인해요. 문제가 있으면 하단 상태바에도 표시돼요.', <div className="grid gap-5"><ConnectionPanel me={me} /><AiSetting me={me} /></div>),
   } satisfies Record<Section, ReactNode>;
   return <Frame me={me} title="설정" description="계정·메일·서류·프로필을 관리해요">
     <div className="mb-5"><Segmented label="설정 구역" value={section} onChange={choose} options={SECTIONS} /></div>
