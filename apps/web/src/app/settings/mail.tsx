@@ -95,7 +95,7 @@ export function MailSetting({ me }: { me: Me }) {
       <label className="flex items-center gap-2"><input type="radio" checked={keep} onChange={() => setKeep(true)} className="accent-primary" />유지</label>
       <label className="flex items-center gap-2"><input type="radio" checked={!keep} onChange={() => setKeep(false)} className="accent-primary" />삭제</label>
     </fieldset>
-    <div><Button disabled={disconnect.isPending} className="border-destructive !bg-transparent !text-destructive" onClick={() => { if (window.confirm('메일 조회를 멈추고 저장한 비밀번호를 삭제합니다.')) disconnect.mutate(); }}>연결 해제</Button></div>
+    <div><Button disabled={disconnect.isPending} variant="danger" onClick={() => { if (window.confirm('메일 조회를 멈추고 저장한 비밀번호를 삭제합니다.')) disconnect.mutate(); }}>연결 해제</Button></div>
     {(sync.isError || backfill.isError || disconnect.isError) && <p role="alert" className="text-body-sm text-destructive">{(sync.error ?? backfill.error ?? disconnect.error)?.message}</p>}
   </div>;
 }

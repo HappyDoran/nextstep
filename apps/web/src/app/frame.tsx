@@ -66,6 +66,7 @@ function RefreshState({ me }: { me: Me }) {
   return <>
     {failed ? <AlertCircle className={`${small} text-destructive`} aria-hidden="true" focusable="false" /> : <Check className={`${small} text-success`} aria-hidden="true" focusable="false" />}
     <span className={failed ? 'text-destructive' : undefined}>공고 가져오기 {job.status === '성공' ? '끝' : job.status}{job.finishedAt ? ` · ${time(job.finishedAt)}` : ''}{counts ? ` · 기본 ${counts.basic} · 도전 ${counts.challenge}` : ''}</span>
-    {failed ? <Link href="/settings" className="font-bold text-primary">연결 확인</Link> : null}
+    {/* 같은 화면에서도 구역이 바뀌도록 해시 이동은 일반 링크로 한다(Next 링크는 hashchange를 내지 않음). */}
+    {failed ? <a href="/settings#status" className="font-bold text-primary">연결 확인</a> : null}
   </>;
 }

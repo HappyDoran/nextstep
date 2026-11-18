@@ -50,7 +50,7 @@ export function Account() {
       <p role="status" className="mb-5 text-muted-foreground">{me.data.email} 계정으로 로그인했습니다.</p>
       <div className="flex flex-wrap gap-3">
         <Button disabled={busy} onClick={() => logout.mutate()}>로그아웃</Button>
-        <Button disabled={busy} className="!bg-transparent !text-destructive border-destructive" onClick={() => {
+        <Button disabled={busy} variant="danger" onClick={() => {
           if (window.confirm('계정과 저장한 지원 건을 모두 삭제합니다. 되돌릴 수 없습니다.')) remove.mutate();
         }}>계정 삭제</Button>
       </div>

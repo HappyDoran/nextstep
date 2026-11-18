@@ -5,7 +5,8 @@ import { deleteAccount, signup } from './helpers';
 test('네이버 연결 동의 필수·연결 상태 표시와 확인 목록 처리', async ({ page }) => {
   await signup(page, `e2e-mail-${Date.now()}@example.com`);
   try {
-    await page.goto('/settings');
+    // 설정은 한 번에 한 구역만 보인다. 주소의 #구역으로 바로 연다.
+    await page.goto('/settings#mail');
     await page.getByLabel('네이버 메일 주소').fill('tester@naver.com');
     await page.getByLabel('애플리케이션 비밀번호').fill('x');
     // 처음 조회할 기간을 고른다(기본 3개월).

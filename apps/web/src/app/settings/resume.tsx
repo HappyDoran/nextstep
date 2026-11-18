@@ -61,7 +61,7 @@ export function ResumeSetting({ me, kind = 'resume' }: { me: Me; kind?: Document
     </label>
     <div className="flex flex-wrap gap-3">
       <Button disabled={!file || save.isPending} onClick={() => { if (file) save.mutate(file); }}>{save.isPending ? '변환 중…' : `${label} ${doc ? '교체' : '등록'}`}</Button>
-      {doc && <Button disabled={remove.isPending} className="border-destructive !bg-transparent !text-destructive" onClick={() => { if (window.confirm(`${label} 원본과 MD를 삭제합니다.`)) remove.mutate(); }}>{label} 삭제</Button>}
+      {doc && <Button disabled={remove.isPending} variant="danger" onClick={() => { if (window.confirm(`${label} 원본과 MD를 삭제합니다.`)) remove.mutate(); }}>{label} 삭제</Button>}
     </div>
     {doc && doc.ocrPages.length > 0 && <p role="status" className="text-body-sm text-warning">
       {doc.ocrPages.join('·')}쪽은 이미지라 글자 인식(OCR)으로 읽었습니다. 아래 MD에서 잘못 읽은 글자를 고쳐 주세요.

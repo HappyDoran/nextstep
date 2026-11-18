@@ -41,4 +41,4 @@ export function useMe() {
   return useQuery({ queryKey: ME_KEY, queryFn: fetchMe, retry: false, refetchOnWindowFocus: false });
 }
 
-export const fieldClass = 'min-h-control w-full rounded-control border border-input bg-background px-4 text-body focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus';
+export const fieldClass = 'h-control w-full rounded-control border border-border-strong bg-card px-3 text-body-sm focus:border-primary focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus';

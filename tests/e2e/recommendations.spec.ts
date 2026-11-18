@@ -7,6 +7,7 @@ test('이력서 등록·실패 시 유지·프로필 저장과 로컬 AI 실패 
   await signup(page, `e2e-rec-${Date.now()}@example.com`);
   try {
     await page.goto('/settings');
+    await page.getByRole('button', { name: '서류', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: '등록한 이력서가 없습니다.' })).toBeVisible();
     await page.getByLabel(/이력서 파일/).setInputFiles(fixture('resume-text.pdf'));
     await page.getByRole('button', { name: '이력서 등록' }).click();
@@ -27,6 +28,7 @@ test('이력서 등록·실패 시 유지·프로필 저장과 로컬 AI 실패 
     await expect(alert(page)).toContainText('기존 이력서는 유지됩니다.');
     await expect(page.getByRole('status').filter({ hasText: '등록된 이력서: resume-text.pdf' })).toBeVisible();
 
+    await page.getByRole('button', { name: '프로필·필터', exact: true }).click();
     await page.getByRole('button', { name: '이력서로 초안 만들기' }).click();
     // e2e 서버는 닿지 않는 Ollama 주소를 써서 실패 안내만 확인한다(실제 AI 호출 없음).
     await expect(alert(page).filter({ hasText: 'AI 처리' })).toContainText('로컬 AI(Ollama)가 켜져 있는지');
