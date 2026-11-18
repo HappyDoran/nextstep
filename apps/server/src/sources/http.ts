@@ -13,15 +13,18 @@ export async function politeGet(url: string, options: { referer?: string; accept
   const host = new URL(url).host;
   if (blockedHosts.has(host)) return { code: 'blocked' };
   await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY_MS));
+  const request = () => fetch(url, {
+    headers: { 'user-agent': USER_AGENT, accept: options.accept ?? 'text/html', 'accept-language': 'ko-KR,ko', ...(options.referer ? { referer: options.referer } : {}) },
+    redirect: 'follow',
+    signal: AbortSignal.timeout(20_000),
+  });
   let res: Response;
   try {
-    res = await fetch(url, {
-      headers: { 'user-agent': USER_AGENT, accept: options.accept ?? 'text/html', 'accept-language': 'ko-KR,ko', ...(options.referer ? { referer: options.referer } : {}) },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(20_000),
-    });
+    res = await request();
   } catch {
-    return { code: 'network' };
+    // 일시적인 연결 끊김·시간 초과는 같은 간격을 두고 한 번만 다시 시도한다(2026-11-18 사람인 상세 2건 연결 실패). 차단 응답은 다시 시도하지 않는다.
+    await new Promise(resolve => setTimeout(resolve, REQUEST_DELAY_MS));
+    try { res = await request(); } catch { return { code: 'network' }; }
   }
   if (res.status === 403 || res.status === 429) {
     blockedHosts.add(host);

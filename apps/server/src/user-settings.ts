@@ -21,7 +21,8 @@ export function registerUserSettings(app: FastifyInstance, db: DatabaseSync) {
     if (!user) return reply;
     const mail = db.prepare('SELECT status, last_success_at, last_error FROM mail_connections WHERE user_id = ?').get(user.id) as { status: '정상' | '인증 실패'; last_success_at: string | null; last_error: string | null } | undefined;
     const job = db.prepare("SELECT status, result, finished_at FROM jobs WHERE user_id = ? AND kind = 'refresh' AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1").get(user.id) as { status: string; result: string | null; finished_at: string } | undefined;
-    const failures = (JSON.parse(job?.result ?? '{}') as { sourceFailures?: string[] }).sourceFailures ?? [];
+    const parsed = JSON.parse(job?.result ?? '{}') as { sourceFailures?: string[]; sourceCollected?: Record<string, number> };
+    const failures = parsed.sourceFailures ?? [];
     // 작업 전체가 실패(서류 없음 등)면 출처를 확인하지 못한 것이다.
     const ran = job && job.status !== '실패';
     return connectionStatusSchema.parse({
@@ -29,8 +30,13 @@ export function registerUserSettings(app: FastifyInstance, db: DatabaseSync) {
       ai: { model: ollamaModel(), status: await ollamaStatus() },
       mail: mail ? { status: mail.status, lastSuccessAt: mail.last_success_at, lastError: mail.last_error } : null,
       sources: sourceIdSchema.options.map(source => {
-        const codes = [...new Set(failures.filter(f => f.startsWith(`${source}:`)).map(f => f.slice(source.length + 1)))];
-        return { source, status: !ran ? '확인 전' : codes.length ? '실패' : '정상', codes, finishedAt: ran ? job.finished_at : null };
+        const counted: Record<string, number> = {};
+        for (const f of failures) if (f.startsWith(`${source}:`)) { const code = f.slice(source.length + 1); counted[code] = (counted[code] ?? 0) + 1; }
+        const collected = ran && parsed.sourceCollected ? parsed.sourceCollected[source] ?? 0 : null;
+        const failed = Object.keys(counted).length > 0;
+        // 공고를 받았으면 일부 상세 실패는 '일부 실패'다. 예전 작업(수집 수 기록 없음)은 실패로 본다.
+        const status = !ran ? '확인 전' : !failed ? '정상' : collected ? '일부 실패' : '실패';
+        return { source, status, failures: counted, collected, finishedAt: ran ? job.finished_at : null };
       }),
     });
   });

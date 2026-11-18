@@ -80,7 +80,11 @@ test('갱신 작업: 세 출처를 수집하고 원문 없이 조건·판정을 
     delete process.env.NEXTSTEP_OLLAMA_URL;
     assert.equal(conn.ai.status, '연결 실패');
     assert.equal(conn.mail, null);
-    assert.equal(conn.sources.find(x => x.source === 'saramin').status, '실패');
+    // 가짜 사람인은 공고를 받은 뒤 상세 한 건만 실패하므로 일부 실패다.
+    const saramin = conn.sources.find(x => x.source === 'saramin');
+    assert.equal(saramin.status, '일부 실패');
+    assert.ok(saramin.collected > 0);
+    assert.equal(Object.values(saramin.failures).reduce((a, b) => a + b, 0), 1);
     assert.equal(conn.sources.find(x => x.source === 'jobkorea').status, '정상');
     assert.deepEqual((await s.app.inject({ url: '/settings/connections', headers: { cookie: other } })).json().sources.map(x => x.status), ['확인 전', '확인 전', '확인 전', '확인 전', '확인 전']);
     assert.equal((await s.app.inject({ url: '/settings/connections' })).statusCode, 401);

@@ -98,3 +98,17 @@ test('점핏 상세의 마감·상시·경력·근무지·본문을 읽고 기�
   assert.deepEqual(jumpit.parseDetail('1', JSON.stringify({ result: {} })), { code: 'parse_failed' });
   assert.deepEqual(jumpit.listItems('{"result":{"positions":[{"id":1},{"id":"x"}]}}').map(i => i.id), [1]);
 });
+
+test('연결이 한 번 끊기면 같은 간격을 두고 한 번만 다시 요청한다', async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; if (calls === 1) throw new TypeError('fetch failed'); return { ok: true, status: 200, text: async () => 'ok' }; };
+  try {
+    assert.deepEqual(await politeGet('https://retry.example/a'), { text: 'ok' });
+    assert.equal(calls, 2);
+    calls = -10;
+    globalThis.fetch = async () => { calls++; throw new TypeError('fetch failed'); };
+    assert.deepEqual(await politeGet('https://retry.example/b'), { code: 'network' });
+    assert.equal(calls, -8, '두 번까지만 시도');
+  } finally { globalThis.fetch = original; }
+});

@@ -162,7 +162,7 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     if (!basis) return { status: '실패', errorCode: 'profile_or_resume_missing', result: {} };
     // 차단 기록은 실행 단위로 둔다. 다음 실행에서는 다시 한 번 시도한다.
     resetBlockedHosts();
-    const counts = { collected: 0, judged: 0, notHiring: 0, filteredOut: 0, aiFailures: 0, aiFailureCodes: {} as Record<string, number>, sourceFailures: [] as CollectFailure[] };
+    const counts = { collected: 0, judged: 0, notHiring: 0, filteredOut: 0, aiFailures: 0, aiFailureCodes: {} as Record<string, number>, sourceFailures: [] as CollectFailure[], sourceCollected: {} as Record<string, number> };
 
     if (job.kind === 'link') {
       const link = parsePostingLink((job.payload as { url: string }).url);
@@ -188,6 +188,7 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     for (const run of runs) {
       const { postings, failures } = await run();
       counts.sourceFailures.push(...failures);
+      for (const p of postings) counts.sourceCollected[p.source] = (counts.sourceCollected[p.source] ?? 0) + 1;
       for (const p of postings) {
         if (isNotHiring(p.title)) { counts.notHiring++; continue; }
         // 점핏 공고 ID는 사람인 공고 번호와 같다. 같은 공고를 두 출처로 두 번 저장·판정하지 않는다.
@@ -204,7 +205,9 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     counts.filteredOut = rows.length - matching.length;
     await judgeFor(db, deps, job.userId, basis, matching, counts);
     const failed = counts.sourceFailures.length > 0 || counts.aiFailures > 0;
-    const result = { collected: counts.collected, judged: counts.judged, notHiring: counts.notHiring, filteredOut: counts.filteredOut, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes, sourceFailures: counts.sourceFailures.map(f => `${f.source}:${f.code}`) };
+    const result = { collected: counts.collected, judged: counts.judged, notHiring: counts.notHiring, filteredOut: counts.filteredOut, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes, sourceFailures: counts.sourceFailures.map(f => `${f.source}:${f.code}`),
+      // 출처별로 받은 공고 수(일부 실패와 전체 실패를 가르는 데 씀)와 실패한 공고 번호(원인 확인용, 원문 아님).
+      sourceCollected: counts.sourceCollected, sourceFailureIds: counts.sourceFailures.filter(f => f.id).map(f => `${f.source}:${f.id}`) };
     if (counts.collected === 0 && failed) return { status: '실패', errorCode: 'collect_failed', result };
     return { status: failed ? '일부 실패' : '성공', result };
   };
