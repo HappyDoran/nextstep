@@ -8,9 +8,38 @@
     "dev": "pnpm build && electron .",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm build && node --test tests/*.test.mjs"
+    "test": "pnpm build && node --test tests/*.test.mjs",
+    "dist:mac": "pnpm build && electron-builder --mac dir",
+    "dist:win": "pnpm build && electron-builder --win zip --x64"
   },
   "devDependencies": {
-    "electron": "45.2.2"
+    "electron": "45.2.2",
+    "electron-builder": "26.18.0"
+  },
+  "productName": "NextStep",
+  "description": "NextStep 공고 추천·지원 관리 데스크톱 상주 앱",
+  "build": {
+    "appId": "com.nextstep.desktop",
+    "productName": "NextStep",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "assets/**",
+      "package.json"
+    ],
+    "mac": {
+      "icon": "assets/icon-1024.png",
+      "category": "public.app-category.productivity",
+      "target": "dir",
+      "identity": null
+    },
+    "win": {
+      "icon": "assets/icon-1024.png",
+      "target": "zip",
+      "signAndEditExecutable": false
+    },
+    "artifactName": "NextStep-${os}-${arch}.${ext}"
   }
 }
