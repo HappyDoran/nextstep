@@ -140,6 +140,8 @@ export const recommendationSchema = z.object({
 export const recommendationFeedbackSchema = z.object({ feedback: z.enum(['up', 'down']).nullable().optional(), restored: z.boolean().optional() }).strict().refine(v => Object.keys(v).length > 0);
 export type Recommendation = z.infer<typeof recommendationSchema>;
 export const recommendationListSchema = z.object({ items: z.array(recommendationSchema), lastJob: jobSchema.nullable() });
+// 데스크톱 상주 앱 알림용: 마지막 공고 갱신 작업과 그 작업이 판정한 기본·도전 건수(끝나기 전에는 null).
+export const latestRefreshSchema = z.object({ job: jobSchema.nullable(), counts: z.object({ basic: z.number().int(), challenge: z.number().int() }).nullable() });
 
 // 네이버 메일 연결: 애플리케이션 비밀번호는 서버에서 암호화 저장하고 다시 내보내지 않는다.
 export const mailConnectRequestSchema = z.object({

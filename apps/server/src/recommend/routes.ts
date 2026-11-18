@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
-import { linkRequestSchema, profileSchema, recommendationFeedbackSchema, recommendationListSchema, recommendationSchema } from '@nextstep/contracts';
+import { linkRequestSchema, profileSchema, recommendationFeedbackSchema, recommendationListSchema, recommendationSchema, latestRefreshSchema } from '@nextstep/contracts';
 import { requireUser } from '../auth.js';
 import { suggestProfile } from '../prompts/profile.js';
 import { AiError } from '../ai/llm.js';
@@ -42,6 +42,17 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     const link = body.success ? parsePostingLink(body.data.url) : undefined;
     if (!body.success || !link) return reply.status(400).send({ message: '사람인·잡코리아·자소설닷컴·원티드·점핏 공고 상세 링크를 넣으세요.' });
     return reply.status(202).send(enqueue(db, user.id, 'link', { url: body.data.url }));
+  });
+
+  // 데스크톱 상주 앱이 1분마다 묻는 가벼운 조회(추천 목록 전체를 받지 않게). 건수는 그 작업이 판정한 것만 센다.
+  app.get('/jobs/latest', async (request, reply) => {
+    const user = requireUser(db, request, reply);
+    if (!user) return reply;
+    const job = latestJob(db, user.id, 'refresh');
+    const window = job?.finishedAt ? db.prepare('SELECT started_at FROM jobs WHERE id = ?').get(job.id) as { started_at: string | null } : undefined;
+    const counts = job?.finishedAt && window?.started_at ? db.prepare(`SELECT COALESCE(SUM(classification = '기본'), 0) AS basic, COALESCE(SUM(classification = '도전'), 0) AS challenge
+      FROM recommendations WHERE user_id = ? AND evaluated_at BETWEEN ? AND ?`).get(user.id, window.started_at, job.finishedAt) as { basic: number; challenge: number } : null;
+    return latestRefreshSchema.parse({ job, counts: counts ? { basic: Number(counts.basic), challenge: Number(counts.challenge) } : null });
   });
 
   app.get<{ Params: { id: string } }>('/jobs/:id', async (request, reply) => {

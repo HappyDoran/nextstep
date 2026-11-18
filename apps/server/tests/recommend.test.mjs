@@ -67,6 +67,13 @@ test('갱신 작업: 세 출처를 수집하고 원문 없이 조건·판정을 
     assert.equal(list.items[0].postingStatus, '모집중');
     assert.equal(list.items[0].companyType, null);
     assert.equal(list.lastJob.id, first.id);
+    // 데스크톱 알림용 마지막 갱신: 끝난 작업과 그 작업이 판정한 기본·도전 건수, 다른 사용자는 자기 것만.
+    const latest = (await s.app.inject({ url: '/jobs/latest', headers: { cookie: a } })).json();
+    assert.equal(latest.job.id, first.id);
+    assert.deepEqual(latest.counts, { basic: list.items.filter(i => i.classification === '기본').length, challenge: list.items.filter(i => i.classification === '도전').length });
+    const other = await s.signup('latest-other@example.com');
+    assert.deepEqual((await s.app.inject({ url: '/jobs/latest', headers: { cookie: other } })).json(), { job: null, counts: null });
+    assert.equal((await s.app.inject({ url: '/jobs/latest' })).statusCode, 401);
     const raw = new DatabaseSync(s.path);
     assert.equal(JSON.stringify(raw.prepare('SELECT * FROM postings').all()).includes('필수: React 3년'), false);
     raw.close();

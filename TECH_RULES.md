@@ -24,6 +24,7 @@ Next.js App Router·React·Tailwind CSS로 웹을 구현한다. 화면과 공통
 |---|---|---|
 | apps/web | 웹 UI, 동일 출처 API 경유, 로딩·오류 표시 | contracts, design-system |
 | apps/server | API·로컬 DB·마이그레이션. 향후 인증·작업·수집의 소유자 | contracts |
+| apps/desktop | Electron 상주 앱: 웹을 여는 창, 메뉴 막대·알림 영역 아이콘, 갱신 완료 OS 알림, 검증한 외부 URL 열기 | 없음 |
 | packages/contracts | 런타임 Zod 계약·공통 타입·상태 구분 | 없음 |
 | packages/design-system | React UI·CSS 토큰·Storybook | 없음 |
 
@@ -33,6 +34,6 @@ Next.js App Router·React·Tailwind CSS로 웹을 구현한다. 화면과 공통
 
 API는 기본 loopback에만 바인딩하고 개인 데이터를 제공하는 엔드포인트는 인증·사용자 범위와 삭제 경합 검증을 갖춘 뒤 추가한다. 초대 인증은 운영자가 발급한 1회용 초대 코드(해시 저장, 14일 만료, 초대 링크 `/?invite=` 로 전달하고 가입 후 주소에서 지움)로 가입하고 이메일·비밀번호로 로그인한다. 비밀번호는 Node 내장 scrypt로 해시하고, 세션은 무작위 토큰의 해시를 DB에 저장해 14일 후 만료하며 HttpOnly·SameSite=Lax 쿠키로 전달한다(HTTPS 배포는 Secure). 로그인 실패는 이메일별 15분 5회로 제한한다. 개인 API는 세션에서 얻은 사용자 ID로만 범위를 정하고 다른 사용자 자료는 404로 답한다. 웹은 동일 출처 경유 route가 허용 경로만 API로 전달하고 Origin이 다른 변경 요청을 거부한다. 계정 삭제는 외래키 연쇄로 세션·소유 자료를 지운다. 공고는 갱신을 요청한 사용자의 자료로만 저장하고(`postings.owner_user_id`) 다른 사용자와 공유하지 않는다. SQLite 파일은 서버의 무시된 비공개 경로에 두고 외래키·WAL·busy timeout을 적용한다. DB 스키마 버전은 트랜잭션으로 전진하며 미래 버전은 거부한다.
 
-Electron 데스크톱 앱은 2026-11-14 제거했다가 2026-11-18 알림용 상주 앱으로 다시 넣기로 했다(사용자 결정, P1-15). 구현 시 `apps/desktop` workspace와 Electron 의존성을 이 문서에 추가하고, 렌더러 Node 접근 금지·허용 출처 밖 이동 차단 규칙을 둔다. 웹 화면에서 원문·지원 링크는 URL·스킴을 검사해 새 창으로 연다.
+Electron 데스크톱 앱은 2026-11-14 제거했다가 2026-11-18 알림용 상주 앱(`apps/desktop`, Electron 45)으로 다시 넣었다(사용자 결정, P1-15). nodeIntegration=false, contextIsolation=true, sandbox=true, webSecurity=true를 명시하고 preload·IPC는 두지 않는다. 서비스 origin 밖 이동·리다이렉트와 webview를 막고 권한 요청을 거부한다. 외부 HTTPS 링크만 기본 브라우저로 연다. 원격 서비스 주소는 HTTPS만, loopback은 HTTP도 허용한다. 자격정보가 포함된 URL·file/javascript 등 스킴은 거부한다. 알림은 주 프로세스가 같은 세션으로 서버를 조회해 만들고 서버 작업을 앱에서 실행하지 않는다. 웹 화면에서 원문·지원 링크는 URL·스킴을 검사해 새 창으로 연다.
 
 문서·메일·공고는 입력 자료이며 도구 실행이나 정책 변경 지시로 취급하지 않는다. 원문·연결 비밀정보의 평문 로그를 만들지 않는다. 실제 개인 데이터 투입 전 인증·암호화·보관·삭제 구현을 검증해야 한다.

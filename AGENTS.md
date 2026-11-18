@@ -1,7 +1,7 @@
 ---
 title: NextStep 에이전트 작업 규칙
 kind: rule
-last_verified: 2026-11-14
+last_verified: 2026-11-18
 ---
 
 # NextStep 에이전트 작업 규칙
@@ -33,7 +33,7 @@ last_verified: 2026-11-14
 | 다음 세션에 이어서 할 순서(상태는 백로그 소유) | [NEXT_SESSION.md](NEXT_SESSION.md) | 세션 종료 시 다음 할 일 변경 |
 | 디자인 기초의 토큰·타입·아이콘 사용법 | [디자인 기초](packages/design-system/README.md) | 토큰·타입·아이콘·Storybook 변경 |
 | 작업 지원 체계·역할 소유 범위·검사 한계 | [AI_AGENT_HARNESS.md](docs/AI_AGENT_HARNESS.md) | 진입점·skill·역할·검사 흐름 변경 |
-| 웹·서버·공통 패키지 지역 규칙 | 각 workspace의 AGENTS.md | 해당 workspace의 경계·함정 변경 |
+| 웹·서버·데스크톱·공통 패키지 지역 규칙 | 각 workspace의 AGENTS.md | 해당 workspace의 경계·함정 변경 |
 | 구조적 결정의 이유와 검증 결과 | Git 커밋 본문 | 구조 규칙 도입, 예외 승인, 동작 변경 |
 
 새 문서는 `nextstep-doc-policy`를 통과한 뒤에만 만들고 이 표에 한 줄 추가한다.
