@@ -1,5 +1,5 @@
 'use client';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { AlertCircle, BriefcaseBusiness, Check, Inbox, LoaderCircle, Mail, Setti
 import { AppShell, NavItem, PageHeader, Rail, StatusBar } from '@nextstep/design-system';
 import { latestRefreshSchema, mailConnectionSchema, reviewSchema, type Me } from '@nextstep/contracts';
 import { call, RequestError } from './api-client';
+import { SettingsDialog, sectionFromHash, type Section } from './settings/settings';
 
 const icon = 'size-icon-md shrink-0 stroke-icon';
 const small = 'size-icon-sm shrink-0 stroke-icon';
@@ -31,20 +32,30 @@ export function AuthLayout({ children }: { children: ReactNode }) {
 /** 로그인 후 앱 틀: 왼쪽 아이콘 메뉴 · 화면 머리 · 하단 상태바(메일 확인과 공고 갱신 결과). */
 export function Frame({ me, title, description, actions, children }: { me: Me; title: string; description: string; actions?: ReactNode; children: ReactNode }) {
   const path = usePathname();
+  // 설정 창: 주소 #settings-<구역>을 따라 열고 닫는다(메뉴·상태바 링크는 해시만 바꾼다).
+  const [settings, setSettings] = useState<Section | null>(null);
+  useEffect(() => {
+    const read = () => setSettings(sectionFromHash(window.location.hash));
+    read();
+    window.addEventListener('hashchange', read);
+    return () => window.removeEventListener('hashchange', read);
+  }, []);
+  const showSettings = (s: Section | null) => { setSettings(s); window.history.replaceState(null, '', s ? `#settings-${s}` : window.location.pathname + window.location.search); };
   const reviews = useQuery({ queryKey: ['reviews', me.id], queryFn: async () => reviewSchema.array().parse(await call('reviews')), retry: false, refetchOnWindowFocus: false });
   const waiting = reviews.data?.filter(r => !r.held).length ?? 0;
   const items = [
     { href: '/recommendations', label: '추천', icon: <Star className={icon} aria-hidden="true" focusable="false" /> },
     { href: '/', label: '지원 현황', icon: <BriefcaseBusiness className={icon} aria-hidden="true" focusable="false" /> },
     { href: '/reviews', label: '확인 목록', icon: <Inbox className={icon} aria-hidden="true" focusable="false" />, count: waiting },
-    { href: '/settings', label: '설정', icon: <Settings className={icon} aria-hidden="true" focusable="false" /> },
+    { href: '#settings', label: '설정', icon: <Settings className={icon} aria-hidden="true" focusable="false" /> },
   ];
   return <AppShell
     rail={<Rail brand={<Link href="/recommendations" aria-label="NextStep 추천으로" className="grid size-9 place-items-center rounded-control bg-primary font-extrabold text-primary-foreground">N</Link>}>
-      {items.map(item => <NavItem key={item.href} link={Link} href={item.href} icon={item.icon} label={item.label} current={path === item.href} {...(item.count ? { count: item.count } : {})} />)}
+      {items.map(item => <NavItem key={item.href} {...(item.href.startsWith('#') ? {} : { link: Link })} href={item.href} icon={item.icon} label={item.label} current={item.href.startsWith('#') ? settings !== null : settings === null && path === item.href} {...(item.count ? { count: item.count } : {})} />)}
     </Rail>}
     status={<StatusBar start={<MailState me={me} />} end={<RefreshState me={me} />} />}>
     <PageHeader title={title} description={description} actions={actions} />
+    {settings && <SettingsDialog me={me} section={settings} onSection={showSettings} onClose={() => showSettings(null)} />}
     <div className="min-h-0 flex-1 overflow-auto"><div className="mx-auto max-w-content px-7 py-6">{children}</div></div>
   </AppShell>;
 }
@@ -76,6 +87,6 @@ function RefreshState({ me }: { me: Me }) {
     {failed ? <AlertCircle className={`${small} text-destructive`} aria-hidden="true" focusable="false" /> : <Check className={`${small} text-success`} aria-hidden="true" focusable="false" />}
     <span className={failed ? 'text-destructive' : undefined}>공고 가져오기 {job.status === '성공' ? '끝' : job.status}{job.finishedAt ? ` · ${time(job.finishedAt)}` : ''}{counts ? ` · 기본 ${counts.basic} · 도전 ${counts.challenge}` : ''}</span>
     {/* 같은 화면에서도 구역이 바뀌도록 해시 이동은 일반 링크로 한다(Next 링크는 hashchange를 내지 않음). */}
-    {failed ? <a href="/settings#status" className="font-bold text-primary">연결 확인</a> : null}
+    {failed ? <a href="#settings-status" className="font-bold text-primary">연결 확인</a> : null}
   </>;
 }
