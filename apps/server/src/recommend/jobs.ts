@@ -45,6 +45,11 @@ export function claim(db: DatabaseSync): ClaimedJob | undefined {
   return row ? { id: row.id, userId: row.user_id, kind: row.kind, payload: row.payload ? JSON.parse(row.payload) : undefined, attempts: row.attempts } : undefined;
 }
 
+// 실행 중 진행 상황을 result에 적는다(끝나면 finish가 최종 결과로 덮는다). 화면은 건수·예상 시간을 보여 준다.
+export function reportProgress(db: DatabaseSync, id: string, progress: { done: number; total: number; collected: number; etaSeconds: number | null }) {
+  db.prepare("UPDATE jobs SET result = ? WHERE id = ? AND status = '실행중'").run(JSON.stringify({ progress }), id);
+}
+
 export function finish(db: DatabaseSync, id: string, outcome: JobOutcome) {
   // 작업 중 계정이 삭제되면 작업 행도 사라졌으므로 갱신할 대상이 없다.
   db.prepare("UPDATE jobs SET status = ?, error_code = ?, result = ?, finished_at = ?, lease_until = NULL WHERE id = ? AND status = '실행중'")

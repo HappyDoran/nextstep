@@ -12,7 +12,7 @@ import { collectJasoseol, fetchJasoseol } from '../sources/jasoseol.js';
 import { extractRequirements, REQUIREMENTS_PROMPT_VERSION, type Requirements } from '../prompts/requirements.js';
 import { extractCandidate, CANDIDATE_PROMPT_VERSION, type Candidate } from '../prompts/candidate.js';
 import { classify, RULES_VERSION, type PostingInput } from './classify.js';
-import type { ClaimedJob, JobOutcome } from './jobs.js';
+import { reportProgress, type ClaimedJob, type JobOutcome } from './jobs.js';
 import { passesFilter } from '../sources/filter.js';
 
 type Collected = { postings: CollectedPosting[]; failures: CollectFailure[] };
@@ -185,7 +185,11 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     }
     runs.push(() => deps.collect.jasoseol(families, JASOSEOL_PER_FAMILY));
     // 출처끼리는 순서대로 요청한다(같은 출처에 동시 요청을 만들지 않는다).
-    for (const run of runs) {
+    // 진행: 끝낸 출처·직무 묶음 수와 지금까지 걸린 시간으로 남은 시간을 어림한다(공고 수·AI 속도가 묶음마다 달라 대략값).
+    const started = Date.now();
+    const progress = (done: number) => reportProgress(db, job.id, { done, total: runs.length, collected: counts.collected, etaSeconds: done ? Math.round((Date.now() - started) / done * (runs.length - done) / 1000) : null });
+    progress(0);
+    for (const [index, run] of runs.entries()) {
       const { postings, failures } = await run();
       counts.sourceFailures.push(...failures);
       for (const p of postings) counts.sourceCollected[p.source] = (counts.sourceCollected[p.source] ?? 0) + 1;
@@ -198,6 +202,7 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
         await storeRequirements(db, deps, id, p, counts);
         counts.collected++;
       }
+      progress(index + 1);
     }
     const rows = db.prepare('SELECT p.* FROM postings p WHERE p.owner_user_id = ? ORDER BY p.checked_at DESC').all(job.userId) as PostingRow[];
     // 사용자 필터에 맞지 않는 공고는 판정하지 않는다(요금 절감). 사용자가 넣은 링크 공고는 거르지 않는다. 고용 형태는 본문 추출 결과로 거른다.

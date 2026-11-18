@@ -52,10 +52,18 @@ test('갱신 작업: 세 출처를 수집하고 원문 없이 조건·판정을 
     assert.equal(first.status, '대기');
     const db = openDatabase(s.path);
     const calls = [];
+    // 실행 중에는 진행(끝낸 출처 묶음 수·전체·받은 공고·남은 시간 어림)을 result에 적는다.
+    const seen = [];
+    const deps = fakeDeps(calls);
+    const jobkorea = deps.collect.jobkorea;
+    deps.collect.jobkorea = async (...args) => { seen.push(JSON.parse(db.prepare('SELECT result FROM jobs WHERE id = ?').get(first.id).result).progress); return jobkorea(...args); };
     try {
-      assert.equal(await runNext(db, createHandler(db, fakeDeps(calls))), true);
+      assert.equal(await runNext(db, createHandler(db, deps)), true);
       assert.equal(await runNext(db, createHandler(db, fakeDeps(calls))), false);
     } finally { db.close(); }
+    assert.equal(seen[0].done, 1);
+    assert.equal(seen[0].total, 5, '직무 1개 × 출처 4곳 + 자소설닷컴 1');
+    assert.equal(typeof seen[0].etaSeconds, 'number');
     // 출처는 순서대로 수집하고, 판정 순서는 확인 시각이 같으면 정해지지 않는다.
     assert.deepEqual(calls, ['saramin:프론트엔드', 'extract:프론트엔드', 'jobkorea:프론트엔드', 'extract:프론트엔드 개발자', 'jumpit:프론트엔드', 'jasoseol', 'candidate']);
     const job = (await s.app.inject({ url: `/jobs/${first.id}`, headers: { cookie: a } })).json();

@@ -12,6 +12,14 @@ import { SettingsDialog, sectionFromHash, type Section } from './settings/settin
 const icon = 'size-icon-md shrink-0 stroke-icon';
 const small = 'size-icon-sm shrink-0 stroke-icon';
 const ACTIVE: string[] = ['대기', '실행중'];
+type Progress = { done: number; total: number; collected: number; etaSeconds: number | null };
+/** 실행 중 갱신 작업의 진행 문구. 서버가 끝낸 출처 묶음 수와 남은 시간 어림을 적어 둔다. */
+export function progressText(result: Record<string, unknown> | null) {
+  const p = result?.progress as Progress | undefined;
+  if (!p) return '공고 가져오는 중';
+  const eta = p.etaSeconds === null ? '남은 시간 계산 중' : p.etaSeconds < 60 ? '1분 안에 끝남' : `약 ${Math.round(p.etaSeconds / 60)}분 남음`;
+  return `공고 가져오는 중 · 출처 ${p.done}/${p.total} · 공고 ${p.collected}건 확인 · ${eta}`;
+}
 const time = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /** 로그인 전 화면: 왼쪽 인디고 소개 면, 오른쪽 양식. 좁은 창에서는 소개 면을 위로 접는다. */
@@ -80,7 +88,11 @@ function RefreshState({ me }: { me: Me }) {
   const job = latest.data?.job;
   if (latest.isError) return <span className="text-destructive">갱신 결과를 읽지 못함</span>;
   if (!job) return <span>{latest.isPending ? '갱신 결과 확인 중' : '아직 공고를 가져온 적이 없어요'}</span>;
-  if (ACTIVE.includes(job.status)) return <><LoaderCircle className={`${small} animate-spin motion-reduce:animate-none`} aria-hidden="true" focusable="false" /><span>공고 가져오는 중</span></>;
+  if (ACTIVE.includes(job.status)) {
+    const p = job.result?.progress as Progress | undefined;
+    return <><LoaderCircle className={`${small} animate-spin motion-reduce:animate-none`} aria-hidden="true" focusable="false" /><span>{job.status === '대기' ? '공고 가져오기 대기 중' : progressText(job.result)}</span>
+      {p && p.total > 0 && <progress value={p.done} max={p.total} aria-label="공고 가져오기 진행" className="h-1.5 w-28 overflow-hidden rounded-full [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary" />}</>;
+  }
   const counts = latest.data?.counts;
   const failed = job.status === '실패' || job.status === '일부 실패';
   return <>
