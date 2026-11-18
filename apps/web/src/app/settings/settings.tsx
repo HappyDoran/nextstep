@@ -44,7 +44,7 @@ function SettingSections({ me }: { me: Me }) {
     return () => window.removeEventListener('hashchange', read);
   }, []);
   const choose = (value: Section) => { setSection(value); window.history.replaceState(null, '', `#${value}`); };
-  const card = (id: string, title: string, description: string | null, body: ReactNode) => <section aria-labelledby={`section-${id}`} className="grid max-w-3xl gap-5 rounded-surface border border-border bg-card px-8 py-7">
+  const card = (id: string, title: string, description: string | null, body: ReactNode) => <section aria-labelledby={`section-${id}`} className="grid gap-5 rounded-surface border border-border bg-card px-8 py-7">
     <div><h2 id={`section-${id}`} className="text-body-lg font-extrabold">{title}</h2>{description && <p className="mt-1 text-body-sm text-muted-foreground">{description}</p>}</div>
     {body}
   </section>;
@@ -61,7 +61,10 @@ function SettingSections({ me }: { me: Me }) {
     status: card('status', '연결 상태', '공고·메일을 가져오는 데 필요한 연결을 확인해요. 문제가 있으면 하단 상태바에도 표시돼요.', <div className="grid gap-5"><ConnectionPanel me={me} /><AiSetting me={me} /></div>),
   } satisfies Record<Section, ReactNode>;
   return <Frame me={me} title="설정" description="계정·메일·서류·프로필을 관리해요">
-    <div className="mb-5"><Segmented label="설정 구역" value={section} onChange={choose} options={SECTIONS} /></div>
-    {content[section]}
+    {/* 본문 폭(70rem)보다 좁은 한 단을 가운데 둔다. 구역 버튼과 카드가 같은 폭으로 정렬된다. */}
+    <div className="mx-auto w-full max-w-3xl">
+      <div className="mb-5"><Segmented label="설정 구역" value={section} onChange={choose} options={SECTIONS} /></div>
+      {content[section]}
+    </div>
   </Frame>;
 }
