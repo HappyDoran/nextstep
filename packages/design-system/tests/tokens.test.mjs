@@ -6,7 +6,15 @@ const primitives = read('primitives.css');
 const semantics = read('tokens.css');
 const declarations = source => Object.fromEntries([...source.matchAll(/(--ns-[\w-]+)\s*:\s*([^;]+);/g)].map(([, name, value]) => [name, value.trim()]));
 const blocks = [...semantics.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selectors, body]) => ({ selectors, values: declarations(body) }));
-const valuesFor = mode => Object.assign({}, declarations(primitives), ...blocks.filter(({ selectors }) => selectors.includes(`data-ns-theme="${mode}"`) || (selectors.includes(':root') && !selectors.includes('data-ns-theme'))).map(({ values }) => values));
+const valuesFor = mode => Object.assign({}, declarations(primitives), ...blocks.filter(({ selectors }) => selectors.includes(`data-ns-theme="${mode}"`) || selectors.includes('[data-ns-theme]') || (selectors.includes(':root') && !selectors.includes('data-ns-theme'))).map(({ values }) => values));
+test('테마 역할을 가리키는 별칭은 테마 범위에서 다시 계산된다', () => {
+  // :root에만 둔 var() 별칭은 Dark 범위에 Light 계산값으로 상속된다.
+  const themed = new Set(blocks.filter(({ selectors }) => selectors.includes('data-ns-theme')).flatMap(({ values }) => Object.keys(values)));
+  for (const { selectors, values } of blocks) {
+    if (selectors.includes('data-ns-theme')) continue;
+    for (const [name, value] of Object.entries(values)) for (const [, ref] of value.matchAll(/var\((--ns-[\w-]+)\)/g)) assert.ok(!themed.has(ref), `${name}는 테마 값 ${ref}를 :root에서만 참조한다`);
+  }
+});
 const base = valuesFor('light');
 const dark = valuesFor('dark');
 function resolve(name, values, visited = new Set()) {
@@ -48,5 +56,7 @@ test('Light·Dark의 본문·피드백은 4.5:1, 포커스는 3:1 이상이다',
     for (const role of ['primary', 'destructive', 'success', 'warning']) assert.ok(ratio(`${role}-foreground`, role) >= 4.5, `${mode}: ${role} fill`);
     for (const role of ['card', 'popover', 'secondary', 'accent']) assert.ok(ratio(`${role}-foreground`, role) >= 4.5, `${mode}: ${role} surface`);
     assert.ok(ratio('highlight', 'highlight-muted') >= 4.5, `${mode}: highlight`);
+    // 분류 글자는 자기 연한 배경과 카드 위에서 모두 읽혀야 한다.
+    for (const role of ['basic', 'challenge', 'unknown', 'exclude']) for (const bg of [`class-${role}-muted`, 'card']) assert.ok(ratio(`class-${role}`, bg) >= 4.5, `${mode}: class-${role}/${bg}`);
   }
 });

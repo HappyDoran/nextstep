@@ -26,7 +26,11 @@ Lucide React에서 필요한 아이콘을 정적으로 직접 import한다. 전�
 
 ## 현재 적용 기준
 
-Light/Dark 모두 background·foreground, card·popover, primary·secondary·muted·accent, destructive, border·input·ring, success·warning·info·highlight 역할을 제공한다. CSS 변수 이름은 `--ns-color-<역할>`이다. 브랜드 강조와 success·info는 별도 역할이며 상태 색상은 지원 결과를 자동 판정하지 않는다.
+Light/Dark 모두 background·foreground, card·popover, primary·secondary·muted·accent, destructive, border·border-strong·input·ring, success·warning·info·highlight 역할을 제공한다. CSS 변수 이름은 `--ns-color-<역할>`이다. 회색은 따뜻한 계열(Light 배경 #f7f6f3, Dark 배경 #161513)이다.
+
+추천 분류는 `class-basic`·`class-challenge`·`class-unknown`·`class-exclude`(각각 `-muted` 배경)로 쓴다. 값은 success·warning·muted-foreground·destructive를 그대로 가리키므로 분류 색을 바꾸려면 이 별칭만 고친다. 분류는 색만으로 구분하지 않고 글자와 함께 표시한다.
+
+밀도와 앱 틀(2026-11-18 와이어프레임 확정): 컨트롤 높이 40px(`h-control`), 작은 컨트롤 32px(`h-control-sm`), 컨트롤 모서리 10px, 카드 16px(`rounded-surface`), 대화 창 20px(`rounded-dialog`), 왼쪽 아이콘 메뉴 폭 `w-rail`, 화면 머리 `h-header`, 하단 상태바 `h-statusbar`, 본문 최대 폭 `max-w-content`. 브랜드 강조와 success·info는 별도 역할이며 상태 색상은 지원 결과를 자동 판정하지 않는다.
 
 타입 역할은 Display·Title Lg·Title·Body Lg·Body·Body Sm·Caption·Micro·Mono다. 긴 공고·근거를 읽는 제품 특성에 맞춰 기본 본문 크기와 줄간격을 확보한다. 상세 수치의 정답은 tokens.css에만 둔다. 브랜드 색상 선택은 완료했으며 제품 화면·로고·전체 브랜드 가이드 완성을 의미하지 않는다.
 

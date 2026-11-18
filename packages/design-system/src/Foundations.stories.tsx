@@ -27,6 +27,8 @@ const colorTokens = [
   'accent', 'accent-foreground', 'destructive', 'destructive-foreground', 'destructive-muted',
   'border', 'input', 'ring', 'success', 'success-foreground', 'success-muted', 'warning',
   'warning-foreground', 'warning-muted', 'info', 'info-muted', 'highlight', 'highlight-muted',
+  'border-strong', 'class-basic', 'class-basic-muted', 'class-challenge', 'class-challenge-muted',
+  'class-unknown', 'class-unknown-muted', 'class-exclude', 'class-exclude-muted',
 ];
 function ColorPalette({ theme }: { theme: 'light' | 'dark' }) {
   return <div className="foundation-theme min-h-screen" data-ns-theme={theme}><article className="foundation"><h1>{theme === 'light' ? 'Light' : 'Dark'} 색상 역할</h1><p>브랜드 색상은 인디고입니다. 피드백·브랜드·개인 상태의 의미를 구분합니다.</p>

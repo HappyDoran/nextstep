@@ -21,6 +21,7 @@
   --ns-color-destructive-foreground: var(--ns-palette-white);
   --ns-color-destructive-muted: var(--ns-palette-red-50);
   --ns-color-border: var(--ns-palette-neutral-200);
+  --ns-color-border-strong: var(--ns-palette-neutral-300);
   --ns-color-input: var(--ns-palette-neutral-400);
   --ns-color-ring: var(--ns-palette-indigo-700);
   --ns-color-success: var(--ns-palette-green-700);
@@ -57,6 +58,7 @@
   --ns-color-destructive-foreground: var(--ns-palette-dark-canvas);
   --ns-color-destructive-muted: var(--ns-palette-dark-danger-bg);
   --ns-color-border: var(--ns-palette-dark-border);
+  --ns-color-border-strong: var(--ns-palette-dark-border-mid);
   --ns-color-input: var(--ns-palette-dark-border-strong);
   --ns-color-ring: var(--ns-palette-indigo-300);
   --ns-color-success: var(--ns-palette-dark-success-fill);
@@ -71,6 +73,19 @@
   --ns-color-highlight-muted: var(--ns-palette-dark-highlight);
   --ns-color-action-hover: var(--ns-palette-indigo-200);
   --ns-color-action-active: var(--ns-palette-indigo-100);
+}
+
+/* 테마 역할을 가리키는 별칭은 테마 범위마다 다시 계산되도록 테마 선택자에 둔다(:root에만 두면 Dark에서도 Light 값이 상속된다). */
+:root, [data-ns-theme] {
+  /* 분류 표시(기본·도전·미확인·제외)는 상태 역할을 그대로 쓴다. 색만으로 구분하지 않고 글자와 함께 쓴다. */
+  --ns-color-class-basic: var(--ns-color-success);
+  --ns-color-class-basic-muted: var(--ns-color-success-muted);
+  --ns-color-class-challenge: var(--ns-color-warning);
+  --ns-color-class-challenge-muted: var(--ns-color-warning-muted);
+  --ns-color-class-unknown: var(--ns-color-muted-foreground);
+  --ns-color-class-unknown-muted: var(--ns-color-muted);
+  --ns-color-class-exclude: var(--ns-color-destructive);
+  --ns-color-class-exclude-muted: var(--ns-color-destructive-muted);
 }
 
 :root {
@@ -112,11 +127,17 @@
   --ns-type-mono-tracking: 0;
 
   --ns-radius-control: var(--ns-radius-lg);
-  --ns-radius-surface: var(--ns-radius-xl);
+  --ns-radius-surface: var(--ns-radius-2xl);
+  --ns-radius-dialog: var(--ns-radius-3xl);
   --ns-focus-width: var(--ns-border-width-2);
   --ns-focus-offset: var(--ns-space-1);
-  --ns-control-height: 2.75rem;
-  --ns-content-width: 64rem;
+  --ns-control-height: 2.5rem;
+  --ns-control-height-sm: 2rem;
+  --ns-content-width: 70rem;
+  /* 앱 틀: 왼쪽 아이콘 메뉴 · 화면 머리 · 하단 상태바 */
+  --ns-rail-width: 4.75rem;
+  --ns-header-height: 4rem;
+  --ns-statusbar-height: 1.875rem;
   --ns-icon-size-xs: 0.75rem;
   --ns-icon-size-sm: 0.875rem;
   --ns-icon-size-base: 1rem;
