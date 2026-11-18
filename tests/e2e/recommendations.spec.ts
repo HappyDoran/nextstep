@@ -92,6 +92,6 @@ test('추천 목록 표시·관심 없음·지원 현황 저장과 작업 실패
     await page.unroute('**/api/recommendations');
     await page.goto('/');
     const saved = page.getByRole('listitem').filter({ hasText: '가상 프론트엔드' });
-    await expect(saved.getByText('미지원', { exact: true })).toBeVisible();
+    await expect(saved.getByRole('combobox', { name: '상태' })).toHaveValue('미지원');
   } finally { await deleteAccount(page); }
 });

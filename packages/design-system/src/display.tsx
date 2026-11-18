@@ -35,14 +35,14 @@ export function Lane({ title, hint, count, expanded = true, onToggle, children }
 
 /** 카드 줄 묶음. 안에 Row를 둔다. */
 export function RowList({ children }: PropsWithChildren) {
-  return <div className="divide-y divide-border overflow-hidden rounded-surface border border-border bg-card">{children}</div>;
+  return <ul className="divide-y divide-border overflow-hidden rounded-surface border border-border bg-card">{children}</ul>;
 }
 /**
  * 카드 줄 하나. 상세를 여는 RowTrigger를 안에 두면 줄 전체가 눌린다.
  * 줄 안의 다른 조작(상태 선택 등)은 relative z-10을 주어 RowTrigger 위에 둔다(버튼 안에 버튼을 넣지 않는다).
  */
 export function Row({ classification, className, children }: PropsWithChildren<{ classification?: Classification; className?: string }>) {
-  return <div className={join("relative grid items-center gap-4 py-3.5 pl-6 pr-5 transition-colors duration-fast hover:bg-muted motion-reduce:transition-none before:absolute before:inset-y-2.5 before:left-0 before:w-1 before:rounded-r before:content-['']", classification ? classBar[classification] : 'before:bg-border-strong', className)}>{children}</div>;
+  return <li className={join("relative grid items-center gap-4 py-3.5 pl-6 pr-5 transition-colors duration-fast hover:bg-muted motion-reduce:transition-none before:absolute before:inset-y-2.5 before:left-0 before:w-1 before:rounded-r before:content-['']", classification ? classBar[classification] : 'before:bg-border-strong', className)}>{children}</li>;
 }
 export function RowTrigger({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return <button type="button" {...props} className={join("cursor-pointer text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:outline focus-visible:after:outline-focus focus-visible:after:-outline-offset-2 focus-visible:after:outline-ring", className)} />;

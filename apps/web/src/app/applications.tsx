@@ -1,24 +1,27 @@
 'use client';
-import { useState, type FormEvent } from 'react';
-import { ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { ExternalLink, Plus, Upload } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button } from '@nextstep/design-system';
+import { Button, buttonClass, Field, Input, Lane, Row, RowList, RowTrigger, Segmented, Select, Sheet, Skeleton, StatePanel, Tag, Toast, Toggle } from '@nextstep/design-system';
 import {
   applicationDetailSchema, applicationImportResultSchema, applicationSchema, applicationStatusSchema, readStatusSchema,
   type Application, type ApplicationStatus, type Me,
 } from '@nextstep/contracts';
-import { call, fieldClass } from './api-client';
+import { call } from './api-client';
+import { Frame } from './frame';
 
 const STATUSES = applicationStatusSchema.options;
 const READ_STATUSES = readStatusSchema.options;
 const listKey = (userId: string) => ['applications', userId];
-const label = 'flex flex-col gap-2 text-body-sm';
+const PAGE = 30;
+const icon = 'size-icon-base shrink-0 stroke-emphasis';
+const monthDay = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
 
 // 폼 값 중 빈 공고 URL은 보내지 않는다(등록) 또는 null로 지운다(수정).
 function formBody(form: FormData, forUpdate: boolean) {
   const body: Record<string, unknown> = Object.fromEntries(form.entries());
   if (body.postingUrl === '') { if (forUpdate) body.postingUrl = null; else delete body.postingUrl; }
-  // 잠금 체크 상자는 여러 값이므로 배열로 보낸다(수정 때만).
+  // 잠금 토글은 여러 값이므로 배열로 보낸다(수정 때만).
   delete body.lock;
   if (forUpdate) body.lockedFields = form.getAll('lock');
   return JSON.stringify(body);
@@ -30,89 +33,117 @@ export function Applications({ me }: { me: Me }) {
   const list = useQuery({ queryKey: key, queryFn: async () => applicationSchema.array().parse(await call('applications')), retry: false, refetchOnWindowFocus: false });
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<ApplicationStatus | '전체'>('전체');
+  const [group, setGroup] = useState<'상태별' | '회사별'>('상태별');
+  // 불합격 묶음은 처음에 접어 둔다(2026-11-18 결정).
+  const [folded, setFolded] = useState<Record<string, boolean>>({ 불합격: true });
+  const [limit, setLimit] = useState(PAGE);
   const [openId, setOpenId] = useState<string | null>(null);
-  const create = useMutation({
-    mutationFn: async (form: FormData) => applicationSchema.parse(await call('applications', { method: 'POST', body: formBody(form, false) })),
-    onSuccess: () => client.invalidateQueries({ queryKey: key }),
-  });
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    create.mutate(new FormData(form), { onSuccess: () => form.reset() });
-  };
+  const [dialog, setDialog] = useState<'new' | 'csv' | null>(null);
+  const [created, setCreated] = useState<Application | null>(null);
+  const undo = useMutation({ mutationFn: (id: string) => call(`applications/${id}`, { method: 'DELETE' }), onSuccess: () => { setCreated(null); void client.invalidateQueries({ queryKey: key }); } });
+  useEffect(() => { if (!created) return; const t = setTimeout(() => setCreated(null), 6000); return () => clearTimeout(t); }, [created]);
 
   const needle = query.trim().toLowerCase();
-  const items = (list.data ?? []).filter(item => (status === '전체' || item.status === status)
-    && (!needle || `${item.company} ${item.roleTitle}`.toLowerCase().includes(needle)));
+  const all = list.data ?? [];
+  const items = all.filter(item => (status === '전체' || item.status === status) && (!needle || `${item.company} ${item.roleTitle}`.toLowerCase().includes(needle)));
+  const groupOf = (a: Application) => (group === '상태별' ? a.status : a.company);
+  const names = group === '상태별' ? STATUSES.filter(s => items.some(i => i.status === s)) : [...new Set(items.map(i => i.company))].sort((a, b) => a.localeCompare(b, 'ko'));
+  const ordered = names.flatMap(name => items.filter(i => groupOf(i) === name));
+  const shown = new Set(ordered.slice(0, limit).map(i => i.id));
 
-  return <div className="flex flex-col gap-8">
-    <section aria-labelledby="new-application">
-      <h2 id="new-application" className="mb-4 text-title">지원 직접 등록</h2>
-      <form onSubmit={submit} className="grid gap-4 md:grid-cols-2">
-        <label className={label}>회사<input name="company" required maxLength={200} className={fieldClass} /></label>
-        <label className={label}>직무<input name="roleTitle" required maxLength={200} className={fieldClass} /></label>
-        <label className={label}>공고 URL (선택)<input name="postingUrl" type="url" pattern="https://.*" placeholder="https://" className={fieldClass} /></label>
-        <label className={label}>상태<select name="status" defaultValue="미지원" className={fieldClass}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select></label>
-        <div className="md:col-span-2"><Button type="submit" disabled={create.isPending}>등록</Button></div>
-        {create.isError && <p role="alert" className="text-body-sm text-destructive md:col-span-2">{create.error.message}</p>}
-      </form>
-    </section>
+  const actions = <>
+    <Button variant="secondary" onClick={() => setDialog('csv')}><Upload className={icon} aria-hidden="true" focusable="false" />CSV 가져오기</Button>
+    <Button onClick={() => setDialog('new')}><Plus className={icon} aria-hidden="true" focusable="false" />직접 등록</Button>
+  </>;
+  return <Frame me={me} title="지원 현황" description={list.data ? `전체 ${all.length}건 · 지원한 곳의 진행 상태를 관리해요` : '지원한 곳의 진행 상태를 관리해요'} actions={actions}>
+    <div className="mb-3 flex flex-wrap items-center gap-2">
+      <Segmented label="묶는 방식" value={group} onChange={setGroup} options={[{ value: '상태별', label: '상태별' }, { value: '회사별', label: '회사별' }]} />
+      <div className="w-72"><Input type="search" aria-label="검색 (회사·직무)" placeholder="회사·직무 검색" value={query} onChange={e => setQuery(e.target.value)} /></div>
+      <div className="w-36"><Select aria-label="상태 필터" value={status} onChange={e => setStatus(e.target.value as ApplicationStatus | '전체')}><option value="전체">상태 전체</option>{STATUSES.map(s => <option key={s}>{s}</option>)}</Select></div>
+    </div>
+    <p className="mb-6 text-caption text-muted-foreground">공고 열기는 기본 브라우저로 이동만 합니다. 지원을 마친 뒤 상태를 직접 &lsquo;지원 완료&rsquo;로 바꾸세요.</p>
 
-    <ImportCsv userKey={key} />
-    <section aria-labelledby="application-list">
-      <h2 id="application-list" className="mb-4 text-title">지원 목록</h2>
-      <div className="mb-4 grid gap-4 md:grid-cols-[1fr_auto]">
-        <label className={label}>검색 (회사·직무)<input type="search" value={query} onChange={e => setQuery(e.target.value)} className={fieldClass} /></label>
-        <label className={label}>상태 필터<select value={status} onChange={e => setStatus(e.target.value as ApplicationStatus | '전체')} className={fieldClass}>
-          <option>전체</option>{STATUSES.map(s => <option key={s}>{s}</option>)}
-        </select></label>
-      </div>
-      <p className="mb-4 text-body-sm text-muted-foreground">공고 열기는 기본 브라우저로 이동만 합니다. 지원을 마친 뒤 상태를 직접 &lsquo;지원 완료&rsquo;로 바꾸세요.</p>
-      {list.isPending ? <p role="status" className="text-muted-foreground">지원 현황을 불러오고 있습니다.</p>
-        : list.isError ? <div><p role="alert" className="mb-4 text-destructive">{list.error.message}</p>
-          <Button onClick={() => { void list.refetch(); }} disabled={list.isFetching}>{list.isFetching ? <LoaderCircle className="size-icon-md shrink-0 animate-spin stroke-icon motion-reduce:animate-none" aria-hidden="true" /> : <RefreshCw className="size-icon-md shrink-0 stroke-icon" aria-hidden="true" />}다시 시도</Button></div>
-          : items.length === 0 ? <p role="status" className="text-muted-foreground">{list.data.length === 0 ? '등록한 지원 건이 없습니다.' : '조건에 맞는 지원 건이 없습니다.'}</p>
-            : <ul className="flex flex-col gap-3">{items.map(item => <ApplicationItem key={item.id} item={item} userKey={key} open={openId === item.id} onToggle={() => setOpenId(openId === item.id ? null : item.id)} />)}</ul>}
-    </section>
-  </div>;
+    {list.isPending ? <><p role="status" className="sr-only">지원 현황을 불러오고 있습니다.</p><RowList>{[0, 1, 2].map(i => <Row key={i} className="grid-cols-[1fr_10rem]"><div className="grid gap-2"><Skeleton className="h-3.5 w-2/5" /><Skeleton className="w-1/4" /></div><Skeleton className="h-6" /></Row>)}</RowList></>
+      : list.isError ? <StatePanel tone="error" title="지원 현황을 불러오지 못했어요" description={list.error.message} actions={<Button variant="secondary" disabled={list.isFetching} onClick={() => { void list.refetch(); }}>다시 시도</Button>} />
+        : all.length === 0 ? <StatePanel title="아직 지원 건이 없어요" description="등록한 지원 건이 없습니다. 지원을 마친 공고를 직접 등록하거나, 엑셀·Notion에서 내보낸 CSV로 한 번에 가져오세요. 메일을 연결하면 접수 메일로도 생겨요." actions={<><Button variant="secondary" onClick={() => setDialog('csv')}>CSV 가져오기</Button><Button onClick={() => setDialog('new')}>직접 등록</Button></>} />
+          : items.length === 0 ? <p role="status" className="py-10 text-center text-muted-foreground">조건에 맞는 지원 건이 없습니다.</p>
+            : <>
+              {names.map(name => {
+                const rows = items.filter(i => groupOf(i) === name);
+                const visible = rows.filter(i => shown.has(i.id));
+                if (visible.length === 0 && !folded[name]) return null;
+                return <Lane key={name} title={name} count={`${rows.length}건`} expanded={!folded[name]} onToggle={() => setFolded({ ...folded, [name]: !folded[name] })}>
+                  <RowList>{visible.map(item => <ApplicationRow key={item.id} item={item} userKey={key} showStatus={group === '회사별'} onOpen={() => setOpenId(item.id)} />)}</RowList>
+                </Lane>;
+              })}
+              {ordered.length > limit && <div className="flex justify-center"><Button variant="secondary" onClick={() => setLimit(limit + PAGE)}>{PAGE}건 더 보기 <span className="tabular-nums text-primary">{shown.size} / {ordered.length}</span></Button></div>}
+            </>}
+
+    {openId && <ApplicationDetail id={openId} userKey={key} onClose={() => setOpenId(null)} />}
+    <NewApplication open={dialog === 'new'} userKey={key} onClose={() => setDialog(null)} onCreated={a => { setDialog(null); setCreated(a); }} />
+    <ImportCsv open={dialog === 'csv'} userKey={key} onClose={() => setDialog(null)} />
+    {created && <div className="pointer-events-none fixed inset-x-0 bottom-12 z-10 flex justify-center">
+      <Toast action={<Button size="sm" variant="quiet" className="text-background hover:enabled:bg-transparent" disabled={undo.isPending} onClick={() => undo.mutate(created.id)}>되돌리기</Button>}>{created.company} · {created.roleTitle}를 등록했어요</Toast>
+    </div>}
+  </Frame>;
+}
+
+/** 한 줄: 회사·직무(누르면 상세), 등록일, 상태(바로 바꿈), 열람, 공고 열기. */
+function ApplicationRow({ item, userKey, showStatus, onOpen }: { item: Application; userKey: string[]; showStatus: boolean; onOpen: () => void }) {
+  const client = useQueryClient();
+  const change = useMutation({
+    mutationFn: (status: ApplicationStatus) => call(`applications/${item.id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+    onSuccess: () => client.invalidateQueries({ queryKey: userKey }),
+  });
+  return <Row className="grid-cols-[minmax(0,1fr)_5rem_9.5rem_5rem_6rem]">
+    <RowTrigger onClick={onOpen}>
+      <span className="block truncate text-body font-bold">{item.company}</span>
+      <span className="block truncate text-caption text-muted-foreground">{item.roleTitle}{showStatus ? ` · ${item.status}` : ''}{item.lockedFields.length ? ' · 잠금' : ''}</span>
+    </RowTrigger>
+    <span className="text-caption tabular-nums text-muted-foreground">등록 {monthDay(item.createdAt)}</span>
+    <div className="relative z-10"><Select size="sm" aria-label="상태" value={item.status} disabled={change.isPending} onChange={e => change.mutate(e.target.value as ApplicationStatus)} className="w-full">{STATUSES.map(s => <option key={s}>{s}</option>)}</Select></div>
+    <span className={`text-caption ${item.readStatus === '열람' ? 'font-bold text-primary' : 'text-muted-foreground'}`}>{item.readStatus === '열람' ? '열람함' : item.readStatus}</span>
+    <span className="relative z-10 justify-self-end">{item.postingUrl ? <a href={item.postingUrl} target="_blank" rel="noopener noreferrer" className={buttonClass('quiet', 'sm')}>공고 열기<ExternalLink className="size-icon-sm shrink-0 stroke-icon" aria-hidden="true" focusable="false" /></a> : null}</span>
+    {change.isError && <p role="alert" className="col-span-full text-caption text-destructive">{change.error.message}</p>}
+  </Row>;
+}
+
+function NewApplication({ open, userKey, onClose, onCreated }: { open: boolean; userKey: string[]; onClose: () => void; onCreated: (a: Application) => void }) {
+  const client = useQueryClient();
+  const create = useMutation({
+    mutationFn: async (form: FormData) => applicationSchema.parse(await call('applications', { method: 'POST', body: formBody(form, false) })),
+    onSuccess: a => { void client.invalidateQueries({ queryKey: userKey }); onCreated(a); },
+  });
+  const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = event.currentTarget; create.mutate(new FormData(form), { onSuccess: () => form.reset() }); };
+  return <Sheet open={open} onClose={onClose} size="sm" title="지원 직접 등록">
+    <form id="new-application" onSubmit={submit} className="grid gap-4">
+      <Field label="회사"><Input name="company" required maxLength={200} placeholder="예: 예시커머스" /></Field>
+      <Field label="직무"><Input name="roleTitle" required maxLength={200} placeholder="예: 프론트엔드 개발자" /></Field>
+      <Field label="공고 URL" help="선택. https 주소만"><Input name="postingUrl" type="url" pattern="https://.*" placeholder="https://" /></Field>
+      <Field label="상태"><Select name="status" defaultValue="미지원">{STATUSES.map(s => <option key={s}>{s}</option>)}</Select></Field>
+      {create.isError && <p role="alert" className="text-body-sm text-destructive">{create.error.message}</p>}
+      <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>취소</Button><Button type="submit" disabled={create.isPending}>등록</Button></div>
+    </form>
+  </Sheet>;
 }
 
 // 엑셀·Notion에서 내보낸 지원 현황 CSV를 한 번에 옮긴다. 파일은 서버에 남기지 않고 지원 건만 저장한다.
-function ImportCsv({ userKey }: { userKey: string[] }) {
+function ImportCsv({ open, userKey, onClose }: { open: boolean; userKey: string[]; onClose: () => void }) {
   const client = useQueryClient();
   const run = useMutation({
     mutationFn: async (file: File) => applicationImportResultSchema.parse(await call('applications/import', { method: 'POST', body: JSON.stringify({ csv: await file.text() }) })),
     onSuccess: () => { void client.invalidateQueries({ queryKey: userKey }); void client.invalidateQueries({ queryKey: ['reviews', userKey[1]] }); },
   });
-  return <section aria-labelledby="import-applications">
-    <h2 id="import-applications" className="mb-2 text-title">CSV로 한 번에 등록</h2>
-    <p className="mb-4 text-body-sm text-muted-foreground">엑셀·Notion에서 내보낸 CSV를 올리면 지원 건을 한 번에 등록합니다. 필요한 열은 회사·직무·상태(지원 완료·이력서 열람·서류 합격·불합격 등)이고 공고URL은 선택입니다. 이미 있는 회사·직무는 건너뛰고, 확인 목록의 연결 불명 메일은 가져온 지원 건으로 다시 연결해 봅니다.</p>
-    <label className={label}>CSV 파일<input type="file" accept=".csv,text/csv" disabled={run.isPending}
-      onChange={e => { const file = e.target.files?.[0]; if (file) run.mutate(file); e.target.value = ''; }} className="text-body-sm" /></label>
-    {run.isPending && <p role="status" className="mt-2 text-body-sm text-muted-foreground">가져오고 있습니다.</p>}
-    {run.data && <p role="status" className="mt-2 text-body-sm">등록 {run.data.imported}건 · 이미 있음 {run.data.duplicates}건 · 형식 오류 {run.data.invalid}건{run.data.requeued ? ` · 확인 요청 ${run.data.requeued}건을 다시 연결하는 중` : ''}</p>}
-    {run.isError && <p role="alert" className="mt-2 text-body-sm text-destructive">{run.error.message}</p>}
-  </section>;
+  return <Sheet open={open} onClose={onClose} size="sm" title="CSV로 한 번에 등록" meta="엑셀·Notion에서 내보낸 지원 현황">
+    <p className="text-body-sm text-muted-foreground">필요한 열은 회사·직무·상태(지원 완료·이력서 열람·서류 합격·불합격 등)이고 공고URL은 선택입니다. 이미 있는 회사·직무는 건너뛰고, 확인 목록의 연결 불명 메일은 가져온 지원 건으로 다시 연결해 봅니다. 파일은 서버에 남기지 않습니다.</p>
+    <Field label="CSV 파일"><input type="file" accept=".csv,text/csv" disabled={run.isPending} onChange={e => { const file = e.target.files?.[0]; if (file) run.mutate(file); e.target.value = ''; }} className="text-body-sm" /></Field>
+    {run.isPending && <p role="status" className="text-body-sm text-muted-foreground">가져오고 있습니다.</p>}
+    {run.data && <p role="status" className="text-body-sm">등록 {run.data.imported}건 · 이미 있음 {run.data.duplicates}건 · 형식 오류 {run.data.invalid}건{run.data.requeued ? ` · 확인 요청 ${run.data.requeued}건을 다시 연결하는 중` : ''}</p>}
+    {run.isError && <p role="alert" className="text-body-sm text-destructive">{run.error.message}</p>}
+  </Sheet>;
 }
 
-function ApplicationItem({ item, userKey, open, onToggle }: { item: Application; userKey: string[]; open: boolean; onToggle: () => void }) {
-  return <li className="rounded-control border border-border p-4">
-    <div className="flex flex-wrap items-center gap-3">
-      <div className="min-w-0 flex-1">
-        <strong className="block text-body font-semibold">{item.company}</strong>
-        <span className="text-body-sm text-muted-foreground">{item.roleTitle}</span>
-      </div>
-      <span className="rounded-control bg-muted px-3 py-1 text-body-sm">{item.status}</span>
-      <span className="text-body-sm text-muted-foreground">열람: {item.readStatus}</span>
-      {item.postingUrl && <a href={item.postingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-body-sm text-primary underline">
-        공고 열기<ExternalLink className="size-icon-sm shrink-0 stroke-icon" aria-hidden="true" /></a>}
-      <button type="button" aria-expanded={open} onClick={onToggle} className="min-h-control rounded-control px-3 text-body-sm underline">{open ? '닫기' : '상세·수정'}</button>
-    </div>
-    {open && <ApplicationDetail id={item.id} userKey={userKey} />}
-  </li>;
-}
-
-function ApplicationDetail({ id, userKey }: { id: string; userKey: string[] }) {
+function ApplicationDetail({ id, userKey, onClose }: { id: string; userKey: string[]; onClose: () => void }) {
   const client = useQueryClient();
   const detailKey = [...userKey, id];
   const detail = useQuery({ queryKey: detailKey, queryFn: async () => applicationDetailSchema.parse(await call(`applications/${id}`)), retry: false });
@@ -121,32 +152,41 @@ function ApplicationDetail({ id, userKey }: { id: string; userKey: string[] }) {
     mutationFn: async (form: FormData) => applicationSchema.parse(await call(`applications/${id}`, { method: 'PATCH', body: formBody(form, true) })),
     onSuccess: refresh,
   });
-  const remove = useMutation({ mutationFn: () => call(`applications/${id}`, { method: 'DELETE' }), onSuccess: refresh });
-  if (detail.isPending) return <p role="status" className="mt-4 text-body-sm text-muted-foreground">상세를 불러오고 있습니다.</p>;
-  if (detail.isError) return <p role="alert" className="mt-4 text-body-sm text-destructive">{detail.error.message}</p>;
+  const remove = useMutation({ mutationFn: () => call(`applications/${id}`, { method: 'DELETE' }), onSuccess: () => { void refresh(); onClose(); } });
   const d = detail.data;
   const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); update.mutate(new FormData(event.currentTarget)); };
-  return <div className="mt-4 border-t border-border pt-4">
-    <form onSubmit={submit} className="grid gap-4 md:grid-cols-2">
-      <label className={label}>회사<input name="company" defaultValue={d.company} required className={fieldClass} /></label>
-      <label className={label}>직무<input name="roleTitle" defaultValue={d.roleTitle} required className={fieldClass} /></label>
-      <label className={label}>공고 URL<input name="postingUrl" type="url" pattern="https://.*" defaultValue={d.postingUrl ?? ''} className={fieldClass} /></label>
-      <label className={label}>상태<select name="status" defaultValue={d.status} className={fieldClass}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select></label>
-      <label className={label}>열람<select name="readStatus" defaultValue={d.readStatus} className={fieldClass}>{READ_STATUSES.map(s => <option key={s}>{s}</option>)}</select></label>
-      <fieldset className="flex flex-col gap-2 text-body-sm md:col-span-2"><legend className="mb-1">잠금 (잠근 값은 메일로 바뀌지 않습니다. 확인 목록에서 직접 확정하면 바뀝니다)</legend>
-        <label className="flex items-center gap-2"><input type="checkbox" name="lock" value="status" defaultChecked={d.lockedFields.includes('status')} className="size-icon-md accent-primary" />상태 잠금</label>
-        <label className="flex items-center gap-2"><input type="checkbox" name="lock" value="readStatus" defaultChecked={d.lockedFields.includes('readStatus')} className="size-icon-md accent-primary" />열람 잠금</label>
-      </fieldset>
-      <div className="flex flex-wrap items-end gap-3">
-        <Button type="submit" disabled={update.isPending}>저장</Button>
-        <Button disabled={remove.isPending} className="border-destructive !bg-transparent !text-destructive" onClick={() => { if (window.confirm('이 지원 건과 변경 이력을 삭제합니다.')) remove.mutate(); }}>삭제</Button>
+  return <Sheet open onClose={onClose} title={d?.company ?? '지원 상세'} eyebrow={d ? <Tag>{d.status}</Tag> : null} meta={d?.roleTitle ?? null}
+    footer={d ? <>
+      <Button variant="danger" disabled={remove.isPending} onClick={() => { if (window.confirm('이 지원 건과 변경 이력을 삭제합니다.')) remove.mutate(); }}>삭제</Button>
+      <div className="ml-auto flex gap-2">
+        {d.postingUrl && <a href={d.postingUrl} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary')}><ExternalLink className={icon} aria-hidden="true" focusable="false" />공고 원문</a>}
+        <Button type="submit" form="application-form" disabled={update.isPending}>저장</Button>
       </div>
-      {(update.isError || remove.isError) && <p role="alert" className="text-body-sm text-destructive md:col-span-2">{(update.error ?? remove.error)?.message}</p>}
-      {update.isSuccess && <p role="status" className="text-body-sm text-muted-foreground md:col-span-2">저장했습니다.</p>}
-    </form>
-    <h3 className="mb-2 mt-6 text-body font-semibold">변경 이력</h3>
-    {d.events.length === 0 ? <p className="text-body-sm text-muted-foreground">상태·열람 변경 이력이 없습니다.</p>
-      : <ul className="flex flex-col gap-1 text-body-sm text-muted-foreground">{d.events.map(e => <li key={`${e.at}-${e.field}`}>
-        {new Date(e.at).toLocaleString('ko-KR')} · {e.field === 'status' ? '상태' : '열람'} {e.from ?? '없음'} → {e.to} ({e.source === 'mail' ? '메일' : e.source === 'import' ? '가져오기' : '직접 수정'})</li>)}</ul>}
-  </div>;
+    </> : null}>
+    {detail.isPending ? <p role="status" className="text-body-sm text-muted-foreground">상세를 불러오고 있습니다.</p>
+      : detail.isError ? <p role="alert" className="text-body-sm text-destructive">{detail.error.message}</p>
+        : d && <>
+          <form id="application-form" onSubmit={submit} className="grid gap-4 md:grid-cols-2">
+            <Field label="회사"><Input name="company" defaultValue={d.company} required /></Field>
+            <Field label="직무"><Input name="roleTitle" defaultValue={d.roleTitle} required /></Field>
+            <Field label="상태"><Select name="status" defaultValue={d.status}>{STATUSES.map(s => <option key={s}>{s}</option>)}</Select></Field>
+            <Field label="열람"><Select name="readStatus" defaultValue={d.readStatus}>{READ_STATUSES.map(s => <option key={s}>{s}</option>)}</Select></Field>
+            <div className="md:col-span-2"><Field label="공고 URL"><Input name="postingUrl" type="url" pattern="https://.*" defaultValue={d.postingUrl ?? ''} /></Field></div>
+            <fieldset className="grid gap-2 md:col-span-2"><legend className="mb-1 text-caption text-muted-foreground">잠근 값은 메일로 바뀌지 않습니다. 확인 목록에서 직접 확정하면 바뀝니다.</legend>
+              <Toggle name="lock" value="status" defaultChecked={d.lockedFields.includes('status')}>상태 잠금</Toggle>
+              <Toggle name="lock" value="readStatus" defaultChecked={d.lockedFields.includes('readStatus')}>열람 잠금</Toggle>
+            </fieldset>
+          </form>
+          {(update.isError || remove.isError) && <p role="alert" className="text-body-sm text-destructive">{(update.error ?? remove.error)?.message}</p>}
+          {update.isSuccess && <p role="status" className="text-body-sm text-muted-foreground">저장했습니다.</p>}
+          <section>
+            <h3 className="mb-2 text-body-sm font-extrabold">변경 이력 <span className="tabular-nums text-muted-foreground">{d.events.length}</span></h3>
+            {d.events.length === 0 ? <p className="text-body-sm text-muted-foreground">상태·열람 변경 이력이 없습니다.</p>
+              : <ol className="grid gap-2 text-body-sm">{d.events.map(e => <li key={`${e.at}-${e.field}`} className="grid grid-cols-[8.5rem_1fr] gap-2">
+                <time className="tabular-nums text-muted-foreground">{new Date(e.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>
+                <span>{e.field === 'status' ? '상태' : '열람'} {e.from ?? '없음'} → {e.to} <span className="text-muted-foreground">({e.source === 'mail' ? '메일' : e.source === 'import' ? '가져오기' : '직접 수정'})</span></span>
+              </li>)}</ol>}
+          </section>
+        </>}
+  </Sheet>;
 }

@@ -24,11 +24,11 @@ const control = join('w-full rounded-control border border-border-strong bg-card
 
 /** 라벨·도움말·오류를 묶는다. 오류가 있으면 입력에 aria-invalid를 함께 준다. */
 export function Field({ label, help, error, children }: PropsWithChildren<{ label: ReactNode; help?: ReactNode; error?: ReactNode }>) {
-  return <label className="grid gap-1.5 text-body-sm font-semibold text-foreground">
-    <span>{label}</span>
-    {children}
-    {error ? <span role="alert" className="text-caption font-normal text-destructive">{error}</span> : help ? <span className="text-caption font-normal text-muted-foreground">{help}</span> : null}
-  </label>;
+  // 도움말은 라벨 밖에 두어 입력의 이름에 섞이지 않게 한다. 오류는 role="alert"로 알린다.
+  return <div className="grid gap-1.5">
+    <label className="grid gap-1.5 text-body-sm font-semibold text-foreground"><span>{label}</span>{children}</label>
+    {error ? <p role="alert" className="text-caption text-destructive">{error}</p> : help ? <p className="text-caption text-muted-foreground">{help}</p> : null}
+  </div>;
 }
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={join(control, 'h-control', className)} />;
