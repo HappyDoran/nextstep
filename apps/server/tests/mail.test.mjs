@@ -474,7 +474,10 @@ test('메일 본문 추천 영역 자르기·제목에서 회사 읽기·회사�
   assert.deepEqual(subjectHint("[점핏] '가상회사'의 'App Lead' 포지션에 지원완료되었습니다"), { company: '가상회사', roleTitle: 'App Lead' });
   assert.deepEqual(subjectHint('[지원완료] ㈜가상회사, 유사한 공고도 확인해보세요.'), { company: '㈜가상회사', roleTitle: null });
   assert.deepEqual(subjectHint('[잡코리아] ㈜가상회사에서 결과 발표가 도착했습니다.'), { company: '㈜가상회사', roleTitle: null });
-  assert.equal(subjectHint('[가상회사] 서류 전형 결과 안내'), null);
+  assert.deepEqual(subjectHint('[가상회사] 서류 전형 결과 안내'), { company: '가상회사', roleTitle: null });
+  assert.deepEqual(subjectHint('[(주)가상회사] 안내 드립니다.'), { company: '(주)가상회사', roleTitle: null });
+  // 플랫폼 이름·말머리는 회사가 아니고, 제목 중간의 대괄호(공고 이름)도 회사로 보지 않는다.
+  for (const s of ['[원티드] 서동원님, 결과 안내', '[공지] 서비스 점검 안내', '[원티드] 서동원님, 서류통과된 [가상공고] 개발자 에 면접 일정 확정되셨나요?']) assert.equal(subjectHint(s), null, s);
 
   // 같은 회사로 봐야 하는 실제 오인식 유형
   for (const [a, b] of [['씨제이올리브영(CJ올리브영)', '씨제이올리브영'], ['칵테일아이오(주)', '카브테일아이오(주)'], ['렛유인에듀', 'лект유인에듀'], ['뤼튼테크놀로지스', '루튼테크놀로지스'], ['힐링페이퍼(강남언니)', '힐링페이퍼'], ['(유)미소', '유)미소'], ['유클(사이클 컴퍼니)', '사이클 컴퍼니'], ['씨메스', '씨메스로보틱스']]) assert.ok(sameCompany(a, b), `${a}=${b}`);
