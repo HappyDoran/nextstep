@@ -23,12 +23,13 @@ mise exec -- pnpm dev
 
 이미 해당 도구가 PATH에 있으면 `mise exec --`를 생략한다. 설치 시 Git hooks가 연결된다. 글로벌 도구 설정은 바꾸지 않는다.
 
-홈서버 전까지 운영자 Mac에서 상시로 쓰려면 빌드한 API·웹을 launchd로 띄운다(로그인 시 자동 시작, 종료되면 재시작, 로그 `~/Library/Logs/nextstep/`). 코드를 고친 뒤에는 `pnpm build` 후 `restart`. Mac이 잠자거나 꺼진 동안에는 예약 처리도 멈추므로, 전원 연결 중 잠자기 방지를 켜 두면 좋다.
+상시 운영은 홈서버(`doran-server`)에서 한다(2026-11-20부터). 접속 주소는 `https://doran-server.tail70f0b3.ts.net`(Tailscale 사설망 HTTPS, `tailscale serve`가 127.0.0.1:3100으로 전달)이고, API·웹은 systemd 서비스 `nextstep-api`·`nextstep-web`(재부팅 후 자동 시작, 종료되면 재시작)로 `/srv/nextstep/app`에서 실행된다. 환경 변수는 `/srv/nextstep/nextstep.env`(0600), DB·`files/`·`secret.key`는 `/srv/nextstep/data/`에 있다. 로그는 서버에서 `journalctl -u nextstep-api`. 코드를 원격 저장소에 올린 뒤 Mac에서 배포한다.
 
 ```sh
-mise exec -- pnpm build
-mise exec -- sh scripts/mac-service.sh install   # restart · uninstall
+sh scripts/home-deploy.sh   # 받기·설치·서버/웹 빌드·서비스 재시작
 ```
+
+홈서버를 쓸 수 없을 때만 Mac에서 launchd로 띄운다(`pnpm build` 후 `sh scripts/mac-service.sh install`, `restart`·`uninstall`, 로그 `~/Library/Logs/nextstep/`). 홈서버와 동시에 켜면 예약 처리가 두 곳에서 돌므로 함께 쓰지 않는다.
 
 로컬 AI(Ollama)를 쓰려면 `brew install ollama && brew services start ollama && ollama pull qwen3:1.7b`(Ubuntu는 Ollama 설치 스크립트). 모든 AI 처리는 이 로컬 모델로만 하며 외부 AI를 호출하지 않는다(사용자 키 없음).
 

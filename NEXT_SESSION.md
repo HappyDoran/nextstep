@@ -1,22 +1,22 @@
 ---
 title: 다음 세션 할 일
 kind: handoff
-last_verified: 2026-11-19
+last_verified: 2026-11-20
 ---
 
 # 다음 세션 할 일
 
 다음 세션에서 이어서 할 순서만 적는다. 단계별 상태와 완료 기준은 [백로그](docs/spec/백로그.md)가 소유하므로, 끝낸 항목은 이 문서가 아니라 백로그에 기록하고 이 문서에서는 지운다.
 
-## 0. 지금 쓰는 방식 (2026-11-14)
+## 0. 지금 쓰는 방식 (2026-11-20)
 
-운영자 Mac에서 launchd로 빌드한 API·웹을 상시 실행 중이다(`sh scripts/mac-service.sh`, README 설치와 실행). 코드를 바꾸면 `pnpm build` 후 `sh scripts/mac-service.sh restart`. 개발 서버(`pnpm dev`)와 포트(3100·4100)가 겹치므로 개발할 때는 `uninstall` 후 개발 서버를 쓰거나 서비스를 잠시 멈춘다.
+홈서버에서 상시 실행 중이다(`https://doran-server.tail70f0b3.ts.net`, README 설치와 실행). 코드를 바꾸면 push 후 `sh scripts/home-deploy.sh`. Mac의 launchd 서비스는 지웠으므로 Mac에서는 개발 서버(`pnpm dev`)를 자유롭게 쓴다. 개발 DB는 Mac의 `apps/server/.data`(이전 전 사본)이며 운영 자료와 별개다.
 
 ## 다음 순서 (2026-11-19 갱신)
 
 1. 사람인 상세 해석 실패 번호 확인(P1-04): 2026-11-19 확인 결과 사람인은 정상이고 상세 일부만 실패했다. 다음 갱신 결과의 `sourceFailureIds`에 parse_failed 공고가 남으면 그 공고 화면 형식을 확인한다.
 2. 데스크톱 상주 앱(P1-15) 사용자 확인: OS 알림 표시·클릭, 아이콘 메뉴 '지금 공고 가져오기', 로그인 시 자동 실행, Windows 압축 파일 실행.
-3. 홈서버 배포(P1-09): 서버 준비는 2026-11-19 끝났다(접속 `ssh doran-server`). 다음은 `/srv/nextstep`에 코드 받기·빌드, `nextstep-api`·`nextstep-web` systemd 서비스, Tailscale HTTPS, 노트북 밖 백업 순서다.
+3. 홈서버(P1-09): 2026-11-20 배포해 상시 운영을 홈서버로 옮겼다(README 설치와 실행). 다음은 노트북 밖 백업·복구 연습, 컴퓨터 종료 중 예약 처리 확인, 공고 1건 추출 시간 실측 순서다.
 4. 놔둠(사용자 결정 2026-11-18): Mac 잠자기로 예약 갱신이 늦게 끝나는 문제. 홈서버로 옮기면 사라진다.
 
 화면 개편(P1-16)은 2026-11-19 끝났다. 시험 기간·초대 지인 사용 기록은 두지 않는다. 운영자가 혼자 계속 쓰며 개선한다.
