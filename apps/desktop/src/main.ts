@@ -8,7 +8,8 @@ import { noticeFor, type LatestRefresh } from './notify.js';
 // 서버의 마지막 공고 갱신 결과를 1분마다 확인해 OS 알림을 보낸다. 서버 작업은 서버가 한다(기술 설계 E절).
 const POLL_MS = 60_000;
 const PARTITION = 'persist:nextstep';
-type Settings = { webUrl?: string; lastNotifiedId?: string };
+// notify: 갱신 알림을 받을지. 사용자 결정(2026-11-20)으로 기본은 끔, 아이콘 메뉴에서 켠다.
+type Settings = { webUrl?: string; lastNotifiedId?: string; notify?: boolean };
 
 let service: URL;
 let window: BrowserWindow | undefined;
@@ -77,8 +78,9 @@ async function poll() {
     if (!settings) { writeSettings(job?.finishedAt ? { lastNotifiedId: job.id } : {}); return; }
     const next = noticeFor(latest, settings.lastNotifiedId);
     if (!next) return;
+    // 꺼져 있어도 기준은 옮긴다. 켠 뒤에 지난 결과가 한꺼번에 오지 않게.
     writeSettings({ ...settings, lastNotifiedId: next.id });
-    if (!Notification.isSupported()) return;
+    if (!settings.notify || !Notification.isSupported()) return;
     notice = new Notification({ title: next.title, body: next.body, silent: false });
     notice.on('click', () => showWindow('/recommendations'));
     notice.show();
@@ -94,6 +96,7 @@ function updateTray() {
     { label: '지금 공고 가져오기', enabled: status !== '가져오는 중', click: () => void refreshNow() },
     { label: status, enabled: false },
     { type: 'separator' },
+    { label: '갱신 알림 받기', type: 'checkbox', checked: readSettings()?.notify === true, click: item => { writeSettings({ ...readSettings(), notify: item.checked }); updateTray(); } },
     { label: '로그인 시 자동 실행', type: 'checkbox', checked: autoLaunch, click: item => { app.setLoginItemSettings({ openAtLogin: item.checked }); updateTray(); } },
     { label: 'NextStep 종료', click: () => { quitting = true; app.quit(); } },
   ]));

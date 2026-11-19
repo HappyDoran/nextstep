@@ -38,7 +38,7 @@ sh scripts/home-deploy.sh   # 받기·설치·서버/웹 빌드·서비스 재�
 | 명령 | 동작 |
 |---|---|
 | `pnpm dev` | API 127.0.0.1:4100, 웹 127.0.0.1:3100 동시 실행 |
-| `pnpm dev:desktop` | 데스크톱 상주 앱(Electron) 실행. 웹·API는 먼저 실행. 창은 웹을 그대로 열고, 창을 닫아도 macOS 메뉴 막대·Windows 알림 영역 아이콘으로 남아 1분마다 마지막 공고 갱신을 확인해 끝나면 OS 알림. 종료는 아이콘 메뉴의 'NextStep 종료'. 설치용 패키지는 만들지 않음 |
+| `pnpm dev:desktop` | 데스크톱 상주 앱(Electron) 실행. 웹·API는 먼저 실행. 창은 웹을 그대로 열고, 창을 닫아도 macOS 메뉴 막대·Windows 알림 영역 아이콘으로 남아 1분마다 마지막 공고 갱신을 확인해 끝나면 OS 알림(아이콘 메뉴 '갱신 알림 받기', 기본 꺼짐). 종료는 아이콘 메뉴의 'NextStep 종료'. 설치용 패키지는 만들지 않음 |
 | `pnpm --filter @nextstep/desktop dist:mac` | 설치용 macOS 앱을 `apps/desktop/release/mac-arm64/NextStep.app`으로 만듦(서명 없음, 응용 프로그램 폴더에 복사해 사용). 처음 열 때 macOS가 확인되지 않은 개발자 경고를 내면 Finder에서 우클릭 → 열기 |
 | `pnpm --filter @nextstep/desktop dist:win` | Windows x64용 압축 파일 `apps/desktop/release/NextStep-win-x64.zip`(서명·설치 프로그램 없음, 압축을 풀고 `NextStep.exe` 실행). Mac에서도 빌드됨 |
 | `pnpm storybook` | 공통 UI 카탈로그 127.0.0.1:6006 실행 |
