@@ -13,7 +13,7 @@ export const alert = (page: Page) => page.getByRole('alert').filter({ hasText: /
 // 구글 로그인 버튼 → 모의 구글 인가 화면(e2e 설정의 fake-google)에서 이메일 고르기 → 첫 화면으로 돌아옴.
 export async function googleLogin(page: Page, email: string, path = '/') {
   await page.goto(path);
-  await page.getByRole('link', { name: '구글로 로그인' }).click();
+  await page.getByRole('link', { name: 'Google로 계속하기' }).click();
   await page.getByLabel('구글 이메일').fill(email);
   await page.getByRole('button', { name: '계속' }).click();
 }
@@ -23,13 +23,14 @@ export async function signup(page: Page, email: string) {
   await googleLogin(page, email);
   await expect(page.getByLabel('초대 코드')).toBeVisible();
   await page.getByLabel('초대 코드').fill(await requestedCode());
-  await page.getByRole('button', { name: '가입' }).click();
+  await page.getByRole('button', { name: '가입하기' }).click();
   await expect(page.getByRole('heading', { name: '지원 현황' })).toBeVisible();
 }
 
 export async function deleteAccount(page: Page) {
   await page.goto('/settings');
+  await page.getByRole('button', { name: '계정', exact: true }).click();
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: '계정 삭제' }).click();
-  await expect(page.getByRole('link', { name: '구글로 로그인' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Google로 계속하기' })).toBeVisible();
 }

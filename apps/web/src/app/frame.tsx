@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, BriefcaseBusiness, Check, Inbox, LoaderCircle, Mail, Settings, Star } from 'lucide-react';
-import { AppShell, NavItem, PageHeader, Rail, StatusBar } from '@nextstep/design-system';
+import { AppShell, Logo, LogoMark, NavItem, PageHeader, Rail, StatusBar } from '@nextstep/design-system';
 import { latestRefreshSchema, mailConnectionSchema, reviewSchema, type Me } from '@nextstep/contracts';
 import { call, RequestError } from './api-client';
 import { SettingsDialog, sectionFromHash, type Section } from './settings/settings';
@@ -26,7 +26,7 @@ const time = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'nu
 export function AuthLayout({ children }: { children: ReactNode }) {
   return <div className="grid min-h-dvh bg-background text-foreground md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
     <aside className="flex flex-col justify-between gap-10 bg-primary px-10 py-10 text-primary-foreground md:px-16 md:py-16 [[data-ns-theme=dark]_&]:bg-secondary [[data-ns-theme=dark]_&]:text-secondary-foreground">
-      <p className="flex items-center gap-2 text-title font-extrabold"><span aria-hidden="true" className="size-2.5 rotate-45 rounded-xs bg-current" />NextStep</p>
+      <Logo inverse />
       <div className="hidden md:block">
         <p className="text-display">마감 전에,<br />맞는 공고부터.</p>
         <p className="mt-3 text-body opacity-80">서류로 고르고, 메일로 따라가는 개인 지원 관리</p>
@@ -58,7 +58,7 @@ export function Frame({ me, title, description, actions, children }: { me: Me; t
     { href: '#settings', label: '설정', icon: <Settings className={icon} aria-hidden="true" focusable="false" /> },
   ];
   return <AppShell
-    rail={<Rail brand={<Link href="/recommendations" aria-label="NextStep 추천으로" className="grid size-9 place-items-center rounded-control bg-primary font-extrabold text-primary-foreground">N</Link>}>
+    rail={<Rail brand={<Link href="/recommendations" aria-label="NextStep 추천으로" className="block rounded-control"><LogoMark /></Link>}>
       {items.map(item => <NavItem key={item.href} {...(item.href.startsWith('#') ? {} : { link: Link })} href={item.href} icon={item.icon} label={item.label} current={item.href.startsWith('#') ? settings !== null : settings === null && path === item.href} {...(item.count ? { count: item.count } : {})} />)}
     </Rail>}
     status={<StatusBar start={<MailState me={me} />} end={<RefreshState me={me} />} />}>

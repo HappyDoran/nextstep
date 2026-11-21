@@ -35,7 +35,7 @@ function JobStatus({ job }: { job: Job | null }) {
   const aiCauses = Object.keys(result?.aiFailureCodes ?? {}).map(c => AI_CAUSES[c]).filter(Boolean);
   const text = job.status === '대기' ? '공고 가져오기를 기다리고 있습니다.' : job.status === '실행중' ? `${progressText(job.result)}. 창을 닫아도 서버에서 계속합니다.`
     : job.status === '실패' ? `실패: ${ERRORS[job.errorCode ?? ''] ?? job.errorCode ?? '알 수 없는 오류'}`
-      : `${job.status}: 공고 ${result?.collected ?? 0}건 확인, ${result?.judged ?? 0}건 판정${result?.sourceFailures?.length ? ` · 출처 실패 ${result.sourceFailures.length}건(${[...new Set(result.sourceFailures.map(f => f.split(':')[0]))].join(', ')})` : ''}${result?.aiFailures ? ` · AI 실패 ${result.aiFailures}건${aiCauses.length ? `(${aiCauses.join(', ')})` : ''}` : ''}`;
+      : `${job.status}: 공고 ${result?.collected ?? 0}건 확인, ${result?.judged ?? 0}건 판정${result?.sourceFailures?.length ? ` · 출처 실패 ${result.sourceFailures.length}건(${[...new Set(result.sourceFailures.map(f => f.split(':')[0]))].join(', ')})` : ''}${result?.aiFailures ? ` · 분석 실패 ${result.aiFailures}건${aiCauses.length ? `(${aiCauses.join(', ')})` : ''}` : ''}`;
   return <p role="status" className={`mb-4 text-body-sm ${job.status === '실패' ? 'text-destructive' : 'text-muted-foreground'}`}>{text}{job.finishedAt ? ` (${date(job.finishedAt)})` : ''}</p>;
 }
 

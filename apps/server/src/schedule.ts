@@ -16,7 +16,7 @@ type Eligible = { id: string; has_basis: number; mail_ok: number };
 export function runSchedule(db: DatabaseSync, at: Date, hour: number) {
   const { date, hour: current } = seoulParts(at);
   const users = db.prepare(`SELECT u.id,
-      (EXISTS (SELECT 1 FROM profiles p WHERE p.user_id = u.id) AND EXISTS (SELECT 1 FROM documents d WHERE d.user_id = u.id AND d.kind = 'resume')) AS has_basis,
+      (EXISTS (SELECT 1 FROM profiles p WHERE p.user_id = u.id) AND EXISTS (SELECT 1 FROM documents d WHERE d.user_id = u.id AND d.kind = 'resume' AND d.active = 1)) AS has_basis,
       EXISTS (SELECT 1 FROM mail_connections c WHERE c.user_id = u.id AND c.status = '정상') AS mail_ok
     FROM users u WHERE u.auto_enabled = 1 AND u.test_permission = 1`).all() as Eligible[];
   let created = 0;

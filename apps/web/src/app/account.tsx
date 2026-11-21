@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, buttonClass, Field, Input } from '@nextstep/design-system';
+import { Button, buttonClass, Field, GoogleMark, Input } from '@nextstep/design-system';
 import { pendingSchema, type Me, type Pending } from '@nextstep/contracts';
 import { call, ME_KEY, RequestError, useMe } from './api-client';
 
@@ -68,42 +68,47 @@ export function Account() {
 
   if (me.data) {
     const busy = logout.isPending || remove.isPending;
-    return <div>
-      <p role="status" className="mb-5 text-muted-foreground">{me.data.email} 계정으로 로그인했습니다.</p>
-      <div className="flex flex-wrap gap-3">
+    return <div className="grid gap-6">
+      <div className="flex flex-wrap items-center gap-4 rounded-surface border border-border bg-card p-5">
+        <div className="min-w-0 flex-1"><p className="text-caption text-muted-foreground">로그인한 Google 계정</p><p role="status" className="truncate text-body font-semibold">{me.data.email}</p></div>
         <Button variant="secondary" disabled={busy} onClick={() => logout.mutate()}>로그아웃</Button>
-        <Button disabled={busy} variant="danger" onClick={() => {
-          if (window.confirm('계정과 저장한 지원 건을 모두 삭제합니다. 되돌릴 수 없습니다.')) remove.mutate();
-        }}>계정 삭제</Button>
       </div>
-      {(logout.isError || remove.isError) && <p role="alert" className="mt-4 text-body-sm text-destructive">{(logout.error ?? remove.error)?.message}</p>}
+      <section aria-labelledby="account-delete" className="grid gap-3 border-t border-border pt-6">
+        <div><h4 id="account-delete" className="text-body-sm font-extrabold">계정 삭제</h4><p className="mt-1 text-body-sm text-muted-foreground">계정과 서류·프로필·지원 현황을 모두 지웁니다. 되돌릴 수 없어요.</p></div>
+        <div><Button disabled={busy} variant="danger" onClick={() => {
+          if (window.confirm('계정과 저장한 자료를 모두 삭제합니다. 되돌릴 수 없습니다.')) remove.mutate();
+        }}>계정 삭제</Button></div>
+      </section>
+      {(logout.isError || remove.isError) && <p role="alert" className="text-body-sm text-destructive">{(logout.error ?? remove.error)?.message}</p>}
     </div>;
   }
 
   if (pending.data) {
     const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); join.mutate(String(new FormData(event.currentTarget).get('code') ?? '')); };
-    return <form onSubmit={submit} className="flex max-w-md flex-col gap-4">
-      <p role="status" className="text-body-sm text-muted-foreground">
-        {pending.data.email} 계정은 아직 등록되지 않았습니다. {pending.data.requested
-          ? '운영자에게 초대 코드를 요청했습니다. 메일이나 메신저로 받은 코드를 입력하세요.'
-          : '운영자에게 요청을 보내지 못했습니다. 다시 구글로 로그인해 요청하거나 운영자에게 직접 알려 주세요.'}
-      </p>
+    return <form onSubmit={submit} className="grid gap-5">
+      <div role="status" className="rounded-surface bg-muted px-4 py-3 text-body-sm">
+        <p className="font-semibold">{pending.data.email}</p>
+        <p className="mt-1 text-muted-foreground">{pending.data.requested
+          ? '아직 등록되지 않은 계정이에요. 운영자에게 초대 코드를 요청했으니 받은 코드를 입력하세요.'
+          : '아직 등록되지 않은 계정이에요. 초대 코드 요청을 보내지 못했으니 다시 로그인하거나 운영자에게 직접 알려 주세요.'}</p>
+      </div>
       <Field label="초대 코드" error={join.isError ? join.error.message : undefined}>
-        <Input name="code" required minLength={8} maxLength={64} autoComplete="off" />
+        <Input name="code" required minLength={8} maxLength={64} autoComplete="off" autoFocus placeholder="받은 코드를 붙여 넣으세요" />
       </Field>
-      <div className="flex flex-wrap gap-3">
-        <Button type="submit" disabled={join.isPending}>가입</Button>
-        <a href={START} className={buttonClass('secondary')}>다른 구글 계정으로 로그인</a>
-        <Button variant="quiet" disabled={logout.isPending} onClick={() => logout.mutate()}>취소</Button>
+      <Button type="submit" disabled={join.isPending} className="w-full">{join.isPending ? '가입하는 중' : '가입하기'}</Button>
+      <div className="flex items-center justify-center gap-3 text-body-sm">
+        <a href={START} className="text-muted-foreground hover:text-foreground">다른 Google 계정으로 로그인</a>
+        <span aria-hidden="true" className="text-border-strong">|</span>
+        <button type="button" disabled={logout.isPending} onClick={() => logout.mutate()} className="cursor-pointer text-muted-foreground hover:text-foreground focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring">처음으로</button>
       </div>
     </form>;
   }
 
   const error = exchange.isError ? exchange.error.message : pending.isError ? '계정 상태를 확인하지 못했습니다. 서버 연결을 확인하세요.' : loginError && (LOGIN_ERRORS[loginError] ?? LOGIN_ERRORS.failed);
-  return <div className="flex max-w-md flex-col gap-4">
-    <p className="text-body-sm text-muted-foreground">구글 계정으로 로그인합니다. 처음이면 운영자에게 초대 코드를 요청합니다.</p>
-    <a href={START} className={buttonClass('primary', 'md', exchange.isPending ? 'pointer-events-none opacity-60' : undefined)}>{exchange.isPending ? '로그인하는 중' : '구글로 로그인'}</a>
+  return <div className="grid gap-4">
+    <a href={START} aria-busy={exchange.isPending} className={buttonClass('secondary', 'md', `w-full ${exchange.isPending ? 'pointer-events-none opacity-60' : ''}`)}><GoogleMark />{exchange.isPending ? '로그인하는 중' : 'Google로 계속하기'}</a>
+    <p className="text-center text-caption text-muted-foreground">처음이면 운영자에게 초대 코드를 요청해요.</p>
     {error && <p role="alert" className="text-body-sm text-destructive">{error}</p>}
-    <a href="/privacy" className="text-caption text-muted-foreground underline">개인정보처리방침</a>
+    <a href="/privacy" className="justify-self-center text-caption text-muted-foreground underline">개인정보처리방침</a>
   </div>;
 }

@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 19;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -314,6 +314,31 @@ export function openDatabase(filename: string) {
           CHECK ((user_id IS NULL) != (google_sub IS NULL))
         ) STRICT;
         PRAGMA user_version = 18;`);
+    }
+    if (version < 19) {
+      // 서류 버전 기록: kind별 여러 버전(최대 DOCUMENT_VERSION_MAX)을 두고 활성(active = 1) 하나만 추천·조회에 쓴다.
+      // UNIQUE (user_id, kind)를 없애려 표를 다시 만든다(documents를 참조하는 외래키 없음). 기존 문서는 활성으로 남긴다.
+      db.exec(`CREATE TABLE documents_new (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL,
+          filename TEXT NOT NULL,
+          size INTEGER NOT NULL,
+          storage_key TEXT NOT NULL,
+          text TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          empty_pages TEXT NOT NULL DEFAULT '[]',
+          ocr_pages TEXT NOT NULL DEFAULT '[]',
+          edited INTEGER NOT NULL DEFAULT 0,
+          active INTEGER NOT NULL DEFAULT 1
+        ) STRICT;
+        INSERT INTO documents_new (id, user_id, kind, filename, size, storage_key, text, created_at, empty_pages, ocr_pages, edited, active)
+          SELECT id, user_id, kind, filename, size, storage_key, text, created_at, empty_pages, ocr_pages, edited, 1 FROM documents;
+        DROP TABLE documents;
+        ALTER TABLE documents_new RENAME TO documents;
+        CREATE UNIQUE INDEX documents_active ON documents(user_id, kind) WHERE active = 1;
+        CREATE INDEX documents_user_kind ON documents(user_id, kind, created_at);
+        PRAGMA user_version = 19;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

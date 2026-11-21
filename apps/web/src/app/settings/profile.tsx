@@ -39,7 +39,7 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
     onSuccess: data => client.setQueryData(key, data),
   });
   const suggest = useMutation({
-    mutationFn: async () => profileSchema.parse(((await call('profile/suggest', { method: 'POST', messages: { 409: '이력서를 먼저 등록하세요.', 502: 'AI 처리에 실패했습니다. 서버의 로컬 AI(Ollama)가 켜져 있는지 확인하고 다시 시도하세요.' } })) as { profile: unknown }).profile),
+    mutationFn: async () => profileSchema.parse(((await call('profile/suggest', { method: 'POST', messages: { 409: '이력서를 먼저 등록하세요.', 502: '초안을 만들지 못했습니다. 잠시 후 다시 시도하세요.' } })) as { profile: unknown }).profile),
     onSuccess: load,
   });
   const toggle = <T,>(items: T[], item: T) => items.includes(item) ? items.filter(i => i !== item) : [...items, item];
@@ -47,7 +47,7 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
   const setYears = (family: JobFamily, value: string) => setForm({ ...form, experiences: [...form.experiences.filter(e => e.jobFamily !== family), ...(value === '' ? [] : [{ jobFamily: family, years: Number(value) }])] });
 
   return <form className="flex flex-col gap-5" onSubmit={e => { e.preventDefault(); save.mutate(); }}>
-    <p className="text-body-sm text-muted-foreground">이력서로 초안 만들기는 이력서 본문에서 서버의 로컬 AI로 경력·기술을 추출합니다. 초안은 저장 전까지 반영되지 않습니다.</p>
+    <p className="text-body-sm text-muted-foreground">등록한 이력서로 직무·경력·기술을 채울 수 있어요. 저장하기 전까지는 반영되지 않아요.</p>
     <div><Button variant="secondary" disabled={suggest.isPending} onClick={() => suggest.mutate()}>이력서로 초안 만들기</Button></div>
     <fieldset className="flex flex-col gap-3"><legend className="mb-2 text-body-sm font-semibold">희망 직무 (복수 선택)</legend>
       {FAMILIES.map(family => <div key={family} className="flex flex-wrap items-center gap-3">

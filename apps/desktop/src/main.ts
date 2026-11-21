@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, nativeImage, Notification, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, dialog, Menu, nativeImage, nativeTheme, Notification, session, shell, Tray } from 'electron';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serviceUrl, isServiceNavigation, isExternalUrl, googleLoginUrl, desktopLoginPath } from './security.js';
@@ -34,7 +34,12 @@ async function openExternal(target: string) {
 }
 
 function createWindow() {
-  window = new BrowserWindow({ width: 1280, height: 860, minWidth: 720, minHeight: 540, title: 'NextStep', icon: join(app.getAppPath(), 'assets/icon.png'), show: false, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, partition: PARTITION } });
+  // macOS는 제목 막대를 숨기고 창 단추를 웹이 비워 둔 맨 위 띠(2rem) 안에 띄운다. 띠를 끌어 창을 옮긴다(globals.css).
+  const mac = process.platform === 'darwin';
+  window = new BrowserWindow({ width: 1280, height: 860, minWidth: 720, minHeight: 540, title: 'NextStep', icon: join(app.getAppPath(), 'assets/icon.png'), show: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1f1e1b' : '#ffffff', // 웹이 그리기 전 맨 위 띠와 같은 색(card)
+    ...(mac ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 10 } } : {}),
+    webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, partition: PARTITION } });
   const contents = window.webContents;
   contents.setWindowOpenHandler(({ url }) => { void openExternal(url); return { action: 'deny' }; });
   contents.on('will-navigate', (event, target) => {
@@ -74,12 +79,15 @@ async function refreshNow() {
   updateTray();
 }
 
+// 마지막 갱신 결과는 창의 웹 페이지에서 같은 출처로 읽는다. 화면이 보는 로그인 쿠키(SameSite=Lax)를 그대로 써서
+// 창에서 로그인했는데 아이콘 메뉴만 '로그인 필요'로 남는 일이 없게 한다.
 async function poll() {
+  if (!window) createWindow();
   try {
-    const response = await session.fromPartition(PARTITION).fetch(new URL('/api/jobs/latest', service).href, { credentials: 'include', cache: 'no-store' });
-    if (response.status === 401) { status = '로그인 필요'; return; }
-    if (!response.ok) { status = '서비스 응답 오류'; return; }
-    const latest = await response.json() as LatestRefresh;
+    const { code, body } = await window!.webContents.executeJavaScript("fetch('/api/jobs/latest', { cache: 'no-store' }).then(async r => ({ code: r.status, body: r.ok ? await r.json() : null }))") as { code: number; body: LatestRefresh | null };
+    if (code === 401) { status = '로그인 필요'; return; }
+    if (!body) { status = '서비스 응답 오류'; return; }
+    const latest = body;
     const job = latest.job;
     status = !job ? '아직 가져온 적 없음' : !job.finishedAt ? '가져오는 중' : `마지막: ${job.status} · ${new Date(job.finishedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
     const settings = readSettings();
@@ -99,10 +107,14 @@ function updateTray() {
   if (!tray) return;
   const autoLaunch = app.getLoginItemSettings().openAtLogin;
   tray.setToolTip(`NextStep · ${status}`);
+  // 로그인 전이면 가져오기 대신 로그인으로 안내하고, 상태 줄은 쓸 수 있는 결과가 있을 때만 보여 준다.
+  const signedOut = status === '로그인 필요';
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'NextStep 열기', click: () => showWindow() },
-    { label: '지금 공고 가져오기', enabled: status !== '가져오는 중', click: () => void refreshNow() },
-    { label: status, enabled: false },
+    { label: signedOut ? 'NextStep에 로그인' : 'NextStep 열기', click: () => showWindow() },
+    ...(signedOut ? [] : [
+      { label: '지금 공고 가져오기', enabled: status !== '가져오는 중', click: () => void refreshNow() },
+      { label: status, enabled: false },
+    ]),
     { type: 'separator' },
     { label: '로그인 시 자동 실행', type: 'checkbox', checked: autoLaunch, click: item => { app.setLoginItemSettings({ openAtLogin: item.checked }); updateTray(); } },
     { label: 'NextStep 종료', click: () => { quitting = true; app.quit(); } },

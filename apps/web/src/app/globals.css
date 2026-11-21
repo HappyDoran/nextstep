@@ -7,3 +7,12 @@
   body { @apply m-0 bg-background font-sans text-body text-foreground; }
   a { @apply text-primary focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus; }
 }
+
+/* macOS 데스크톱 앱: 제목 막대 대신 화면 맨 위에 왼쪽 메뉴·화면 머리와 같은 색(card)의 빈 띠(2rem)를 남기고 창 단추를 그 안에 띄운다. 띠를 끌면 창이 옮겨진다.
+   data-ns-desktop은 layout의 첫 스크립트가 Electron(macOS)에서만 붙인다. 화면 높이는 띠만큼 줄인다. */
+@layer base {
+  [data-ns-desktop] body { padding-top: 2rem; }
+  [data-ns-desktop] body::before { content: ''; position: fixed; inset: 0 0 auto; z-index: 50; height: 2rem; background: var(--ns-color-card); -webkit-app-region: drag; }
+  [data-ns-desktop] .h-dvh { height: calc(100dvh - 2rem); }
+  [data-ns-desktop] .min-h-dvh { min-height: calc(100dvh - 2rem); }
+}

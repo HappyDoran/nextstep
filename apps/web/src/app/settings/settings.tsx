@@ -5,30 +5,29 @@ import type { Me } from '@nextstep/contracts';
 import { useMe } from '../api-client';
 import { Account } from '../account';
 import { AutomationSetting } from '../automation';
-import { ResumeSetting } from './resume';
-import { AiSetting } from './ai';
+import { DocumentsSetting } from './resume';
 import { ProfileSetting } from './profile';
 import { MailSetting } from './mail';
-import { ConnectionStatus } from '../status';
 import { ConnectionPanel } from './connections';
 import { AuthLayout } from '../frame';
 
 // 설정은 어느 화면에서든 여는 창이다(2026-11-19 결정). 한 번에 한 구역만 보여 준다(기획서 4절).
 // 주소 #settings-<구역>으로 바로 연다(상태바 '연결 확인' → #settings-status).
+// 순서: 추천에 바로 쓰는 것(프로필·서류) → 연결·자동화 → 점검 → 계정(로그아웃·삭제는 맨 아래).
 export const SECTIONS = [
-  { value: 'account', label: '계정' },
-  { value: 'mail', label: '네이버 메일' },
-  { value: 'documents', label: '서류' },
   { value: 'profile', label: '프로필·필터' },
+  { value: 'documents', label: '서류' },
+  { value: 'mail', label: '네이버 메일' },
   { value: 'automation', label: '자동 갱신' },
   { value: 'status', label: '연결 상태' },
+  { value: 'account', label: '계정' },
 ] as const;
 export type Section = (typeof SECTIONS)[number]['value'];
 export const isSection = (v: string): v is Section => SECTIONS.some(s => s.value === v);
-/** 주소의 해시에서 열 구역을 읽는다. #settings는 계정, #settings-mail은 메일. 설정이 아니면 null. */
+/** 주소의 해시에서 열 구역을 읽는다. #settings는 첫 구역(프로필·필터), #settings-mail은 메일. 설정이 아니면 null. */
 export function sectionFromHash(hash: string): Section | null {
   const h = decodeURIComponent(hash.replace(/^#/, ''));
-  if (h === 'settings') return 'account';
+  if (h === 'settings') return SECTIONS[0].value;
   const s = h.startsWith('settings-') ? h.slice('settings-'.length) : '';
   return isSection(s) ? s : null;
 }
@@ -45,7 +44,6 @@ export function Settings() {
   return <AuthLayout>
     <h1 className="text-title-lg">설정</h1>
     <Account />
-    <section aria-labelledby="service-check" className="border-t border-border pt-6"><h2 id="service-check" className="mb-3 text-body-sm font-extrabold">서비스 연결 확인</h2><ConnectionStatus /></section>
   </AuthLayout>;
 }
 
@@ -57,16 +55,12 @@ export function SettingsDialog({ me, section, onSection, onClose }: { me: Me; se
   const content = {
     account: block('account', '계정', null, <Account />),
     mail: block('mail', '네이버 메일', '메일은 읽기만 해요. 읽음 표시·삭제·이동·답장은 하지 않아요.', <MailSetting me={me} />),
-    documents: <div className="grid gap-8">
-      {block('resume', '이력서 (필수)', '모든 서류는 MD로 바꿔 추천에 써요. 이미지 쪽은 글자 인식으로 바꿔요.', <ResumeSetting me={me} />)}
-      {block('career', '경력기술서 (선택)', null, <ResumeSetting me={me} kind="career" />)}
-      {block('portfolio', '포트폴리오 (선택)', null, <ResumeSetting me={me} kind="portfolio" />)}
-    </div>,
-    profile: block('profile', '프로필·필터', '필터는 공고를 가져올 때와 추천 목록에 그대로 써요.', <><ProfileSetting me={me} /><AiSetting me={me} /></>),
+    documents: block('documents', '서류', '이력서는 꼭 필요해요. 여러 번 올리면 버전으로 남고, 고른 버전으로 추천해요.', <DocumentsSetting me={me} />),
+    profile: block('profile', '프로필·필터', '필터는 공고를 가져올 때와 추천 목록에 그대로 써요.', <ProfileSetting me={me} />),
     automation: block('automation', '자동 갱신', null, <AutomationSetting me={me} />),
-    status: block('status', '연결 상태', '공고·메일을 가져오는 데 필요한 연결을 확인해요. 문제가 있으면 하단 상태바에도 표시돼요.', <div className="grid gap-5"><ConnectionPanel me={me} /><AiSetting me={me} /></div>),
+    status: block('status', '연결 상태', '공고·메일을 가져오는 데 필요한 연결을 확인해요. 문제가 있으면 하단 상태바에도 표시돼요.', <ConnectionPanel me={me} />),
   } satisfies Record<Section, ReactNode>;
-  return <Sheet open onClose={onClose} size="lg" title="설정" meta="계정·메일·서류·프로필을 관리해요">
+  return <Sheet open onClose={onClose} size="lg" title="설정" meta="프로필·서류·메일·계정을 관리해요">
     <div className="grid min-h-0 grid-cols-[11rem_minmax(0,1fr)] gap-8">
       <nav aria-label="설정 구역" className="sticky top-0 flex flex-col gap-1 self-start">
         {SECTIONS.map(s => <button key={s.value} type="button" aria-pressed={s.value === section} onClick={() => onSection(s.value)}

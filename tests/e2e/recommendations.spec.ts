@@ -3,36 +3,41 @@ import { alert, deleteAccount, signup } from './helpers';
 
 const fixture = (name: string) => `apps/server/tests/fixtures/${name}`;
 
-test('이력서 등록·실패 시 유지·프로필 저장과 로컬 AI 실패 안내', async ({ page }) => {
+test('이력서 등록·버전 되돌리기·실패 시 유지·프로필 저장과 초안 실패 안내', async ({ page }) => {
   await signup(page, `e2e-rec-${Date.now()}@example.com`);
   try {
     await page.goto('/settings');
     await page.getByRole('button', { name: '서류', exact: true }).click();
-    await expect(page.getByRole('status').filter({ hasText: '등록한 이력서가 없습니다.' })).toBeVisible();
-    await page.getByLabel(/이력서 파일/).setInputFiles(fixture('resume-text.pdf'));
-    await page.getByRole('button', { name: '이력서 등록' }).click();
-    await expect(page.getByRole('status').filter({ hasText: '등록된 이력서: resume-text.pdf' })).toBeVisible();
-    await page.getByText('변환된 MD 확인·수정').first().click();
-    await expect(page.getByLabel('이력서 MD')).toHaveValue(/프론트엔드 개발자 경력 3년/);
-    // 변환된 MD를 고치면 저장되고 수정 표시가 남는다.
-    await page.getByLabel('이력서 MD').fill('# 가상 지원자\n프론트엔드 개발자 경력 3년, React·TypeScript 실무');
-    await page.getByRole('button', { name: 'MD 저장' }).click();
-    await expect(page.getByRole('status').filter({ hasText: 'MD 수정함' })).toBeVisible();
+    // 파일을 고르면 바로 올린다(별도 등록 버튼 없음).
+    await page.getByLabel(/이력서 올리기/).setInputFiles(fixture('resume-text.pdf'));
+    await expect(page.getByRole('heading', { name: 'resume-text.pdf' })).toBeVisible();
+    await page.getByText('읽어 들인 내용 확인·고치기').click();
+    await expect(page.getByLabel('읽어 들인 내용')).toHaveValue(/프론트엔드 개발자 경력 3년/);
+    // 읽어 들인 내용을 고치면 저장되고 고침 표시가 남는다.
+    await page.getByLabel('읽어 들인 내용').fill('# 가상 지원자\n프론트엔드 개발자 경력 3년, React·TypeScript 실무');
+    await page.getByRole('button', { name: '내용 저장' }).click();
+    await expect(page.getByText('내용 고침')).toBeVisible();
+    // 새 파일을 올리면 새 버전이 사용 중이 되고, 이전 버전으로 되돌릴 수 있다.
+    await page.getByLabel(/새 이력서 버전 올리기/).setInputFiles(fixture('resume-text.pdf'));
+    await expect(page.getByRole('button', { name: '이 버전 사용' })).toBeVisible();
+    await expect(page.getByText('내용 고침')).toBeVisible();
+    await page.getByRole('button', { name: '이 버전 사용' }).click();
+    await expect(page.getByRole('heading', { name: 'resume-text.pdf' }).locator('..')).toContainText('내용 고침');
     // 선택 서류(경력기술서)는 이력서와 따로 등록된다.
-    await page.getByLabel(/경력기술서 파일/).setInputFiles(fixture('resume-text.pdf'));
-    await page.getByRole('button', { name: '경력기술서 등록' }).click();
-    await expect(page.getByRole('status').filter({ hasText: '등록된 경력기술서: resume-text.pdf' })).toBeVisible();
-    await page.getByLabel(/이력서 파일/).setInputFiles(fixture('resume-encrypted.pdf'));
-    await page.getByRole('button', { name: '이력서 교체' }).click();
+    await page.getByRole('button', { name: '경력기술서' }).click();
+    await page.getByLabel(/경력기술서 올리기/).setInputFiles(fixture('resume-text.pdf'));
+    await expect(page.getByRole('heading', { name: 'resume-text.pdf' })).toBeVisible();
+    await page.getByRole('button', { name: '이력서 (필수)' }).click();
+    await page.getByLabel(/새 이력서 버전 올리기/).setInputFiles(fixture('resume-encrypted.pdf'));
     await expect(alert(page)).toContainText('암호가 걸린 PDF');
     await expect(alert(page)).toContainText('기존 이력서는 유지됩니다.');
-    await expect(page.getByRole('status').filter({ hasText: '등록된 이력서: resume-text.pdf' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'resume-text.pdf' })).toBeVisible();
 
     await page.getByRole('button', { name: '프로필·필터', exact: true }).click();
     await page.getByRole('button', { name: '이력서로 초안 만들기' }).click();
-    // e2e 서버는 닿지 않는 Ollama 주소를 써서 실패 안내만 확인한다(실제 AI 호출 없음).
-    await expect(alert(page).filter({ hasText: 'AI 처리' })).toContainText('로컬 AI(Ollama)가 켜져 있는지');
-    await expect(page.getByRole('status').filter({ hasText: '외부 AI로 보내지 않습니다' })).toContainText('로컬 AI(qwen3:1.7b)');
+    // e2e 서버는 닿지 않는 Ollama 주소를 써서 실패 안내만 확인한다(실제 AI 호출 없음). 모델·처리 방식은 화면에 적지 않는다.
+    await expect(alert(page)).toContainText('초안을 만들지 못했습니다');
+    await expect(page.getByText(/Ollama|qwen|로컬 AI/)).toHaveCount(0);
     await page.getByRole('checkbox', { name: '앱 개발' }).check();
     await page.getByLabel('업무·도구·기술 (쉼표로 구분)').fill('React, Swift');
     await page.getByRole('button', { name: '프로필 저장' }).click();

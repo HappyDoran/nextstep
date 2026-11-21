@@ -114,7 +114,7 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
   app.post('/profile/suggest', async (request, reply) => {
     const user = requireUser(db, request, reply);
     if (!user) return reply;
-    const resume = db.prepare("SELECT text FROM documents WHERE user_id = ? AND kind = 'resume'").get(user.id) as { text: string } | undefined;
+    const resume = db.prepare("SELECT text FROM documents WHERE user_id = ? AND kind = 'resume' AND active = 1").get(user.id) as { text: string } | undefined;
     if (!resume) return reply.status(409).send({ message: '이력서를 먼저 등록하세요.' });
     try {
       return { profile: await suggestProfile(resume.text) };

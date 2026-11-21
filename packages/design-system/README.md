@@ -32,7 +32,9 @@ Light/Dark 모두 background·foreground, card·popover, primary·secondary·mut
 
 밀도와 앱 틀(2026-11-18 와이어프레임 확정): 컨트롤 높이 40px(`h-control`), 작은 컨트롤 32px(`h-control-sm`), 컨트롤 모서리 10px, 카드 16px(`rounded-surface`), 대화 창 20px(`rounded-dialog`), 왼쪽 아이콘 메뉴 폭 `w-rail`, 화면 머리 `h-header`, 하단 상태바 `h-statusbar`, 본문 최대 폭 `max-w-content`. 브랜드 강조와 success·info는 별도 역할이며 상태 색상은 지원 결과를 자동 판정하지 않는다.
 
-타입 역할은 Display·Title Lg·Title·Body Lg·Body·Body Sm·Caption·Micro·Mono다. 긴 공고·근거를 읽는 제품 특성에 맞춰 기본 본문 크기와 줄간격을 확보한다. 상세 수치의 정답은 tokens.css에만 둔다. 브랜드 색상 선택은 완료했으며 제품 화면·로고·전체 브랜드 가이드 완성을 의미하지 않는다.
+타입 역할은 Display·Title Lg·Title·Body Lg·Body·Body Sm·Caption·Micro·Mono다. 긴 공고·근거를 읽는 제품 특성에 맞춰 기본 본문 크기와 줄간격을 확보한다. 상세 수치의 정답은 tokens.css에만 둔다. 브랜드 색상 선택은 완료했으며 제품 화면·전체 브랜드 가이드 완성을 의미하지 않는다.
+
+로고(2026-11-22): `LogoMark`는 인디고 면 위에 올라가는 계단과 다음 한 칸(점)이며 테마 역할 색(`primary`·`primary-foreground`)을 따른다. 인디고 면 위에 올릴 때는 `inverse`, 이름을 함께 보일 때는 `Logo`를 쓴다. 웹 아이콘·데스크톱 아이콘은 같은 도형을 #4F46E5 리터럴로 그린 파일이다. `GoogleMark`는 구글 로그인 버튼 전용 브랜드 마크(18px, 구글 4색 리터럴)라 테마 토큰을 쓰지 않는다. Storybook `공통/화면 부품 > Brand`에서 본다.
 
 spring 설계값과 애니메이션 라이브러리는 제스처 동작을 구현할 때 추가하며 단위·질량·초기 속도·중단/역전·최종 정지 상태를 함께 검증한다. CSS 일반 전환과 spring은 같은 실행 방식이 아니다.
 

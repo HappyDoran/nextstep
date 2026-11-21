@@ -79,6 +79,10 @@ export type DocumentKind = z.infer<typeof documentKindSchema>;
 export const DOCUMENT_TEXT_MAX = 200_000;
 export const resumeSchema = z.object({ id: z.string(), kind: documentKindSchema.default('resume'), filename: z.string(), size: z.number().int(), createdAt: z.string(), text: z.string(), emptyPages: z.array(z.number().int()).default([]), ocrPages: z.array(z.number().int()).default([]), edited: z.boolean().default(false) });
 export type Resume = z.infer<typeof resumeSchema>;
+// 서류 버전: 종류마다 올린 파일을 버전으로 남기고, 사용 중(active)인 하나만 추천에 쓴다. 목록에는 본문을 싣지 않는다.
+export const DOCUMENT_VERSION_MAX = 10;
+export const documentVersionSchema = z.object({ id: z.string(), filename: z.string(), size: z.number().int(), createdAt: z.string(), edited: z.boolean(), active: z.boolean() });
+export type DocumentVersion = z.infer<typeof documentVersionSchema>;
 
 // 프로필·필터: 사용자가 확인한 사실만 저장한다. 직무는 기획서 3절 여섯 직무, 복수 선택은 OR.
 // 선호(지역·원격·고용 형태·요구 경력)는 사용자만 고른다. 빈 목록·null은 제한 없음(전국·전체)이다.

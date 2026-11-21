@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../dist/app.js';
+import { DatabaseSync } from 'node:sqlite';
 import { openDatabase } from '../dist/database.js';
 import { createInvite } from '../dist/auth.js';
 import { signIn } from './fake-google.mjs';
@@ -49,11 +50,14 @@ test('이력서 등록·교체·실패 시 기존 유지·삭제와 사용자별
 
     const md = await upload(app, a, Buffer.from('# 가상 지원자\n\n서비스 기획 2년, Figma·Jira 사용 경험', 'utf8'), 'resume.md', 'text/markdown');
     assert.equal(md.statusCode, 200);
-    assert.deepEqual(readdirSync(join(files, userA)), [`${md.json().id}.md`]);
+    // 교체해도 이전 버전 원본은 남는다(첫 PDF·일부 이미지 PDF·MD).
+    assert.equal(readdirSync(join(files, userA)).length, 3);
     assert.equal((await app.inject({ url: '/documents/resume', headers: { cookie: b } })).statusCode, 404);
 
+    // 서류 삭제는 모든 버전과 원본을 지운다.
     assert.equal((await app.inject({ method: 'DELETE', url: '/documents/resume', headers: { cookie: a } })).statusCode, 204);
     assert.deepEqual(readdirSync(join(files, userA)), []);
+    assert.deepEqual((await app.inject({ url: '/documents/resume/versions', headers: { cookie: a } })).json(), []);
     await upload(app, a, fixture('resume-text.pdf'), 'a.pdf');
     assert.equal((await app.inject({ method: 'DELETE', url: '/account', headers: { cookie: a } })).statusCode, 204);
     assert.equal(existsSync(join(files, userA)), false);
@@ -104,4 +108,81 @@ test('포트폴리오·경력기술서는 이력서와 따로 저장되고, 변�
     await app.close();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('서류 버전: 교체 기록 유지·활성 선택·비활성 삭제·최대 10개·사용자 분리', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-versions-'));
+  const path = join(dir, 'db.sqlite');
+  const files = join(dir, 'files');
+  const app = createApp(path);
+  try {
+    const a = await signup(app, path, 'a@example.com');
+    const b = await signup(app, path, 'b@example.com');
+    const put = n => app.inject({ method: 'PUT', url: '/documents/resume', headers: { cookie: a, 'content-type': 'text/markdown', 'x-filename': encodeURIComponent(`v${n}.md`) }, payload: Buffer.from(`# 이력서 ${n}\n프론트엔드 개발자 경력 ${n}년, React 실무 경험`) });
+    const list = (cookie = a) => app.inject({ url: '/documents/resume/versions', headers: { cookie } });
+    const userA = (await app.inject({ url: '/auth/me', headers: { cookie: a } })).json().id;
+
+    const v1 = (await put(1)).json();
+    const v2 = (await put(2)).json();
+    let versions = (await list()).json();
+    assert.deepEqual(versions.map(v => [v.id, v.active]), [[v2.id, true], [v1.id, false]]);
+    assert.equal((await app.inject({ url: '/documents/resume', headers: { cookie: a } })).json().id, v2.id);
+
+    // 다른 사용자는 목록·활성 선택·삭제를 할 수 없다.
+    assert.deepEqual((await list(b)).json(), []);
+    assert.equal((await app.inject({ method: 'PUT', url: `/documents/resume/versions/${v1.id}/active`, headers: { cookie: b } })).statusCode, 404);
+    assert.equal((await app.inject({ method: 'DELETE', url: `/documents/resume/versions/${v1.id}`, headers: { cookie: b } })).statusCode, 404);
+    assert.equal((await app.inject({ method: 'PUT', url: `/documents/career/versions/${v1.id}/active`, headers: { cookie: a } })).statusCode, 404);
+    assert.equal((await app.inject({ method: 'DELETE', url: '/documents/resume/versions/not-a-uuid', headers: { cookie: a } })).statusCode, 404);
+
+    // 이전 버전을 활성으로 고르면 조회·수정 대상이 바뀐다.
+    const activated = await app.inject({ method: 'PUT', url: `/documents/resume/versions/${v1.id}/active`, headers: { cookie: a } });
+    assert.equal(activated.statusCode, 200);
+    assert.match(activated.json().text, /경력 1년/);
+    assert.equal((await app.inject({ url: '/documents/resume', headers: { cookie: a } })).json().id, v1.id);
+
+    // 활성 버전은 지울 수 없고, 비활성 버전은 원본과 함께 지운다.
+    assert.equal((await app.inject({ method: 'DELETE', url: `/documents/resume/versions/${v1.id}`, headers: { cookie: a } })).statusCode, 409);
+    assert.equal((await app.inject({ method: 'DELETE', url: `/documents/resume/versions/${v2.id}`, headers: { cookie: a } })).statusCode, 204);
+    assert.deepEqual((await list()).json().map(v => v.id), [v1.id]);
+    assert.deepEqual(readdirSync(join(files, userA)), [`${v1.id}.md`]);
+    assert.equal((await app.inject({ method: 'DELETE', url: `/documents/resume/versions/${v2.id}`, headers: { cookie: a } })).statusCode, 404);
+
+    // 11번 더 올리면 오래된 비활성 버전부터 지워 10개만 남긴다.
+    for (let n = 3; n <= 13; n++) assert.equal((await put(n)).statusCode, 200);
+    versions = (await list()).json();
+    assert.equal(versions.length, 10);
+    assert.equal(versions.filter(v => v.active).length, 1);
+    assert.equal(versions[0].filename, 'v13.md');
+    assert.ok(!versions.some(v => v.id === v1.id));
+    assert.equal(readdirSync(join(files, userA)).length, 10);
+  } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('DB 버전 19는 기존 서류를 활성 버전으로 남긴다', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-v19-'));
+  try {
+    const path = join(dir, 'db.sqlite');
+    openDatabase(path).close();
+    // 버전 18 상태(사용자·kind당 한 개)를 재현한다.
+    const raw = new DatabaseSync(path);
+    raw.exec(`DROP TABLE documents;
+      CREATE TABLE documents (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, kind TEXT NOT NULL, filename TEXT NOT NULL, size INTEGER NOT NULL, storage_key TEXT NOT NULL, text TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE (user_id, kind)) STRICT;
+      ALTER TABLE documents ADD COLUMN empty_pages TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE documents ADD COLUMN ocr_pages TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE documents ADD COLUMN edited INTEGER NOT NULL DEFAULT 0;
+      PRAGMA user_version = 18;`);
+    raw.exec("INSERT INTO users (id, email, password_hash, created_at) VALUES ('u1', 'a@example.com', '', '2026-01-01')");
+    raw.exec("INSERT INTO documents (id, user_id, kind, filename, size, storage_key, text, created_at, edited) VALUES ('d1', 'u1', 'resume', 'a.md', 1, 'u1/d1.md', '본문', '2026-01-01', 1)");
+    raw.close();
+    const db = openDatabase(path);
+    try {
+      assert.deepEqual({ ...db.prepare('SELECT id, active, edited FROM documents').get() }, { id: 'd1', active: 1, edited: 1 });
+      // 활성 버전은 사용자·kind당 하나뿐이다.
+      assert.throws(() => db.exec("INSERT INTO documents (id, user_id, kind, filename, size, storage_key, text, created_at) VALUES ('d2', 'u1', 'resume', 'b.md', 1, 'u1/d2.md', '본문', '2026-01-02')"), /UNIQUE/);
+      db.exec("INSERT INTO documents (id, user_id, kind, filename, size, storage_key, text, created_at, active) VALUES ('d2', 'u1', 'resume', 'b.md', 1, 'u1/d2.md', '본문', '2026-01-02', 0)");
+      db.exec("DELETE FROM users WHERE id = 'u1'");
+      assert.equal(db.prepare('SELECT count(*) AS n FROM documents').get().n, 0);
+    } finally { db.close(); }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

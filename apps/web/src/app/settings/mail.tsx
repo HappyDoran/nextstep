@@ -52,16 +52,6 @@ export function MailSetting({ me }: { me: Me }) {
           <li>2단계 인증 관리 &gt; 애플리케이션 비밀번호 관리에서 새 비밀번호를 만들어 아래에 붙여 넣습니다. 네이버 로그인 비밀번호는 넣지 마세요.</li>
         </ol>
       </section>
-      <section aria-labelledby="mail-scope" className="rounded-surface border border-border bg-background p-5">
-        <h3 id="mail-scope" className="mb-2 text-body-sm font-extrabold">NextStep이 하는 일과 하지 않는 일</h3>
-        <ul className="flex list-disc flex-col gap-1 pl-5 text-body-sm">
-          <li>받은 메일을 읽기만 합니다. 읽음 처리·이동·삭제·발송을 하지 않습니다.</li>
-          <li>채용 메일의 제목 앞부분·짧은 근거·수신 시각만 저장하고 본문은 저장하지 않습니다.</li>
-          <li>규칙으로 지원 건을 찾지 못한 채용 메일은 AI로 회사·직무·결과를 해석합니다. 본문은 서버의 로컬 AI로만 처리하고 서버 밖으로 보내지 않습니다.</li>
-          <li>애플리케이션 비밀번호는 암호화해 서버에만 둡니다. 연결 해제 시 비밀번호와 조회 위치를 지웁니다.</li>
-          <li>네이버에서 애플리케이션 비밀번호를 삭제하면 그 즉시 NextStep의 접근도 끊깁니다.</li>
-        </ul>
-      </section>
       <label className="flex flex-col gap-1.5 text-body-sm font-semibold">네이버 메일 주소<input name="account" type="email" required autoComplete="off" className={fieldClass} /></label>
       <label className="flex flex-col gap-1.5 text-body-sm font-semibold">애플리케이션 비밀번호<input name="appPassword" type="password" required autoComplete="off" className={fieldClass} /></label>
       <label className="flex flex-col gap-1.5 text-body-sm font-semibold">처음 조회할 기간
@@ -78,7 +68,7 @@ export function MailSetting({ me }: { me: Me }) {
   return <div className="flex flex-col gap-4">
     <p role="status" className="text-body-sm font-semibold">
       {conn.account} · {conn.status}{conn.lastSuccessAt ? ` · 최근 성공 ${new Date(conn.lastSuccessAt).toLocaleString('ko-KR')}` : ''}
-      {job ? ` · ${ACTIVE.includes(job.status) ? '메일을 확인하고 있습니다' : `${job.status}${job.errorCode ? `(${ERRORS[job.errorCode] ?? job.errorCode})` : ''}: 채용 메일 ${result?.stored ?? 0}건, 반영 ${(result?.applied ?? 0) + (result?.created ?? 0)}건, 확인 필요 ${result?.review ?? 0}건${result?.aiFailures ? `, AI 해석 실패(${aiCause}) — 해결 후 다시 확인하면 이어서 해석` : ''}${result?.more ? ', 남은 메일은 다음 조회에서 이어서 처리' : ''}`}` : ''}
+      {job ? ` · ${ACTIVE.includes(job.status) ? '메일을 확인하고 있습니다' : `${job.status}${job.errorCode ? `(${ERRORS[job.errorCode] ?? job.errorCode})` : ''}: 채용 메일 ${result?.stored ?? 0}건, 반영 ${(result?.applied ?? 0) + (result?.created ?? 0)}건, 확인 필요 ${result?.review ?? 0}건${result?.aiFailures ? `, 자동 해석 실패(${aiCause}) — 다시 확인하면 이어서 해석` : ''}${result?.more ? ', 남은 메일은 다음 조회에서 이어서 처리' : ''}`}` : ''}
     </p>
     {conn.coveredSince && <p className="text-body-sm text-muted-foreground">조회 범위: {new Date(conn.coveredSince).toLocaleDateString('ko-KR')} 이후 받은 메일{conn.backfillSince ? ` · ${new Date(conn.backfillSince).toLocaleDateString('ko-KR')}까지 과거 범위를 넓히는 중(메일 확인 때마다 이어서 가져옴)` : ''}. 자동 갱신을 켜 두면 1시간마다 새 메일을 확인합니다.</p>}
     {conn.rangeIncomplete && <p className="text-body-sm text-destructive">네이버가 IMAP으로 보여 주는 메일이 고른 조회 기간보다 짧습니다. 네이버 메일 환경설정 &gt; POP3/IMAP 설정 &gt; IMAP/SMTP 설정의 &lsquo;IMAP 동기화 메일 제한&rsquo;(기본 1,000통, 최대 5,000통)을 늘린 뒤 다시 연결하면 더 오래된 메일까지 확인합니다.</p>}

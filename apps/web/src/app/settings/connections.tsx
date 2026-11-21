@@ -10,7 +10,7 @@ const CODES: Record<string, string> = { network: '연결 실패', blocked: '접�
 const when = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 const tone = (ok: boolean | null | 'partial') => (ok === 'partial' ? '도전' : ok === null ? '미확인' : ok ? '기본' : '제외') as '미확인' | '기본' | '도전' | '제외';
 
-// 연결 상태(기획서 4절): 홈서버·로컬 AI는 지금 확인하고, 메일·공고 출처는 마지막 실행 결과를 보여 준다.
+// 연결 상태(기획서 4절): 홈서버·분석 기능은 지금 확인하고, 메일·공고 출처는 마지막 실행 결과를 보여 준다.
 export function ConnectionPanel({ me }: { me: Me }) {
   const health = useQuery({ queryKey: ['service', 'health'], retry: false, refetchOnWindowFocus: false, queryFn: async ({ signal }) => {
     const response = await fetch('/api/health', { cache: 'no-store', signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) });
@@ -24,7 +24,7 @@ export function ConnectionPanel({ me }: { me: Me }) {
   ];
   if (conn.data) {
     const c = conn.data;
-    rows.push({ name: '로컬 AI', ok: c.ai.status === '정상', label: c.ai.status, detail: c.ai.status === '정상' ? `${c.ai.model} 준비됨` : c.ai.status === '모델 없음' ? `${c.ai.model} 모델이 설치되지 않았습니다(ollama pull)` : '서버의 Ollama가 켜져 있는지 확인하세요' });
+    rows.push({ name: '공고·메일 분석', ok: c.ai.status === '정상', label: c.ai.status === '정상' ? '정상' : '사용 불가', detail: c.ai.status === '정상' ? '준비됨' : '지금은 분석할 수 없어요. 운영자에게 알려 주세요' });
     rows.push(c.mail
       ? { name: '네이버 메일', ok: c.mail.status === '정상', label: c.mail.status, detail: c.mail.status === '정상' ? `마지막 확인 ${c.mail.lastSuccessAt ? when(c.mail.lastSuccessAt) : '없음'}` : '설정의 네이버 메일에서 다시 연결하세요' }
       : { name: '네이버 메일', ok: null, label: '연결 안 됨', detail: '연결하지 않아도 지원 건을 직접 관리할 수 있습니다' });

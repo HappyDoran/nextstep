@@ -18,7 +18,7 @@ test('HTTP 준비 응답과 파일 DB 재시작·마이그레이션 재실행', 
     try {
       const res = await app.inject({ method: 'GET', url: '/health' });
       assert.equal(res.statusCode, 200);
-      assert.deepEqual(res.json(), { service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: 18 });
+      assert.deepEqual(res.json(), { service: 'nextstep', status: 'ok', database: 'ready', schemaVersion: 19 });
       assert.equal((await app.inject('/users')).statusCode, 404);
       const malformed = await app.inject({ method: 'POST', url: '/echo', headers: { 'content-type': 'application/json' }, payload: '{' });
       assert.equal(malformed.statusCode, 400);

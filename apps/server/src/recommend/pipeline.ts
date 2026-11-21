@@ -97,7 +97,7 @@ async function storeRequirements(db: DatabaseSync, deps: PipelineDeps, postingId
 function loadUserBasis(db: DatabaseSync, userId: string) {
   const profileRow = db.prepare('SELECT data, updated_at FROM profiles WHERE user_id = ?').get(userId) as { data: string; updated_at: string } | undefined;
   // 이력서(필수)와 포트폴리오·경력기술서(선택)의 MD를 합쳐 지원자 사실을 뽑는다.
-  const docs = db.prepare("SELECT id, kind, text FROM documents WHERE user_id = ? ORDER BY CASE kind WHEN 'resume' THEN 0 WHEN 'career' THEN 1 ELSE 2 END").all(userId) as { id: string; kind: string; text: string }[];
+  const docs = db.prepare("SELECT id, kind, text FROM documents WHERE user_id = ? AND active = 1 ORDER BY CASE kind WHEN 'resume' THEN 0 WHEN 'career' THEN 1 ELSE 2 END").all(userId) as { id: string; kind: string; text: string }[];
   if (!profileRow || !docs.some(d => d.kind === 'resume')) return undefined;
   const titles: Record<string, string> = { resume: '이력서', career: '경력기술서', portfolio: '포트폴리오' };
   const text = docs.map(d => `# ${titles[d.kind] ?? d.kind}\n${d.text}`).join('\n\n');

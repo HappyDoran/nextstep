@@ -122,7 +122,7 @@ function ReviewDetail({ review, apps, onDone }: { review: Review; apps: AppOptio
             : full.isError ? <p role="alert" className="text-destructive">{full.error.message}</p>
               : <p className="max-h-72 overflow-auto whitespace-pre-wrap leading-relaxed">{full.data.text || '본문이 비어 있습니다.'}</p>}
       </div>
-      {(review.company || review.roleTitle) && <p className="text-caption text-muted-foreground">AI 해석: {review.company ?? '회사 미확인'} · {review.roleTitle ?? '직무 미확인'}</p>}
+      {(review.company || review.roleTitle) && <p className="text-caption text-muted-foreground">메일에서 읽은 내용: {review.company ?? '회사 미확인'} · {review.roleTitle ?? '직무 미확인'}</p>}
 
       <Segmented label="처리 방법" value={mode} onChange={setMode} options={[{ value: 'link', label: '기존 지원 건에 연결' }, { value: 'create', label: '새 지원 건으로 확정' }]} />
       {mode === 'link' && suggested && target === suggested.id && <div className="flex items-center gap-3 rounded-surface border-2 border-primary bg-secondary px-4 py-3">

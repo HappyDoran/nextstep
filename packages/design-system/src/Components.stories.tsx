@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { BriefcaseBusiness, Check, Inbox, Mail, RefreshCw, Settings, Star } from 'lucide-react';
-import { AppShell, Button, ClassLabel, DueDate, Field, Input, Lane, NavItem, OptionChip, PageHeader, Rail, Row, RowList, RowTrigger, Segmented, Select, Sheet, Skeleton, StatePanel, StatusBar, Tag, Textarea, Toast, Toggle, type Classification } from './index.js';
+import { AppShell, Button, buttonClass, ClassLabel, DueDate, Field, GoogleMark, Logo, LogoMark, Input, Lane, NavItem, OptionChip, PageHeader, Rail, Row, RowList, RowTrigger, Segmented, Select, Sheet, Skeleton, StatePanel, StatusBar, Tag, Textarea, Toast, Toggle, type Classification } from './index.js';
 
 // 모든 공고·회사는 예시 데이터다.
 const meta = { title: '공통/화면 부품', parameters: { layout: 'fullscreen' } } satisfies Meta;
@@ -74,11 +74,18 @@ export const Detail: Story = {
   },
 };
 
+export const Brand: Story = {
+  render: () => <div className="grid gap-6 p-6">
+    <div className="flex items-center gap-4"><LogoMark className="size-16" label="NextStep" /><LogoMark label="NextStep" /><LogoMark className="size-5" label="NextStep" /><Logo /></div>
+    <a href="#" className={buttonClass('secondary', 'md', 'w-72')}><GoogleMark />Google로 계속하기</a>
+  </div>,
+};
+
 export const Shell: Story = {
   render: function Render() {
     const [bar, setBar] = useState<'done' | 'running' | 'failed'>('done');
     return <AppShell
-      rail={<Rail brand={<div className="grid size-9 place-items-center rounded-control bg-primary font-extrabold text-primary-foreground">N</div>}>
+      rail={<Rail brand={<LogoMark label="NextStep" />}>
         <NavItem href="#" current icon={<Star className={icon} aria-hidden="true" focusable="false" />} label="추천" />
         <NavItem href="#" icon={<BriefcaseBusiness className={icon} aria-hidden="true" focusable="false" />} label="지원 현황" />
         <NavItem href="#" icon={<Inbox className={icon} aria-hidden="true" focusable="false" />} label="확인 목록" count={4} />
