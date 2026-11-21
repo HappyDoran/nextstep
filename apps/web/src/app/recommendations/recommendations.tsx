@@ -71,14 +71,14 @@ function RecommendationList({ me }: { me: Me }) {
   const running = Boolean(jobId) && (!job.data || ACTIVE_JOB.includes(job.data.status));
   const refresh = useMutation({ mutationFn: async () => jobSchema.parse(await call('postings/refresh', { method: 'POST' })), onSuccess: j => setJobId(j.id) });
   const link = useMutation({
-    mutationFn: async (url: string) => jobSchema.parse(await call('postings/link', { method: 'POST', body: JSON.stringify({ url }), messages: { 400: '사람인·잡코리아·자소설닷컴·원티드·점핏 공고 상세 링크(https)를 넣으세요.' } })),
+    mutationFn: async (url: string) => jobSchema.parse(await call('postings/link', { method: 'POST', body: JSON.stringify({ url }), messages: { 400: '사람인·잡코리아·자소설닷컴·원티드·점핏 공고 상세 링크(https)를 넣으세요.', 409: '앞서 넣은 링크를 처리하는 중이에요. 끝난 뒤 다시 넣으세요.' } })),
     onSuccess: j => { setJobId(j.id); setLinkOpen(false); },
   });
   const [linkOpen, setLinkOpen] = useState(false);
   // 보는 방식만 바꾼다(서버 판정은 그대로): 분류·출처·마감 임박·관심 없음·정렬은 이 기기에 기억하고 검색어는 기억하지 않는다.
   const [filter, setFilter] = useStored<Group | null>(me, 'recommendations.class', null, v => (GROUPS as readonly unknown[]).includes(v));
   const [showHidden, setShowHidden] = useStored(me, 'recommendations.hidden', false, isBool);
-  const [source, setSource] = useStored<keyof typeof SOURCE_NAMES | '전체'>(me, 'recommendations.source', '전체', v => v === '전체' || (typeof v === 'string' && v in SOURCE_NAMES));
+  const [source, setSource] = useStored<keyof typeof SOURCE_NAMES | '전체'>(me, 'recommendations.source', '전체', v => v === '전체' || (typeof v === 'string' && Object.hasOwn(SOURCE_NAMES, v)));
   const [soon, setSoon] = useStored(me, 'recommendations.soon', false, isBool);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useStored<'마감순' | '분류순'>(me, 'recommendations.sort', '마감순', v => v === '마감순' || v === '분류순');
@@ -214,7 +214,7 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
 function FilterSummary({ me }: { me: Me }) {
   const profile = useQuery({
     queryKey: ['profile', me.id], retry: false,
-    queryFn: async () => { try { return (await call('profile')) as { profile: unknown; updatedAt: string }; } catch { return null; } },
+    queryFn: async () => (await optional('profile')) as { profile: unknown; updatedAt: string } | null,
   });
   const p = profile.data ? profileSchema.safeParse(profile.data.profile) : null;
   if (!p?.success) return <p className="mb-6 text-caption text-muted-foreground">공고 필터가 없습니다. <a href="#settings-profile" className="font-semibold text-primary">설정</a>에서 프로필과 필터를 저장하세요.</p>;
@@ -235,6 +235,7 @@ function SetupSteps({ me, busy, onRefresh }: { me: Me; busy: boolean; onRefresh:
   const profile = useQuery({ queryKey: ['profile', me.id], retry: false, queryFn: () => optional('profile') });
   const mail = useMailConnection(me);
   const ready = Boolean(resume.data) && Boolean(profile.data);
+  const failed = resume.isError || profile.isError;
   const steps = [
     { done: Boolean(resume.data), title: '이력서 올리기', desc: '추천의 기준이 돼요. 경력기술서·포트폴리오는 선택이에요.', href: '#settings-documents' },
     { done: Boolean(profile.data), title: '프로필·필터 저장', desc: '희망 직무와 지역·고용 형태 같은 조건을 골라요.', href: '#settings-profile' },
@@ -252,7 +253,8 @@ function SetupSteps({ me, busy, onRefresh }: { me: Me; busy: boolean; onRefresh:
     </li>)}</ol>
     <div className="mt-5 flex items-center gap-3">
       <Button disabled={!ready || busy} onClick={onRefresh}>공고 가져오기</Button>
-      {!ready && <span className="text-caption text-muted-foreground">이력서와 프로필을 저장하면 누를 수 있어요.</span>}
+      {failed ? <span role="alert" className="text-caption text-destructive">저장한 서류·프로필을 확인하지 못했어요. <button type="button" className="cursor-pointer font-semibold underline" onClick={() => { void resume.refetch(); void profile.refetch(); }}>다시 확인</button></span>
+        : !ready && <span className="text-caption text-muted-foreground">이력서와 프로필을 저장하면 누를 수 있어요.</span>}
     </div>
   </section>;
 }

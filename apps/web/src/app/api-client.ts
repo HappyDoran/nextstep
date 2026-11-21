@@ -47,7 +47,8 @@ export async function optional(path: string) {
 /** 네이버 메일 연결(없으면 null). 상태바·설정·시작 단계가 같은 캐시를 같은 형태로 쓴다. poll이면 동기화 작업 중에만 다시 읽는다. */
 export function useMailConnection(me: Me, poll = false) {
   return useQuery({
-    queryKey: ['mail', 'connection', me.id], retry: false, refetchOnWindowFocus: false,
+    // 메일 설정 화면(poll)은 창으로 돌아오면 다시 읽고, 상태바는 1분 조회에 맡긴다.
+    queryKey: ['mail', 'connection', me.id], retry: false, refetchOnWindowFocus: poll,
     queryFn: async () => { const data = await optional('mail/connection'); return data === null ? null : mailConnectionSchema.parse(data); },
     refetchInterval: q => (poll && q.state.data?.lastJob && ACTIVE_JOB.includes(q.state.data.lastJob.status) ? 3000 : false),
   });
@@ -74,8 +75,10 @@ export function useWhen() {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (timeFormat !== 'relative') return;
-    const id = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(id);
+    const tick = () => setNow(Date.now());
+    const first = setTimeout(tick, 0);
+    const id = setInterval(tick, 60_000);
+    return () => { clearTimeout(first); clearInterval(id); };
   }, [timeFormat]);
   return (iso: string) => formatWhen(iso, timeFormat, now);
 }

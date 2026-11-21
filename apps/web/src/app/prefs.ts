@@ -25,7 +25,7 @@ function load() {
   try { next = localStorage.getItem(PREFS_KEY); } catch { /* 기본값 */ }
   if (next !== raw) {
     raw = next;
-    try { cached = { ...DEFAULTS, ...(JSON.parse(next ?? '{}') as Partial<Prefs>) }; } catch { cached = DEFAULTS; }
+    try { const saved = JSON.parse(next ?? '{}') as unknown; cached = { ...DEFAULTS, ...(saved && typeof saved === 'object' ? saved as Partial<Prefs> : {}) }; } catch { cached = DEFAULTS; }
   }
   return cached;
 }
@@ -48,9 +48,12 @@ export function setPrefs(patch: Partial<Prefs>) {
   applyFont(next);
   for (const l of listeners) l();
 }
-/** 사용자별 보기 조건(nextstep:view:*)을 지운다. 로그아웃·계정 삭제 때 다음 사용자에게 남지 않게 한다. */
+/** 사용자별 보기 조건(nextstep:view:*)과 마지막 화면을 지운다. 로그아웃·계정 삭제 때 다음 사용자에게 남지 않게 한다. */
 export function clearViews() {
-  try { for (const key of Object.keys(localStorage)) if (key.startsWith('nextstep:view:')) localStorage.removeItem(key); } catch { /* 지울 것이 없음 */ }
+  try {
+    for (const key of Object.keys(localStorage)) if (key.startsWith('nextstep:view:')) localStorage.removeItem(key);
+    localStorage.removeItem(LAST_PATH_KEY);
+  } catch { /* 지울 것이 없음 */ }
 }
 /** 이 기기 설정 초기화: NextStep이 이 기기에 둔 값만 지운다(로그인은 서버 쿠키라 유지). */
 export function resetDevice() {
@@ -72,9 +75,17 @@ export function formatWhen(iso: string, format: Prefs['timeFormat'], now = Date.
     if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}시간 전`;
     return `${Math.floor(minutes / 60 / 24)}일 전`;
   }
-  return new Date(at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const date = new Date(at);
+  // 올해가 아니면 연도를 붙인다(서류 버전처럼 해를 넘는 기록을 구분).
+  return date.toLocaleString('ko-KR', { ...(date.getFullYear() !== new Date(now).getFullYear() ? { year: 'numeric' } : {}), month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 // 첫 그리기 전에 글자 크기를 적용하고, 앱을 처음 열 때(창 세션마다 한 번) 고른 시작 화면으로 옮긴다.
-// 창 세션의 첫 문서는 경로와 상관없이 표시하고, 그 첫 문서가 '/'일 때만 옮긴다(나중에 '/'를 새로 고쳐도 옮기지 않음).
-export const BOOT_SCRIPT = `try{var d=document.documentElement,p=JSON.parse(localStorage.getItem(${JSON.stringify(PREFS_KEY)})||'{}'),f=${JSON.stringify(FONT_SCALES)}[p.fontScale];if(f)d.style.fontSize=f;if(!sessionStorage.getItem('nextstep:started')){sessionStorage.setItem('nextstep:started','1');var t=location.pathname!=='/'||location.search||location.hash?null:p.startScreen==='recommendations'?'/recommendations':p.startScreen==='last'?localStorage.getItem(${JSON.stringify(LAST_PATH_KEY)}):null;if(t&&t!=='/'&&t.charAt(0)==='/')location.replace(t)}}catch(e){}`;
+// 테마는 운영체제 설정을 따른다(2026-11-19 결정). 첫 그리기 전에 정하고, 설정이 바뀌면 바로 따라간다.
+// macOS 데스크톱 앱(Electron)은 제목 막대를 숨기고 창 단추를 화면 위에 띄우므로 그 자리를 비운다(globals.css).
+const THEME = "(()=>{const d=document.documentElement,m=matchMedia('(prefers-color-scheme: dark)');const s=()=>{d.dataset.nsTheme=m.matches?'dark':'light'};s();m.addEventListener('change',s);if(/Electron/.test(navigator.userAgent)&&/Mac/.test(navigator.platform))d.dataset.nsDesktop='mac'})()";
+// 창 세션의 첫 문서는 경로와 상관없이 표시하고, 그 첫 문서가 '/'이고 앱 밖에서 들어왔을 때만 옮긴다
+// (나중에 '/'를 새로 고치거나 앱 안 링크를 새 탭으로 열 때는 옮기지 않음).
+const PREFS_SCRIPT = `try{var d=document.documentElement,p=JSON.parse(localStorage.getItem(${JSON.stringify(PREFS_KEY)})||'{}')||{},f=${JSON.stringify(FONT_SCALES)}[p.fontScale];if(f)d.style.fontSize=f;if(!sessionStorage.getItem('nextstep:started')){sessionStorage.setItem('nextstep:started','1');var inner=document.referrer&&new URL(document.referrer).origin===location.origin;var t=inner||location.pathname!=='/'||location.search||location.hash?null:p.startScreen==='recommendations'?'/recommendations':p.startScreen==='last'?localStorage.getItem(${JSON.stringify(LAST_PATH_KEY)}):null;if(t&&t!=='/'&&t.charAt(0)==='/')location.replace(t)}}catch(e){}`;
+/** layout과 global-error가 첫 그리기 전에 넣는 스크립트. */
+export const BOOT_SCRIPT = `${THEME};${PREFS_SCRIPT}`;

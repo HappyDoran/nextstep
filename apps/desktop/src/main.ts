@@ -98,7 +98,7 @@ async function poll() {
     if (!next) return;
     writeSettings({ ...settings, lastNotifiedId: next.id });
     let chosen: NotifyPrefs = {};
-    try { chosen = JSON.parse(prefs ?? '{}') as NotifyPrefs; } catch { /* 기본값: 모두 알림 */ }
+    try { const saved = JSON.parse(prefs ?? '{}') as unknown; if (saved && typeof saved === 'object') chosen = saved as NotifyPrefs; } catch { /* 기본값: 모두 알림 */ }
     if (!wanted(next, chosen) || !Notification.isSupported()) return;
     notice = new Notification({ title: next.title, body: next.body, silent: chosen.sound === false });
     notice.on('click', () => showWindow('/recommendations'));

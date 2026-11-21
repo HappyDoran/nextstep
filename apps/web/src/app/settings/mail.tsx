@@ -6,7 +6,7 @@ import { jobSchema, type Me } from '@nextstep/contracts';
 import { ACTIVE_JOB, call, useMailConnection, useWhen } from '../api-client';
 import { AI_CAUSES } from './ai';
 
-const ERRORS: Record<string, string> = { auth_failed: '인증 실패: 네이버 애플리케이션 비밀번호와 IMAP 사용 설정을 확인하세요.', network: '네트워크 오류', tls: '보안 연결 오류', protocol: '메일 서버 응답 오류', not_connected: '연결 정보 없음', disconnected: '조회 중 연결이 해제됨' };
+const ERRORS: Record<string, string> = { auth_failed: '인증 실패: 네이버 애플리케이션 비밀번호와 IMAP 사용 설정을 확인하세요.', network: '네트워크 오류', tls: '보안 연결 오류', protocol: '메일 서버 응답 오류', not_connected: '연결 정보 없음', disconnected: '조회 중 연결이 해제됨', secret_invalid: '저장한 연결 정보를 읽지 못함. 다시 연결하세요' };
 const PERIODS: [number, string][] = [[30, '최근 1개월'], [90, '최근 3개월'], [180, '최근 6개월'], [365, '최근 1년']];
 const PAST: [number, string][] = [[90, '최근 3개월까지'], [180, '최근 6개월까지'], [365, '최근 1년까지'], [730, '최근 2년까지']];
 const CONNECT_ERRORS: Record<number, string> = {
