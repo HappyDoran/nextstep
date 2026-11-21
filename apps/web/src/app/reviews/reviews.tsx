@@ -4,14 +4,13 @@ import { Check, Mail } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Field, Input, Segmented, Select, StatePanel, Tag } from '@nextstep/design-system';
 import { applicationSchema, reviewBodySchema, reviewSchema, type Me, type Review } from '@nextstep/contracts';
-import { call, useMe } from '../api-client';
+import { call, useMe, useWhen } from '../api-client';
 import { Account } from '../account';
 import { Frame, AuthLayout } from '../frame';
 
 const STATUSES = ['지원 완료', '전형 진행중', '합격', '불합격', '열람'] as const;
 const NO_COMPANY = '회사 미확인';
 const icon = 'size-icon-base shrink-0 stroke-emphasis';
-const when = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 export function Reviews() {
   const me = useMe();
@@ -90,6 +89,7 @@ function QueueGroup({ company, items, apps, currentId, onSelect, onDone }: { com
 }
 
 function ReviewDetail({ review, apps, onDone }: { review: Review; apps: AppOption[]; onDone: () => void }) {
+  const when = useWhen();
   const [mode, setMode] = useState<'link' | 'create'>('link');
   // 제안된 지원 건이 이미 더 뒤 단계면 그 상태를 기본값으로 둬 오래된 메일로 되돌리지 않게 한다.
   const suggested = apps.find(a => a.id === review.suggestedApplicationId);

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { serviceUrl, isExternalUrl, isServiceNavigation, googleLoginUrl, desktopLoginPath } from '../dist/security.js';
-import { noticeFor } from '../dist/notify.js';
+import { noticeFor, wanted } from '../dist/notify.js';
 
 test('원격 서비스는 HTTPS만, 같은 컴퓨터는 HTTP도 허용한다', () => {
   assert.equal(serviceUrl(undefined).origin, 'http://127.0.0.1:3100');
@@ -31,9 +31,22 @@ test('끝난 갱신만 한 번 알리고 건수와 실패를 구분한다', () =
   const counts = { basic: 2, challenge: 5 };
   assert.equal(noticeFor({ job: null, counts: null }, undefined), null);
   assert.equal(noticeFor({ job: job('실행중', { finishedAt: null }), counts: null }, undefined), null);
-  assert.deepEqual(noticeFor({ job: job('성공'), counts }, undefined), { id: 'j1', title: '공고 가져오기 끝', body: '이번에 판정한 공고 12건 중 기본 2건 · 도전 5건' });
+  assert.deepEqual(noticeFor({ job: job('성공'), counts }, undefined), { id: 'j1', title: '공고 가져오기 끝', body: '이번에 판정한 공고 12건 중 기본 2건 · 도전 5건', failed: false, basic: 2 });
   assert.equal(noticeFor({ job: job('성공'), counts }, 'j1'), null);
   assert.equal(noticeFor({ job: job('일부 실패'), counts }, 'j0').title, '공고 가져오기 끝(일부 실패)');
   assert.equal(noticeFor({ job: job('실패', { result: {} }), counts: null }, 'j0').title, '공고 가져오기 실패');
   assert.equal(noticeFor({ job: job('성공', { result: { judged: 0 } }), counts: { basic: 0, challenge: 0 } }, 'j0').body, '새로 판정한 공고가 없습니다.');
+});
+
+test('갱신 알림 조건: 모두·기본 추천 있을 때·실패만·끄기', () => {
+  const ok = { id: 'a', title: '', body: '', failed: false, basic: 0 };
+  const hit = { ...ok, basic: 2 };
+  const bad = { ...ok, failed: true };
+  assert.equal(wanted(ok, {}), true);
+  assert.equal(wanted(ok, { notify: 'basic' }), false);
+  assert.equal(wanted(hit, { notify: 'basic' }), true);
+  assert.equal(wanted(bad, { notify: 'basic' }), true);
+  assert.equal(wanted(hit, { notify: 'failures' }), false);
+  assert.equal(wanted(bad, { notify: 'failures' }), true);
+  assert.equal(wanted(bad, { notify: 'off' }), false);
 });

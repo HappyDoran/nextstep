@@ -6,6 +6,7 @@ import { useMe } from '../api-client';
 import { Account } from '../account';
 import { AutomationSetting } from '../automation';
 import { DocumentsSetting } from './resume';
+import { GeneralSetting } from './general';
 import { ProfileSetting } from './profile';
 import { MailSetting } from './mail';
 import { ConnectionPanel } from './connections';
@@ -13,8 +14,9 @@ import { AuthLayout } from '../frame';
 
 // 설정은 어느 화면에서든 여는 창이다(2026-11-19 결정). 한 번에 한 구역만 보여 준다(기획서 4절).
 // 주소 #settings-<구역>으로 바로 연다(상태바 '연결 확인' → #settings-status).
-// 순서: 추천에 바로 쓰는 것(프로필·서류) → 연결·자동화 → 점검 → 계정(로그아웃·삭제는 맨 아래).
+// 순서: 일반(이 기기 화면 설정) → 추천에 바로 쓰는 것(프로필·서류) → 연결·자동화 → 점검 → 계정(로그아웃·삭제는 맨 아래).
 export const SECTIONS = [
+  { value: 'general', label: '일반' },
   { value: 'profile', label: '프로필·필터' },
   { value: 'documents', label: '서류' },
   { value: 'mail', label: '네이버 메일' },
@@ -24,7 +26,7 @@ export const SECTIONS = [
 ] as const;
 export type Section = (typeof SECTIONS)[number]['value'];
 export const isSection = (v: string): v is Section => SECTIONS.some(s => s.value === v);
-/** 주소의 해시에서 열 구역을 읽는다. #settings는 첫 구역(프로필·필터), #settings-mail은 메일. 설정이 아니면 null. */
+/** 주소의 해시에서 열 구역을 읽는다. #settings는 첫 구역(일반), #settings-mail은 메일. 설정이 아니면 null. */
 export function sectionFromHash(hash: string): Section | null {
   const h = decodeURIComponent(hash.replace(/^#/, ''));
   if (h === 'settings') return SECTIONS[0].value;
@@ -55,12 +57,13 @@ export function SettingsDialog({ me, section, onSection, onClose }: { me: Me; se
   const content = {
     account: block('account', '계정', null, <Account />),
     mail: block('mail', '네이버 메일', '메일은 읽기만 해요. 읽음 표시·삭제·이동·답장은 하지 않아요.', <MailSetting me={me} />),
+    general: block('general', '일반', '이 기기에만 저장돼요.', <GeneralSetting />),
     documents: block('documents', '서류', '이력서는 꼭 필요해요. 여러 번 올리면 버전으로 남고, 고른 버전으로 추천해요.', <DocumentsSetting me={me} />),
     profile: block('profile', '프로필·필터', '필터는 공고를 가져올 때와 추천 목록에 그대로 써요.', <ProfileSetting me={me} />),
     automation: block('automation', '자동 갱신', null, <AutomationSetting me={me} />),
     status: block('status', '연결 상태', '공고·메일을 가져오는 데 필요한 연결을 확인해요. 문제가 있으면 하단 상태바에도 표시돼요.', <ConnectionPanel me={me} />),
   } satisfies Record<Section, ReactNode>;
-  return <Sheet open onClose={onClose} size="lg" title="설정" meta="프로필·서류·메일·계정을 관리해요">
+  return <Sheet open onClose={onClose} size="lg" title="설정" meta="화면·프로필·서류·메일·계정을 관리해요">
     <div className="grid min-h-0 grid-cols-[11rem_minmax(0,1fr)] gap-8">
       <nav aria-label="설정 구역" className="sticky top-0 flex flex-col gap-1 self-start">
         {SECTIONS.map(s => <button key={s.value} type="button" aria-pressed={s.value === section} onClick={() => onSection(s.value)}

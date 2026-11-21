@@ -4,7 +4,7 @@ import { ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, buttonClass, ClassLabel, DueDate, Field, Input, Lane, Row, RowList, RowTrigger, Select, Sheet, Skeleton, StatePanel, Tag, Toggle } from '@nextstep/design-system';
 import { jobSchema, profileSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
-import { call, useMe } from '../api-client';
+import { call, useMe, useWhen } from '../api-client';
 import { Account } from '../account';
 import { Frame, AuthLayout, progressText } from '../frame';
 import { AI_CAUSES } from '../settings/ai';
@@ -166,6 +166,7 @@ function RecommendationList({ me }: { me: Me }) {
 }
 
 function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; listKey: string[]; onClose: () => void }) {
+  const when = useWhen();
   const client = useQueryClient();
   const hide = useMutation({ mutationFn: (hidden: boolean) => call(`recommendations/${item.postingId}/hide`, { method: 'PUT', body: JSON.stringify({ hidden }) }), onSuccess: () => client.invalidateQueries({ queryKey: listKey }) });
   // 피드백(좋아요는 같은 분류 안에서 위로, 별로는 숨김)과 제외 복구는 내 목록에만 반영된다.
@@ -195,7 +196,7 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
       </div>
     </>}>
     <dl className="grid grid-cols-2 overflow-hidden rounded-surface border border-border text-body-sm md:grid-cols-4">
-      {[['마감', deadline], ['모집 상태', item.postingStatus], ['기업 규모', size], ['마지막 확인', short(item.checkedAt)]].map(([k, v]) => <div key={k} className="border-border px-4 py-3 [&:not(:first-child)]:border-l"><dt className="text-caption text-muted-foreground">{k}</dt><dd className="mt-0.5 font-bold">{v}</dd></div>)}
+      {[['마감', deadline], ['모집 상태', item.postingStatus], ['기업 규모', size], ['마지막 확인', when(item.checkedAt)]].map(([k, v]) => <div key={k} className="border-border px-4 py-3 [&:not(:first-child)]:border-l"><dt className="text-caption text-muted-foreground">{k}</dt><dd className="mt-0.5 font-bold">{v}</dd></div>)}
     </dl>
     <div className={`rounded-surface px-4 py-3.5 ${reasonTone}`}><p className="text-caption font-bold">{item.classification}으로 본 이유</p><p className="text-body-sm font-semibold text-foreground">{item.reason}</p></div>
     {section('맞는 점', '✓', 'text-class-basic', item.met)}

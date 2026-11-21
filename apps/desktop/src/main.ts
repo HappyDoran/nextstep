@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, Menu, nativeImage, nativeTheme, Notificatio
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serviceUrl, isServiceNavigation, isExternalUrl, googleLoginUrl, desktopLoginPath } from './security.js';
-import { noticeFor, type LatestRefresh } from './notify.js';
+import { noticeFor, wanted, type LatestRefresh, type NotifyPrefs } from './notify.js';
 
 // 상주 앱: 창은 홈서버 웹을 그대로 열고, 창을 닫아도 메뉴 막대(macOS)·알림 영역(Windows) 아이콘으로 남아
 // 서버의 마지막 공고 갱신 결과를 1분마다 확인해 OS 알림을 보낸다. 서버 작업은 서버가 한다(기술 설계 E절).
@@ -84,7 +84,8 @@ async function refreshNow() {
 async function poll() {
   if (!window) createWindow();
   try {
-    const { code, body } = await window!.webContents.executeJavaScript("fetch('/api/jobs/latest', { cache: 'no-store' }).then(async r => ({ code: r.status, body: r.ok ? await r.json() : null }))") as { code: number; body: LatestRefresh | null };
+    // 알림 조건·소리는 웹 설정 일반 구역이 같은 창의 저장소(nextstep:prefs)에 둔다.
+    const { code, body, prefs } = await window!.webContents.executeJavaScript("fetch('/api/jobs/latest', { cache: 'no-store' }).then(async r => ({ code: r.status, body: r.ok ? await r.json() : null, prefs: localStorage.getItem('nextstep:prefs') }))") as { code: number; body: LatestRefresh | null; prefs: string | null };
     if (code === 401) { status = '로그인 필요'; return; }
     if (!body) { status = '서비스 응답 오류'; return; }
     const latest = body;
@@ -96,8 +97,10 @@ async function poll() {
     const next = noticeFor(latest, settings.lastNotifiedId);
     if (!next) return;
     writeSettings({ ...settings, lastNotifiedId: next.id });
-    if (!Notification.isSupported()) return;
-    notice = new Notification({ title: next.title, body: next.body, silent: false });
+    let chosen: NotifyPrefs = {};
+    try { chosen = JSON.parse(prefs ?? '{}') as NotifyPrefs; } catch { /* 기본값: 모두 알림 */ }
+    if (!wanted(next, chosen) || !Notification.isSupported()) return;
+    notice = new Notification({ title: next.title, body: next.body, silent: chosen.sound === false });
     notice.on('click', () => showWindow('/recommendations'));
     notice.show();
   } catch { status = '서비스에 연결하지 못함'; } finally { updateTray(); }

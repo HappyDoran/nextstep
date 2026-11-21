@@ -6,7 +6,8 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, BriefcaseBusiness, Check, Inbox, LoaderCircle, LogOut, Mail, Settings, Star, WifiOff } from 'lucide-react';
 import { AppShell, Logo, LogoMark, NavItem, PageHeader, Rail, StatusBar } from '@nextstep/design-system';
 import { latestRefreshSchema, mailConnectionSchema, reviewSchema, type Me } from '@nextstep/contracts';
-import { call, RequestError } from './api-client';
+import { call, RequestError, useWhen } from './api-client';
+import { LAST_PATH_KEY } from './prefs';
 import { SettingsDialog, sectionFromHash, type Section } from './settings/settings';
 import { useSignOut } from './account';
 
@@ -21,7 +22,6 @@ export function progressText(result: Record<string, unknown> | null) {
   const eta = p.etaSeconds === null ? '남은 시간 계산 중' : p.etaSeconds < 60 ? '1분 안에 끝남' : `약 ${Math.round(p.etaSeconds / 60)}분 남음`;
   return `공고 가져오는 중 · 출처 ${p.done}/${p.total} · 공고 ${p.collected}건 확인 · ${eta}`;
 }
-const time = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 /** 로그인 전 화면: 왼쪽 인디고 소개 면, 오른쪽 양식. 좁은 창에서는 소개 면을 위로 접는다. */
 export function AuthLayout({ children }: { children: ReactNode }) {
@@ -55,6 +55,8 @@ export function Frame({ me, title, description, actions, children }: { me: Me; t
   // 창 제목(데스크톱 앱 창·브라우저 탭)에 확인 목록 대기 건수를 붙인다.
   useEffect(() => { document.title = `${waiting ? `(${waiting}) ` : ''}${title} · NextStep`; }, [waiting, title]);
   const online = useOnline();
+  // 시작 화면 '마지막으로 본 화면'용. 앱 틀이 있는 화면만 적는다.
+  useEffect(() => { try { localStorage.setItem(LAST_PATH_KEY, path); } catch { /* 저장 못 함 */ } }, [path]);
   const items = [
     { href: '/recommendations', label: '추천', icon: <Star className={icon} aria-hidden="true" focusable="false" /> },
     { href: '/', label: '지원 현황', icon: <BriefcaseBusiness className={icon} aria-hidden="true" focusable="false" /> },
@@ -88,13 +90,14 @@ function AccountMenu({ me }: { me: Me }) {
       <p className="truncate px-3 pb-2 pt-1.5 text-caption text-muted-foreground">{me.email}</p>
       <a href="#settings" onClick={hide} className={`${item} no-underline`}><Settings className={small} aria-hidden="true" focusable="false" />설정</a>
       <div className="my-1 border-t border-border" />
-      <button type="button" disabled={signOut.isPending} onClick={() => signOut.mutate()} className={`${item} text-destructive`}><LogOut className={small} aria-hidden="true" focusable="false" />로그아웃</button>
+      <button type="button" disabled={signOut.isPending} onClick={() => signOut.mutate()} className={item}><LogOut className={small} aria-hidden="true" focusable="false" />로그아웃</button>
       {signOut.isError && <p role="alert" className="px-3 py-1 text-caption text-destructive">{signOut.error.message}</p>}
     </div>
   </>;
 }
 
 function MailState({ me }: { me: Me }) {
+  const time = useWhen();
   const mail = useQuery({
     queryKey: ['mail', 'connection', me.id], retry: false, refetchOnWindowFocus: false,
     queryFn: async () => { try { return mailConnectionSchema.parse(await call('mail/connection')); } catch (e) { if (e instanceof RequestError && e.status === 404) return null; throw e; } },
@@ -106,6 +109,7 @@ function MailState({ me }: { me: Me }) {
 
 /** 공고 갱신 결과. 처리 중이면 자주, 아니면 1분마다 다시 읽는다. 실패하면 설정의 연결 확인으로 안내한다. */
 function RefreshState({ me }: { me: Me }) {
+  const time = useWhen();
   const latest = useQuery({
     queryKey: ['jobs', 'latest', me.id], retry: false,
     queryFn: async () => latestRefreshSchema.parse(await call('jobs/latest')),

@@ -20,8 +20,19 @@ test('미등록 구글 계정은 코드 입력 화면에서 이어지고, 받은
   await expect(page.getByRole('heading', { name: '지원 현황' })).toBeVisible();
 
   await page.goto('/settings');
-  // 설정은 프로필부터 열리고 계정(로그아웃·삭제)은 맨 아래 구역이다.
-  await expect(page.getByRole('button', { name: '프로필·필터', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  // 설정은 일반(이 기기 화면 설정)부터 열리고 계정(로그아웃·삭제)은 맨 아래 구역이다.
+  await expect(page.getByRole('button', { name: '일반', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  // 글자 크기는 다시 열어도 첫 그리기부터, 시작 화면은 새 창에서 적용된다. 알림 조건은 웹에서 잠겨 있다.
+  await page.getByRole('group', { name: '글자 크기' }).getByRole('button', { name: '크게', exact: true }).click();
+  await page.getByRole('group', { name: '시작 화면' }).getByRole('button', { name: '추천' }).click();
+  await expect(page.getByRole('group', { name: '갱신 알림' }).getByRole('button', { name: '끄기' })).toBeDisabled();
+  const next = await page.context().newPage();
+  await next.goto('/');
+  await expect(next).toHaveURL(/\/recommendations$/);
+  await expect(next.locator('html')).toHaveCSS('font-size', '18px');
+  await next.close();
+  await page.getByRole('group', { name: '글자 크기' }).getByRole('button', { name: '보통' }).click();
+  await page.getByRole('group', { name: '시작 화면' }).getByRole('button', { name: '지원 현황' }).click();
   await page.getByRole('button', { name: '계정', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: email })).toHaveText(email);
   await page.getByRole('button', { name: '로그아웃' }).click();

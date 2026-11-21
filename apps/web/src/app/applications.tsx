@@ -7,7 +7,7 @@ import {
   applicationDetailSchema, applicationImportResultSchema, applicationSchema, applicationStatusSchema, readStatusSchema,
   type Application, type ApplicationStatus, type Me,
 } from '@nextstep/contracts';
-import { call } from './api-client';
+import { call, useWhen } from './api-client';
 import { Frame } from './frame';
 
 const STATUSES = applicationStatusSchema.options;
@@ -144,6 +144,7 @@ function ImportCsv({ open, userKey, onClose }: { open: boolean; userKey: string[
 }
 
 function ApplicationDetail({ id, userKey, onClose }: { id: string; userKey: string[]; onClose: () => void }) {
+  const time = useWhen();
   const client = useQueryClient();
   const detailKey = [...userKey, id];
   const detail = useQuery({ queryKey: detailKey, queryFn: async () => applicationDetailSchema.parse(await call(`applications/${id}`)), retry: false });
@@ -183,7 +184,7 @@ function ApplicationDetail({ id, userKey, onClose }: { id: string; userKey: stri
             <h3 className="mb-2 text-body-sm font-extrabold">변경 이력 <span className="tabular-nums text-muted-foreground">{d.events.length}</span></h3>
             {d.events.length === 0 ? <p className="text-body-sm text-muted-foreground">상태·열람 변경 이력이 없습니다.</p>
               : <ol className="grid gap-2 text-body-sm">{d.events.map(e => <li key={`${e.at}-${e.field}`} className="grid grid-cols-[8.5rem_1fr] gap-2">
-                <time className="tabular-nums text-muted-foreground">{new Date(e.at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>
+                <time className="tabular-nums text-muted-foreground">{time(e.at)}</time>
                 <span>{e.field === 'status' ? '상태' : '열람'} {e.from ?? '없음'} → {e.to} <span className="text-muted-foreground">({e.source === 'mail' ? '메일' : e.source === 'import' ? '가져오기' : '직접 수정'})</span></span>
               </li>)}</ol>}
           </section>

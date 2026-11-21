@@ -56,6 +56,6 @@ export function OptionChip({ selected, className, ...props }: ButtonHTMLAttribut
 /** 하나만 고르는 보기 전환(상태별/회사별, 설정 구역). */
 export function Segmented<T extends string>({ label, options, value, onChange }: { label: string; options: readonly { value: T; label: ReactNode }[]; value: T; onChange: (value: T) => void }) {
   return <div role="group" aria-label={label} className="inline-flex flex-wrap gap-1.5">
-    {options.map(option => <button key={option.value} type="button" aria-pressed={option.value === value} onClick={() => onChange(option.value)} className={join('h-control-sm cursor-pointer rounded-full border px-4 text-body-sm transition-colors duration-fast motion-reduce:transition-none', option.value === value ? 'border-foreground bg-foreground font-semibold text-background' : 'border-border-strong bg-card text-muted-foreground hover:bg-muted', focus)}>{option.label}</button>)}
+    {options.map(option => <button key={option.value} type="button" aria-pressed={option.value === value} onClick={() => onChange(option.value)} className={join('h-control-sm cursor-pointer rounded-full border px-4 text-body-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 duration-fast motion-reduce:transition-none', option.value === value ? 'border-foreground bg-foreground font-semibold text-background' : 'border-border-strong bg-card text-muted-foreground hover:bg-muted', focus)}>{option.label}</button>)}
   </div>;
 }

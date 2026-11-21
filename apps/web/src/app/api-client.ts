@@ -1,6 +1,8 @@
 'use client';
+import { useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { meSchema, type Me } from '@nextstep/contracts';
+import { formatWhen, prefsStore } from './prefs';
 
 export const ME_KEY = ['auth', 'me'];
 const MESSAGES: Record<number, string> = {
@@ -42,3 +44,11 @@ export function useMe() {
 }
 
 export const fieldClass = 'h-control w-full rounded-control border border-border-strong bg-card px-3 text-body-sm focus:border-primary focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus';
+
+/** 이 기기 화면 설정(prefs.ts). 바꾸면 이 창과 다른 창이 함께 다시 그린다. */
+export const usePrefs = () => useSyncExternalStore(prefsStore.subscribe, prefsStore.get, prefsStore.server);
+/** 설정 일반 구역의 시간 표기(상대·절대)를 따르는 시각 문구. */
+export function useWhen() {
+  const { timeFormat } = usePrefs();
+  return (iso: string) => formatWhen(iso, timeFormat);
+}
