@@ -6,6 +6,10 @@ const fixture = (name: string) => `apps/server/tests/fixtures/${name}`;
 test('이력서 등록·버전 되돌리기·실패 시 유지·프로필 저장과 초안 실패 안내', async ({ page }) => {
   await signup(page, `e2e-rec-${Date.now()}@example.com`);
   try {
+    // 추천이 없는 첫 화면은 시작 단계를 보여 주고, 이력서·프로필 전에는 가져오기를 막는다.
+    await page.goto('/recommendations');
+    await expect(page.getByRole('heading', { name: '추천을 받으려면' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '공고 가져오기' })).toBeDisabled();
     await page.goto('/settings');
     await page.getByRole('button', { name: '서류', exact: true }).click();
     // 파일을 고르면 바로 올린다(별도 등록 버튼 없음).
@@ -45,6 +49,9 @@ test('이력서 등록·버전 되돌리기·실패 시 유지·프로필 저장
     await page.reload();
     await expect(page.getByRole('checkbox', { name: '앱 개발' })).toBeChecked();
     await expect(page.getByLabel('업무·도구·기술 (쉼표로 구분)')).toHaveValue('React, Swift');
+    await page.goto('/recommendations');
+    await expect(page.getByRole('link', { name: /이력서 올리기.*완료/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: '공고 가져오기' })).toBeEnabled();
   } finally { await deleteAccount(page); }
 });
 

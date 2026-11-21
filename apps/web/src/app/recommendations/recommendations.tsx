@@ -1,10 +1,10 @@
 'use client';
 import { useState, type FormEvent } from 'react';
-import { ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
+import { Check, ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, buttonClass, ClassLabel, DueDate, Field, Input, Lane, Row, RowList, RowTrigger, Select, Sheet, Skeleton, StatePanel, Tag, Toggle } from '@nextstep/design-system';
 import { jobSchema, profileSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
-import { call, useMe, useStored, useWhen } from '../api-client';
+import { call, RequestError, useMe, useStored, useWhen } from '../api-client';
 import { Account } from '../account';
 import { Frame, AuthLayout, progressText } from '../frame';
 import { AI_CAUSES } from '../settings/ai';
@@ -138,7 +138,7 @@ function RecommendationList({ me }: { me: Me }) {
 
     {list.isPending ? <><p role="status" className="sr-only">추천을 불러오고 있습니다.</p><RowList>{[0, 1, 2, 3].map(i => <Row key={i} className="grid-cols-[4.5rem_1fr_5rem]"><Skeleton className="w-10" /><div className="grid gap-2"><Skeleton className="h-3.5 w-3/5" /><Skeleton className="w-1/3" /></div><Skeleton className="h-4 w-10 justify-self-end" /></Row>)}</RowList></>
       : list.isError ? <StatePanel tone="error" title="추천을 불러오지 못했어요" description={list.error.message} actions={<Button variant="secondary" onClick={() => { void list.refetch(); }}>다시 시도</Button>} />
-        : all.length === 0 ? <StatePanel title="아직 추천이 없어요" description="추천이 없습니다. 설정에서 이력서·프로필을 저장한 뒤 새로 가져오기를 누르세요." actions={<a href="#settings-documents" className={buttonClass('secondary')}>설정으로 가기</a>} />
+        : all.length === 0 ? <SetupSteps me={me} busy={busy} onRefresh={() => refresh.mutate()} />
           : items.length === 0 ? <p role="status" className="py-10 text-center text-muted-foreground">조건에 맞는 추천이 없습니다.</p>
             : <>
               {lanes.map(l => <Lane key={l.name} title={l.name} count={`${l.total}건`}>
@@ -229,4 +229,36 @@ function FilterSummary({ me }: { me: Me }) {
     f.careerMax === null ? '경력 제한 없음' : `경력 ${f.careerMax}년 이하`,
   ].join(' · ');
   return <p className="mb-6 text-caption text-muted-foreground" aria-label="적용 중인 공고 필터">적용 중인 필터: {text} <a href="#settings-profile" className="ml-1 font-semibold text-primary">필터 바꾸기</a></p>;
+}
+
+// 있으면 값, 없으면(404) null.
+const optional = async (path: string) => { try { return await call(path); } catch (e) { if (e instanceof RequestError && e.status === 404) return null; throw e; } };
+
+/** 추천이 없는 첫 화면: 시작 단계와 완료 여부(기획서 4절 사용 편의). 각 단계는 설정 창의 해당 구역을 연다. */
+function SetupSteps({ me, busy, onRefresh }: { me: Me; busy: boolean; onRefresh: () => void }) {
+  // 설정 화면들과 같은 쿼리 키를 써서 거기서 저장하면 여기도 바로 바뀐다.
+  const resume = useQuery({ queryKey: ['documents', 'resume', me.id], retry: false, queryFn: () => optional('documents/resume') });
+  const profile = useQuery({ queryKey: ['profile', me.id], retry: false, queryFn: () => optional('profile') });
+  const mail = useQuery({ queryKey: ['mail', 'connection', me.id], retry: false, refetchOnWindowFocus: false, queryFn: () => optional('mail/connection') });
+  const ready = Boolean(resume.data) && Boolean(profile.data);
+  const steps = [
+    { done: Boolean(resume.data), title: '이력서 올리기', desc: '추천의 기준이 돼요. 경력기술서·포트폴리오는 선택이에요.', href: '#settings-documents' },
+    { done: Boolean(profile.data), title: '프로필·필터 저장', desc: '희망 직무와 지역·고용 형태 같은 조건을 골라요.', href: '#settings-profile' },
+    { done: Boolean(mail.data), title: '네이버 메일 연결 (선택)', desc: '지원한 뒤 결과 메일로 지원 현황을 자동으로 바꿔요.', href: '#settings-mail' },
+  ];
+  return <section aria-labelledby="setup-title" className="max-w-2xl rounded-surface border border-border bg-card p-6">
+    <h2 id="setup-title" className="text-title font-extrabold">추천을 받으려면</h2>
+    <p className="mt-1 text-body-sm text-muted-foreground">두 단계만 마치면 공고를 가져와 서류와 맞춰 볼 수 있어요.</p>
+    <ol className="mt-5 grid gap-2">{steps.map((s, i) => <li key={s.href}>
+      <a href={s.href} className="flex items-center gap-4 rounded-control border border-border px-4 py-3 text-foreground no-underline hover:bg-muted">
+        <span aria-hidden="true" className={`grid size-7 shrink-0 place-items-center rounded-full text-caption font-bold ${s.done ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground'}`}>{s.done ? <Check className="size-icon-sm stroke-emphasis" /> : i + 1}</span>
+        <span className="min-w-0 flex-1"><span className="block text-body-sm font-semibold">{s.title}</span><span className="block text-caption text-muted-foreground">{s.desc}</span></span>
+        <span className="text-caption font-semibold text-muted-foreground">{s.done ? '완료' : '하기'}</span>
+      </a>
+    </li>)}</ol>
+    <div className="mt-5 flex items-center gap-3">
+      <Button disabled={!ready || busy} onClick={onRefresh}>공고 가져오기</Button>
+      {!ready && <span className="text-caption text-muted-foreground">이력서와 프로필을 저장하면 누를 수 있어요.</span>}
+    </div>
+  </section>;
 }
