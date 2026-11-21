@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dataBlock, structured } from '../ai/llm.js';
+import { dataBlock, MAX_INPUT_CHARS, structured } from '../ai/llm.js';
 
 // 공고 본문에서 구조화 사실만 뽑는다. 원문은 저장하지 않고 이 결과만 저장한다.
 // 분류는 하지 않는다. 기본·도전·미확인·제외는 recommend/classify.ts 규칙이 정한다(기술 설계 D절).
@@ -37,8 +37,8 @@ const INSTRUCTIONS = `너는 채용공고에서 사실만 구조화한다. 한�
 const CONDITION_WORDS = /자격|필수|요건|경력|이상|우대|requirement/i;
 
 export async function extractRequirements(posting: { title: string; company: string; body: string }) {
-  // 본문이 너무 길면 앞부분만 보낸다(요금·처리 시간 제한).
-  const input = dataBlock('posting', { ...posting, body: posting.body.slice(0, 12_000) });
+  // 본문이 너무 길면 앞부분만 보낸다. 문맥을 넘으면 Ollama가 지시문부터 잘라 버린다(공용 입력 상한).
+  const input = dataBlock('posting', { ...posting, body: posting.body.slice(0, MAX_INPUT_CHARS) });
   const first = await structured('posting_requirements', requirementsSchema, INSTRUCTIONS, input);
   // 본문에 조건이 있는데 필수 조건을 비워 돌려주는 경우가 있어(2026-11-14 평가에서 관찰) 한 번만 다시 묻는다.
   if (first.required.length || !CONDITION_WORDS.test(posting.body)) return first;

@@ -44,7 +44,8 @@ export function importApplications(db: DatabaseSync, userId: string, csv: string
       if (mapped[1] === '열람') log.run(randomUUID(), id, 'readStatus', '정보 없음', '열람', at);
       result.imported++;
     }
-    if (result.imported) {
+    // 메일 연결이 없으면 다시 해석할 작업을 넣을 수 없으므로 확인 요청을 그대로 둔다.
+    if (result.imported && db.prepare('SELECT 1 FROM mail_connections WHERE user_id = ?').get(userId)) {
       const pending = db.prepare("SELECT message_id FROM review_requests WHERE user_id = ? AND status = '대기' AND held = 0 AND reason = '연결 불명'").all(userId) as { message_id: string }[];
       for (const r of pending) {
         db.prepare("DELETE FROM review_requests WHERE message_id = ? AND user_id = ? AND status = '대기'").run(r.message_id, userId);
@@ -57,7 +58,7 @@ export function importApplications(db: DatabaseSync, userId: string, csv: string
     if (db.isTransaction) db.exec('ROLLBACK');
     throw error;
   }
-  if (result.requeued && db.prepare('SELECT 1 FROM mail_connections WHERE user_id = ?').get(userId)) enqueue(db, userId, 'mail');
+  if (result.requeued) enqueue(db, userId, 'mail');
   return result;
 }
 
@@ -142,7 +143,7 @@ export function registerApplications(app: FastifyInstance, db: DatabaseSync) {
       if (db.isTransaction) db.exec('ROLLBACK');
       throw error;
     }
-    return toApplication(db.prepare('SELECT * FROM applications WHERE id = ?').get(request.params.id) as Row);
+    return toApplication(db.prepare('SELECT * FROM applications WHERE id = ? AND user_id = ?').get(request.params.id, user.id) as Row);
   });
 
   app.delete<{ Params: { id: string } }>('/applications/:id', async (request, reply) => {

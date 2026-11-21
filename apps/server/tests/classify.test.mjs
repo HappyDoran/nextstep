@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classify, matches } from '../dist/recommend/classify.js';
+import { classify, matches, norm } from '../dist/recommend/classify.js';
 
 // 규칙 분류만 확인한다(모델 호출 없음). 합성 지원자·공고.
 const at = '2026-11-07T09:00:00+09:00';
@@ -84,4 +84,13 @@ test('직무 없이 지원 자격만 말하는 필수 문구는 다른 직무 �
   const j = classify(at, seeker, cand, { ...base, careers: [{ type: 'EXPERIENCED', fromYears: 4, toYears: null }], required: [{ text: '보안 솔루션 개발', type: 'career', keys: ['보안 솔루션'], years: null, practical: false }] });
   assert.deepEqual([j.classification, j.reason], ['제외', '필수 보안 솔루션 개발 없음(유사 경험으로 대체하지 않음)']);
   assert.equal(reason([{ family: '프론트엔드', months: 30, stack: [] }]), '직무 경력 2년 6개월로 요구 4년보다 부족');
+});
+
+test('JS·TS 같은 줄임말은 별칭으로 맞추고, 비어 버린 키끼리는 같다고 보지 않는다', () => {
+  assert.equal(norm('JS'), 'javascript');
+  assert.equal(norm('React.js'), 'react');
+  assert.equal(norm('Node.js'), 'node');
+  assert.equal(matches(['JS'], ['JavaScript']), true);
+  assert.equal(matches(['(필수)'], ['(우대)']), false);
+  assert.equal(matches(['JS'], ['TypeScript']), false);
 });

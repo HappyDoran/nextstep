@@ -7,7 +7,7 @@ import type { Judgement } from '../prompts/recommend.js';
 // 추천 분류 규칙(기술 설계 D절, 사용자 확정 2026-11-07). 모델은 사실만 뽑고 분류는 여기서 정한다.
 // 우선순위: 제외 > 도전 > 미확인 > 기본. 같은 입력이면 같은 분류가 나온다.
 // 규칙을 바꾸면 반드시 올린다. 저장된 추천은 이 값이 바뀌어야 다시 판정된다(2026-11-15 올리지 않아 재판정 누락).
-export const RULES_VERSION = 'rules-2026-11-15c';
+export const RULES_VERSION = 'rules-2026-11-22';
 
 export type Seeker = { jobFamilies: string[]; regions: string[]; remoteOk: boolean };
 export type PostingInput = {
@@ -39,8 +39,9 @@ const FAMILY_ALIASES: Record<string, string> = Object.fromEntries(Object.entries
 const NOT_TARGET = /데이터\s*(?:엔지니어|분석가?|사이언티스트)|사업\s*기획|전략\s*기획|상품\s*기획|영업\s*기획|\bMD\b|(?:공간|전시|패션|시각|제품|인테리어)\s*디자(?:인|이너)|품질\s*관리|\bQC\b/i;
 export function norm(s: string) {
   // 같은 뜻의 한글 업무 표현은 하나로 맞춘다(이슈·버그 리포팅 = 결함 리포팅). 작은 모델이 단어 중간에 넣는 콜론(예: '백엔:드')도 지운다.
-  const n = s.toLowerCase().replace(/\([^)]*\)/g, '').replace(/[\s.\-_/·:]/g, '').replace(/js$/, '').replace(/이슈|버그/g, '결함');
-  return ALIASES[n] ?? n;
+  // 별칭(JS·TS)을 먼저 맞추고 'React.js'·'Node.js'의 js 꼬리를 뗀다. 떼서 비면 원래 값을 쓴다.
+  const n = s.toLowerCase().replace(/\([^)]*\)/g, '').replace(/[\s.\-_/·:]/g, '').replace(/이슈|버그/g, '결함');
+  return ALIASES[n] ?? (n.replace(/js$/, '') || n);
 }
 // 직무 이름: 별칭 → 대상 직무, 대상 직무 이름의 앞부분만 잘린 표기(예: '프론트엔')도 같은 직무로 본다.
 const TARGET_KEYS = ['프론트엔드', '앱개발', '디자인', '기획', '백엔드', 'qa'];
@@ -51,8 +52,9 @@ function family(s: string) {
 const hangul = (s: string) => /[가-힣]/.test(s);
 // 기술 이름은 정확히 같아야 한다(React ≠ React Native). 한글 업무 경험은 한쪽이 다른 쪽을 포함하면 같다고 본다.
 export function matches(keys: string[], pool: string[]) {
-  const ps = pool.map(norm);
-  return keys.map(norm).some(k => ps.some(p => p === k || (hangul(k) && hangul(p) && Math.min(k.length, p.length) >= 3 && (p.includes(k) || k.includes(p)))));
+  // 괄호·기호만 있던 키는 비어 버리므로 비교하지 않는다(빈 키끼리 같다고 보지 않음).
+  const ps = pool.map(norm).filter(Boolean);
+  return keys.map(norm).filter(Boolean).some(k => ps.some(p => p === k || (hangul(k) && hangul(p) && Math.min(k.length, p.length) >= 3 && (p.includes(k) || k.includes(p)))));
 }
 // 직무 실무 경력이 있으면 당연히 하는 기본 업무·기본기(작은 모델이 추출에서 빠뜨려도 규칙이 채운다).
 const CORE: Record<string, string[]> = {

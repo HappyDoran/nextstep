@@ -36,10 +36,13 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
     const at = new Date().toISOString();
     // 고른 최초 조회 기간으로 조회 범위를 정한다. 재연결하면 과거 범위 넓히기 진행도 지운다.
     const coveredSince = new Date(Date.now() - body.data.days * 86_400_000).toISOString();
+    const previous = db.prepare('SELECT account, covered_since FROM mail_connections WHERE user_id = ?').get(user.id) as { account: string; covered_since: string | null } | undefined;
     db.prepare(`INSERT INTO mail_connections (user_id, provider, account, secret, status, consent_at, created_at, covered_since) VALUES (?, 'naver', ?, ?, '정상', ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET account = excluded.account, secret = excluded.secret, status = '정상', consent_at = excluded.consent_at, last_error = NULL, range_incomplete = 0, covered_since = excluded.covered_since, backfill_since = NULL`)
       .run(user.id, body.data.account, encrypt(secretKey, body.data.appPassword), at, at, coveredSince);
     db.prepare('DELETE FROM mail_backfill WHERE user_id = ?').run(user.id);
+    // 다른 계정이거나 더 이전부터 보도록 넓혔으면 조회 위치를 지워 새 조회 기간을 처음부터 실제로 조회한다(이미 받은 메일은 메시지 키로 건너뜀).
+    if (!previous || previous.account !== body.data.account || !previous.covered_since || coveredSince < previous.covered_since) db.prepare('DELETE FROM mail_cursors WHERE user_id = ?').run(user.id);
     return reply.status(202).send(enqueue(db, user.id, 'mail'));
   });
 
@@ -139,8 +142,8 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
     }
     db.exec('BEGIN IMMEDIATE');
     try {
-      const row = db.prepare("SELECT r.id, m.id AS message_id, m.message_key, m.subject, m.received_at, m.classification, m.platform FROM review_requests r JOIN mail_messages m ON m.id = r.message_id WHERE r.id = ? AND r.user_id = ? AND r.status = '대기'")
-        .get(request.params.id, user.id) as { id: string; message_id: string; message_key: string; subject: string; received_at: string | null; classification: string; platform: string | null } | undefined;
+      const row = db.prepare("SELECT r.id, m.id AS message_id, m.message_key, m.subject, m.received_at, m.classification, m.platform FROM review_requests r JOIN mail_messages m ON m.id = r.message_id WHERE r.id = ? AND r.user_id = ? AND m.user_id = ? AND r.status = '대기'")
+        .get(request.params.id, user.id, user.id) as { id: string; message_id: string; message_key: string; subject: string; received_at: string | null; classification: string; platform: string | null } | undefined;
       if (!row) { db.exec('ROLLBACK'); return reply.status(404).send({ message: '찾을 수 없습니다.' }); }
       const status = action.data.action === 'ignore' ? null : (action.data.status ?? row.classification);
       const msg: StoredMessage = { id: row.message_id, userId: user.id, messageKey: row.message_key, subject: row.subject, receivedAt: row.received_at, verdict: { status: status as never, evidence: null, platform: row.platform, postingKeys: [] } };
@@ -148,7 +151,7 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
         const target = db.prepare('SELECT id, status, read_status, posting_url, locked_fields FROM applications WHERE id = ? AND user_id = ?').get(action.data.applicationId, user.id) as { id: string; status: string; read_status: string; posting_url: string | null; locked_fields: string } | undefined;
         if (!target || status === '모호') { db.exec('ROLLBACK'); return reply.status(400).send({ message: '연결할 지원 건과 상태를 확인하세요.' }); }
         // 사용자가 확정한 연결은 충돌 확인 없이 반영하되 이력은 남긴다.
-        db.prepare("UPDATE review_requests SET status = '처리', resolved_at = ? WHERE id = ?").run(new Date().toISOString(), row.id);
+        db.prepare("UPDATE review_requests SET status = '처리', resolved_at = ? WHERE id = ? AND user_id = ?").run(new Date().toISOString(), row.id, user.id);
         applyToApplication(db, msg, target, { force: true });
       } else if (action.data.action === 'create') {
         if (!status || status === '모호' || status === '열람') { db.exec('ROLLBACK'); return reply.status(400).send({ message: '상태를 선택하세요.' }); }
@@ -157,10 +160,10 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
         db.prepare("INSERT INTO applications (id, user_id, company, role_title, status, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, ?, ?, 'mail')")
           .run(appId, user.id, action.data.company, action.data.roleTitle, status, at, at);
         db.prepare("INSERT INTO application_events (id, application_id, field, from_value, to_value, source, at, message_id) VALUES (?, ?, 'status', '미지원', ?, 'mail', ?, ?)").run(randomUUID(), appId, status, at, row.message_id);
-        db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ?').run(appId, row.message_id);
-        db.prepare("UPDATE review_requests SET status = '처리', resolved_at = ? WHERE id = ?").run(at, row.id);
+        db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ? AND user_id = ?').run(appId, row.message_id, user.id);
+        db.prepare("UPDATE review_requests SET status = '처리', resolved_at = ? WHERE id = ? AND user_id = ?").run(at, row.id, user.id);
       } else {
-        db.prepare("UPDATE review_requests SET status = '무시', resolved_at = ? WHERE id = ?").run(new Date().toISOString(), row.id);
+        db.prepare("UPDATE review_requests SET status = '무시', resolved_at = ? WHERE id = ? AND user_id = ?").run(new Date().toISOString(), row.id, user.id);
         db.prepare('INSERT OR IGNORE INTO evidence_suppressions (user_id, message_key, created_at) VALUES (?, ?, ?)').run(user.id, row.message_key, new Date().toISOString());
       }
       db.exec('COMMIT');

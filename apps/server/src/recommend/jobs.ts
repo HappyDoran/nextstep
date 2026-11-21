@@ -32,10 +32,12 @@ export function latestJob(db: DatabaseSync, userId: string, kind: JobKind) {
   return row ? toJob(row) : null;
 }
 
-// 서버 재시작 후 실행 만료된 작업을 다시 대기로 돌린다. 시도 한도를 넘으면 실패로 끝낸다.
-export function recoverExpired(db: DatabaseSync) {
-  db.prepare("UPDATE jobs SET status = '실패', error_code = 'lease_expired', finished_at = ? WHERE status = '실행중' AND lease_until < ? AND attempts >= ?").run(now(), now(), MAX_ATTEMPTS);
-  db.prepare("UPDATE jobs SET status = '대기' WHERE status = '실행중' AND lease_until < ?").run(now());
+// 실행 만료된 작업을 다시 대기로 돌린다. 시도 한도를 넘으면 실패로 끝낸다.
+// all: 작업자가 프로세스 하나뿐이라 시작 시점의 '실행중'은 모두 중단된 작업이다(만료 전이라도 남겨 두면 같은 종류 작업이 막힌다).
+export function recoverExpired(db: DatabaseSync, all = false) {
+  const cutoff = all ? '9999' : now();
+  db.prepare("UPDATE jobs SET status = '실패', error_code = 'lease_expired', finished_at = ? WHERE status = '실행중' AND lease_until < ? AND attempts >= ?").run(now(), cutoff, MAX_ATTEMPTS);
+  db.prepare("UPDATE jobs SET status = '대기' WHERE status = '실행중' AND lease_until < ?").run(cutoff);
 }
 
 // 가장 오래된 대기 작업 하나를 원자적으로 선점한다.
@@ -72,12 +74,13 @@ export async function runNext(db: DatabaseSync, handler: (job: ClaimedJob) => Pr
 
 // ponytail: 프로세스 안 단일 작업자. 작업자를 여러 개 두려면 claim의 원자 선점을 그대로 쓰고 프로세스를 늘린다.
 export function startWorker(db: DatabaseSync, handler: (job: ClaimedJob) => Promise<JobOutcome>, intervalMs = 2000) {
-  recoverExpired(db);
+  recoverExpired(db, true);
   let running = false;
   const timer = setInterval(() => {
     if (running) return;
     running = true;
-    void runNext(db, handler).finally(() => { running = false; });
+    // 선점·기록 중 DB 오류(잠김 등)로 프로세스가 죽지 않게 한다. 다음 주기에 다시 시도한다.
+    void runNext(db, handler).catch(() => {}).finally(() => { running = false; });
   }, intervalMs);
   return () => clearInterval(timer);
 }

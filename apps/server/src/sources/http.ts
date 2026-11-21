@@ -32,7 +32,16 @@ export async function politeGet(url: string, options: { referer?: string; accept
   }
   if (res.status === 404 || res.status === 410) return { code: 'not_found', status: res.status };
   if (!res.ok) return { code: 'http_error', status: res.status };
-  return { text: await res.text() };
+  // 본문 읽기도 시간 제한(AbortSignal)에 걸리므로 연결 실패와 같게 다룬다.
+  try { return { text: await res.text() }; } catch { return { code: 'network' }; }
+}
+
+// 출처 마감 값을 시각대가 있는 ISO로 맞춘다. 날짜만 오면 그날 KST 끝으로, 시각대가 없으면 KST로 본다. 읽을 수 없으면 null(미확인).
+export function kstDeadline(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const v = value.trim().replace(' ', 'T');
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T23:59:59+09:00` : /^\d{4}-\d{2}-\d{2}T[\d:.]+$/.test(v) ? `${v}+09:00` : v;
+  return Number.isNaN(Date.parse(iso)) ? null : iso;
 }
 
 export function htmlText(html: string): { text: string } | { code: BodyFailure } {

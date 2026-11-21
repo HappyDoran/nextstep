@@ -18,8 +18,10 @@ type Row = {
 // 마감 근거가 없으면 임의로 종료하지 않고 미확인으로 둔다.
 function postingStatus(row: Row, now: string) {
   if (row.always_hire) return '모집중';
-  if (!row.deadline) return '미확인';
-  return new Date(row.deadline).toISOString() < now ? '마감' : '모집중';
+  // 읽을 수 없는 마감 값(이전 수집분)도 미확인으로 둔다.
+  const at = row.deadline ? Date.parse(row.deadline) : NaN;
+  if (Number.isNaN(at)) return '미확인';
+  return at < Date.parse(now) ? '마감' : '모집중';
 }
 
 const AI_MESSAGES: Record<string, string> = {
@@ -41,7 +43,11 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     const body = linkRequestSchema.safeParse(request.body);
     const link = body.success ? parsePostingLink(body.data.url) : undefined;
     if (!body.success || !link) return reply.status(400).send({ message: '사람인·잡코리아·자소설닷컴·원티드·점핏 공고 상세 링크를 넣으세요.' });
-    return reply.status(202).send(enqueue(db, user.id, 'link', { url: body.data.url }));
+    // 링크 작업은 사용자당 하나씩 처리한다. 다른 링크를 처리하는 중이면 조용히 버리지 않고 알린다.
+    const job = enqueue(db, user.id, 'link', { url: body.data.url });
+    const queued = db.prepare('SELECT payload FROM jobs WHERE id = ? AND user_id = ?').get(job.id, user.id) as { payload: string | null } | undefined;
+    if (queued?.payload && (JSON.parse(queued.payload) as { url?: string }).url !== body.data.url) return reply.status(409).send({ message: '앞서 넣은 링크를 처리하는 중입니다. 끝난 뒤 다시 넣으세요.', code: 'link_in_progress' });
+    return reply.status(202).send(job);
   });
 
   // 데스크톱 상주 앱이 1분마다 묻는 가벼운 조회(추천 목록 전체를 받지 않게). 건수는 그 작업이 판정한 것만 센다.

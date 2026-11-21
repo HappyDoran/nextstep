@@ -22,7 +22,8 @@ test('차단 응답을 받은 호스트에는 다시 요청하지 않는다', as
 test('원티드 상세에서 마감·상시·경력·원격·외부 지원 URL을 읽고 기업 규모는 미확인으로 둔다', () => {
   const base = { id: 1, position: '가상 프론트엔드', status: 'active', company: { company_name: '가상회사' }, address: { location: '서울', district: '강남구' }, career: { annual_from: 2, annual_to: 6, is_newbie: false, is_expert: true }, is_remote_work: false, out_link: 'https://careers.example.com/1', due_time: '2026-12-01', main_tasks: '업무', requirements: '자격', preferred_points: '우대' };
   const parsed = wanted.parseDetail('1', page({ initialData: base }));
-  assert.equal(parsed.deadline, '2026-12-01');
+  // 날짜만 오는 마감은 그날 KST 끝으로 본다(UTC 자정으로 읽으면 KST 오전 9시에 마감 처리된다).
+  assert.equal(parsed.deadline, '2026-12-01T23:59:59+09:00');
   assert.equal(parsed.alwaysHire, false);
   assert.deepEqual(parsed.careers, [{ type: 'EXPERIENCED', fromYears: 2, toYears: 6 }]);
   assert.equal(parsed.location, '서울 강남구');
@@ -44,6 +45,7 @@ test('자소설닷컴 사이트맵 최신 ID와 상세의 모집 분야·직무�
   assert.deepEqual(parsed.roles, ['app', 'design']);
   assert.deepEqual(parsed.body, { code: 'body_image_only' });
   assert.equal(parsed.companyType, '중견기업');
+  assert.equal(parsed.deadline, '2026-11-15T23:59:59+09:00');
   assert.deepEqual(jasoseol.parseDetail('7', '<html></html>'), { code: 'parse_failed' });
   assert.equal(nextData('<html></html>'), undefined);
 });
@@ -110,5 +112,24 @@ test('연결이 한 번 끊기면 같은 간격을 두고 한 번만 다시 요�
     globalThis.fetch = async () => { calls++; throw new TypeError('fetch failed'); };
     assert.deepEqual(await politeGet('https://retry.example/b'), { code: 'network' });
     assert.equal(calls, -8, '두 번까지만 시도');
+  } finally { globalThis.fetch = original; }
+});
+
+test('출처 마감 값을 시각대 있는 ISO로 맞추고 읽을 수 없으면 미확인(null)으로 둔다', async () => {
+  const { kstDeadline } = await import('../dist/sources/http.js');
+  assert.equal(kstDeadline('2026-12-01'), '2026-12-01T23:59:59+09:00');
+  assert.equal(kstDeadline('2026-12-01T18:00:00'), '2026-12-01T18:00:00+09:00');
+  assert.equal(kstDeadline('2026-12-01 18:00:00'), '2026-12-01T18:00:00+09:00');
+  assert.equal(kstDeadline('2026-12-01T09:00:00.000Z'), '2026-12-01T09:00:00.000Z');
+  assert.equal(kstDeadline('2026-12-01T23:59:59+09:00'), '2026-12-01T23:59:59+09:00');
+  assert.equal(kstDeadline('채용시 마감'), null);
+  assert.equal(kstDeadline(null), null);
+});
+
+test('응답 본문을 읽다 실패하면(시간 초과 등) 예외 대신 연결 실패로 돌려준다', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => { throw Object.assign(new Error('timeout'), { name: 'TimeoutError' }); } });
+  try {
+    assert.deepEqual(await politeGet('https://body-timeout.example/a'), { code: 'network' });
   } finally { globalThis.fetch = original; }
 });

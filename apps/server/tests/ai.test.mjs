@@ -53,6 +53,16 @@ test('지원자 추출: 문맥을 넘지 않게 앞에서부터 자르고(지시
   });
 });
 
+test('공고 조건 추출도 공용 입력 상한까지만 보낸다(문맥을 넘으면 지시문이 잘림)', async () => {
+  const { extractRequirements } = await import('../dist/prompts/requirements.js');
+  const facts = { jobFamilies: ['프론트엔드'], required: [], preferred: [], remote: '미기재', portfolioRequired: false, employmentTypes: ['미기재'] };
+  const seen = [];
+  await withOllama((_req, res, body) => { seen.push(body); reply(res, 200, { message: { content: JSON.stringify(facts) } }); }, async () => {
+    await extractRequirements({ title: '가상 공고', company: '가상회사', body: `${'가'.repeat(MAX_INPUT_CHARS)}본문끝표시` });
+    assert.equal(seen[0].messages[1].content.includes('본문끝표시'), false);
+  });
+});
+
 test('모델 미설치·연결 실패를 구분한다', async () => {
   await withOllama((_req, res) => reply(res, 404, { error: 'model not found' }), async () => {
     await assert.rejects(structured('j', judgementSchema, 'i', 'x'), e => e.code === 'ai_model_unavailable');

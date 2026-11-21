@@ -3,7 +3,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { decrypt } from '../secrets.js';
 import type { ClaimedJob, JobOutcome } from '../recommend/jobs.js';
 import { classifyMail, mainBody, platformOf, subjectHint, type MailStatus } from './classify.js';
-import { applyInterpretation, applyMessage, type Outcome } from './apply.js';
+import { applyInterpretation, applyMessage, requestReview, type Outcome } from './apply.js';
 import { bodyKey, MailSourceError, type BackfillSource, type Cursor, type MailboxBatch, type MailBody, type MailBodySource, type MailSource } from './naver.js';
 import type { MailInterpretation } from '../prompts/mail.js';
 
@@ -34,7 +34,7 @@ function storeBatch(db: DatabaseSync, userId: string, batch: MailboxBatch, count
         .run(id, userId, mail.messageKey, mail.receivedAt, mail.subject.slice(0, 80), verdict.platform, verdict.status, verdict.evidence, verdict.postingKeys.join(',') || null, new Date().toISOString(), batch.mailbox, batch.uidValidity, mail.uid);
       bodies.set(bodyKey({ mailbox: batch.mailbox, uid: mail.uid }), { text: mail.text, links: mail.links, fromAddress: mail.fromAddress });
       const outcome = applyMessage(db, { id, userId, messageKey: mail.messageKey, verdict, subject: mail.subject, receivedAt: mail.receivedAt });
-      db.prepare('UPDATE mail_messages SET outcome = ? WHERE id = ?').run(outcome, id);
+      db.prepare('UPDATE mail_messages SET outcome = ? WHERE id = ? AND user_id = ?').run(outcome, id, userId);
       db.exec('COMMIT');
       counts.stored++;
       counts[outcome]++;
@@ -54,7 +54,12 @@ export function createMailHandler(db: DatabaseSync, secretKey: Buffer, source: M
       .map(r => [r.mailbox, { uidValidity: r.uid_validity, lastUid: r.last_uid } satisfies Cursor]));
     const since = conn.covered_since ? new Date(conn.covered_since) : new Date(Date.now() - INITIAL_DAYS * 86_400_000);
     let batches;
-    const password = decrypt(secretKey, conn.secret);
+    let password: string;
+    // 비밀 키가 바뀌었거나 저장값이 손상되면 다시 연결해야 하므로 인증 실패로 표시한다.
+    try { password = decrypt(secretKey, conn.secret); } catch {
+      db.prepare("UPDATE mail_connections SET status = '인증 실패', last_error = 'secret_invalid' WHERE user_id = ?").run(job.userId);
+      return { status: '실패', errorCode: 'secret_invalid', result: {} };
+    }
     // 이번 실행에서 받은 본문은 해석 단계까지 메모리에만 둔다.
     const bodies = new Map<string, MailBody>();
     try {
@@ -71,8 +76,10 @@ export function createMailHandler(db: DatabaseSync, secretKey: Buffer, source: M
       if (batch.oldestDate && batch.oldestDate > since.toISOString()) rangeIncomplete = true;
       if (!batch.complete) more = true;
       if (!storeBatch(db, job.userId, batch, counts, bodies)) return { status: '실패', errorCode: 'disconnected', result: counts };
-      // 메일 처리를 모두 저장한 뒤 위치를 전진시킨다.
-      const lastUid = batch.messages.length ? Math.max(...batch.messages.map(m => m.uid)) : (cursors.get(batch.mailbox)?.uidValidity === batch.uidValidity ? cursors.get(batch.mailbox)!.lastUid : 0);
+      // 메일 처리를 모두 저장한 뒤 위치를 전진시킨다. 받은 메일이 없으면 위치를 바꾸지 않는다
+      // (처음 조회에서 0을 저장하면 다음 실행이 UID 1부터, 즉 조회 기간보다 오래된 메일까지 가져온다).
+      if (!batch.messages.length) continue;
+      const lastUid = Math.max(...batch.messages.map(m => m.uid));
       db.prepare(`INSERT INTO mail_cursors (user_id, mailbox, uid_validity, last_uid) VALUES (?, ?, ?, ?)
         ON CONFLICT(user_id, mailbox) DO UPDATE SET uid_validity = excluded.uid_validity, last_uid = excluded.last_uid`).run(job.userId, batch.mailbox, batch.uidValidity, lastUid);
     }
@@ -111,6 +118,22 @@ export function mergeMailStatus(rule: MailStatus | null, ai: MailStatus): MailSt
   return ai === '합격' ? '모호' : ai;
 }
 
+function unreadable(db: DatabaseSync, userId: string, row: Unlinked) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const r = db.prepare(`UPDATE mail_messages SET interpret_attempts = interpret_attempts + 1 WHERE id = ? AND user_id = ? AND outcome = 'unlinked'
+      AND EXISTS (SELECT 1 FROM mail_connections c WHERE c.user_id = ?) RETURNING interpret_attempts`).get(row.id, userId, userId) as { interpret_attempts: number } | undefined;
+    if (r && r.interpret_attempts >= MAX_INTERPRET_ATTEMPTS) {
+      const outcome = requestReview(db, { id: row.id, userId, messageKey: row.message_key, subject: row.subject, receivedAt: row.received_at, verdict: { status: row.classification as MailStatus, evidence: null, platform: row.platform, postingKeys: [] } }, '연결 불명', subjectHint(row.subject) ?? {});
+      db.prepare('UPDATE mail_messages SET outcome = ? WHERE id = ? AND user_id = ?').run(outcome, row.id, userId);
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    if (db.isTransaction) db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 type Unlinked = { id: string; message_key: string; subject: string; received_at: string | null; classification: string; platform: string | null; mailbox: string | null; uid_validity: string | null; uid: number | null };
 
 // 규칙으로 대상을 찾지 못한 메일을 AI로 해석해 지원 건 생성·연결·확인 요청으로 넘긴다.
@@ -121,11 +144,17 @@ async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpr
   const missing = rows.filter(r => r.mailbox && r.uid !== null && !cached.has(bodyKey({ mailbox: r.mailbox, uid: r.uid })))
     .map(r => ({ mailbox: r.mailbox!, uidValidity: r.uid_validity ?? '', uid: r.uid! }));
   let fetched = new Map<string, MailBody>();
-  try { fetched = await ai.bodies(account, password, missing); } catch { /* 본문 재조회 실패는 다음 실행에서 다시 시도 */ }
+  let fetchFailed = false;
+  try { fetched = await ai.bodies(account, password, missing); } catch { fetchFailed = true; /* 본문 재조회 실패는 다음 실행에서 다시 시도 */ }
   for (const row of rows) {
     const key = row.mailbox && row.uid !== null ? bodyKey({ mailbox: row.mailbox, uid: row.uid }) : '';
     const body = cached.get(key) ?? fetched.get(key);
-    if (!body) continue;
+    if (!body) {
+      // 재조회 자체가 실패했으면 다음 실행에서 다시 본다. 메일함에서 찾지 못한 메일(삭제·이동·위치 없음)은
+      // 시도 횟수를 쓰고 한도에 이르면 확인 요청으로 넘긴다(대기열 앞을 계속 차지하지 않게).
+      if (!fetchFailed || !key) unreadable(db, userId, row);
+      continue;
+    }
     let interp: MailInterpretation;
     // 저장된 분류는 이전 해석 결과일 수 있어 규칙 판정을 본문으로 다시 한다.
     const rule = classifyMail({ fromAddress: body.fromAddress, subject: row.subject, text: body.text, links: body.links })?.status ?? null;
@@ -144,16 +173,16 @@ async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpr
       // 잘못된 출력·응답 시간 초과는 그 메일만의 문제일 수 있어 시도 횟수를 쓰고 다음 메일로 넘어간다(3회면 더 해석하지 않음).
       // 키·잔액·연결 같은 일시 실패는 남은 메일도 실패하므로 멈추고 다음 실행에서 다시 해석한다.
       if (code !== 'ai_invalid_output' && code !== 'ai_timeout') break;
-      db.prepare('UPDATE mail_messages SET interpret_attempts = interpret_attempts + 1 WHERE id = ?').run(row.id);
+      db.prepare('UPDATE mail_messages SET interpret_attempts = interpret_attempts + 1 WHERE id = ? AND user_id = ?').run(row.id, userId);
       continue;
     }
     db.exec('BEGIN IMMEDIATE');
     try {
       // 해석 중 연결 해제·계정 삭제·이미 처리됐으면 반영하지 않는다.
-      const still = db.prepare("SELECT 1 FROM mail_messages m JOIN mail_connections c ON c.user_id = m.user_id WHERE m.id = ? AND m.outcome = 'unlinked'").get(row.id);
+      const still = db.prepare("SELECT 1 FROM mail_messages m JOIN mail_connections c ON c.user_id = m.user_id WHERE m.id = ? AND m.user_id = ? AND m.outcome = 'unlinked'").get(row.id, userId);
       if (!still) { db.exec('ROLLBACK'); continue; }
       const outcome = applyInterpretation(db, { id: row.id, userId, messageKey: row.message_key, subject: row.subject, receivedAt: row.received_at, verdict: { status: row.classification as never, evidence: null, platform: row.platform ?? platformOf(body.fromAddress), postingKeys: [] } }, interp);
-      db.prepare('UPDATE mail_messages SET outcome = ?, classification = ?, interpret_attempts = interpret_attempts + 1 WHERE id = ?').run(outcome, interp.status, row.id);
+      db.prepare('UPDATE mail_messages SET outcome = ?, classification = ?, interpret_attempts = interpret_attempts + 1 WHERE id = ? AND user_id = ?').run(outcome, interp.status, row.id, userId);
       db.exec('COMMIT');
       counts.interpreted = (counts.interpreted ?? 0) + 1;
       counts[outcome] = (counts[outcome] ?? 0) + 1;

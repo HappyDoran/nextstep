@@ -10,7 +10,7 @@ import { createInvite } from '../dist/auth.js';
 import { signIn } from './fake-google.mjs';
 import { runNext } from '../dist/recommend/jobs.js';
 import { createMailHandler } from '../dist/mail/sync.js';
-import { MailSourceError } from '../dist/mail/naver.js';
+import { MailSourceError, streamText } from '../dist/mail/naver.js';
 import { loadSecretKey } from '../dist/secrets.js';
 import { AiError } from '../dist/ai/llm.js';
 import { classifyMail, postingKey } from '../dist/mail/classify.js';
@@ -484,4 +484,114 @@ test('메일 본문 추천 영역 자르기·제목에서 회사 읽기·회사�
   for (const [a, b] of [['씨제이올리브영(CJ올리브영)', '씨제이올리브영'], ['칵테일아이오(주)', '카브테일아이오(주)'], ['렛유인에듀', 'лект유인에듀'], ['뤼튼테크놀로지스', '루튼테크놀로지스'], ['힐링페이퍼(강남언니)', '힐링페이퍼'], ['(유)미소', '유)미소'], ['유클(사이클 컴퍼니)', '사이클 컴퍼니'], ['씨메스', '씨메스로보틱스']]) assert.ok(sameCompany(a, b), `${a}=${b}`);
   // 짧은 이름·다른 회사는 같다고 보지 않는다.
   for (const [a, b] of [['티윈', '티원'], ['컬리', '헤렌'], ['미리디', '미리캔버스'], ['가상회사', '']]) assert.ok(!sameCompany(a, b), `${a}≠${b}`);
+});
+
+test('불합격 안내 문구는 결과가 아니고, 실제 불합격 통보 표현은 불합격으로 본다', () => {
+  const v = (subject, text = '') => classifyMail({ fromAddress: 'noreply@wanted.co.kr', subject, text, links: [] })?.status ?? null;
+  const applied = '[원티드] 가상회사 지원이 완료되었습니다';
+  assert.equal(v(applied, '서류 검토 후 연락드립니다. 불합격 시 별도 연락드리지 않습니다.'), '지원 완료');
+  assert.equal(v(applied, '합격/불합격 여부는 개별 통보 드립니다.'), '지원 완료');
+  assert.equal(v(applied, '서류 불합격 시 개별 연락은 드리지 않습니다.'), '지원 완료');
+  assert.equal(v(applied, '불합격자에게는 별도로 안내하지 않습니다.'), '지원 완료');
+  const result = '[가상회사] 전형 결과 안내';
+  for (const text of ['귀하는 이번 전형에서 불합격되었음을 알려드립니다.', '아쉽게도 이번 채용에서는 불합격하셨습니다.', '내부 검토 결과 불합격 처리되었습니다.', '서류 전형에서 불합격하였습니다.', '최종 불합격 안내드립니다.', '서류 전형 결과: 불합격']) {
+    assert.equal(v(result, text), '불합격', text);
+  }
+});
+
+test('메일 본문 조각 경계에 걸친 한글을 깨뜨리지 않는다', async () => {
+  const { Readable } = await import('node:stream');
+  const bytes = Buffer.from('한글 본문');
+  assert.equal(await streamText(Readable.from([bytes.subarray(0, 1), bytes.subarray(1, 4), bytes.subarray(4)])), '한글 본문');
+});
+
+test('첫 조회에 받은 메일이 없으면 조회 위치를 저장하지 않는다(다음 실행이 UID 1부터 가져오지 않게)', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    await s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 'tester@naver.com', appPassword: 'app-password', consent: true } });
+    await s.run();
+    const raw = new DatabaseSync(s.path);
+    try { assert.equal(raw.prepare('SELECT count(*) n FROM mail_cursors').get().n, 0); } finally { raw.close(); }
+  } finally { await s.done(); }
+});
+
+test('다른 계정으로 다시 연결하거나 조회 기간을 넓히면 조회 위치를 지우고, 같은 계정·같은 기간이면 유지한다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const put = (account, days = 30) => s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account, appPassword: 'app-password', consent: true, days } });
+    const cursors = () => { const raw = new DatabaseSync(s.path); try { return raw.prepare('SELECT count(*) n FROM mail_cursors').get().n; } finally { raw.close(); } };
+    s.state.mails = [mail(1, 'noreply@wanted.co.kr', '[원티드] 가상회사 지원이 완료되었습니다')];
+    await put('tester@naver.com');
+    await s.run();
+    assert.equal(cursors(), 1);
+    await put('tester@naver.com');
+    assert.equal(cursors(), 1);
+    await put('tester@naver.com', 90);
+    assert.equal(cursors(), 0);
+    await s.run();
+    assert.equal(cursors(), 1);
+    await put('other@naver.com', 30);
+    assert.equal(cursors(), 0);
+  } finally { await s.done(); }
+});
+
+test('메일함에서 본문을 찾지 못한 연결 불명 메일은 시도 횟수를 쓰고 한도에 이르면 확인 요청으로 넘긴다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    s.state.mails = [mail(1, 'hr@x.example', '서류 전형 결과 안내', '아쉽게도 함께하기 어렵습니다')];
+    await s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 'tester@naver.com', appPassword: 'app-password', consent: true } });
+    await s.run();
+    let calls = 0;
+    const interpret = async () => { calls++; throw new Error('호출되면 안 됨'); };
+    const sync = async bodies => {
+      const db = openDatabase(s.path);
+      try { await runNext(db, createMailHandler(db, loadSecretKey(join(s.dir, 'secret.key')), async () => [], { interpret, bodies })); } finally { db.close(); }
+    };
+    const attempts = () => { const raw = new DatabaseSync(s.path); try { return raw.prepare('SELECT interpret_attempts n, outcome FROM mail_messages').get(); } finally { raw.close(); } };
+    // 재조회 자체가 실패하면 시도 횟수를 쓰지 않는다.
+    await s.app.inject({ method: 'POST', url: '/mail/sync', headers: { cookie: a } });
+    await sync(async () => { throw new MailSourceError('network'); });
+    assert.deepEqual({ ...attempts() }, { n: 0, outcome: 'unlinked' });
+    for (let i = 0; i < 3; i++) {
+      await s.app.inject({ method: 'POST', url: '/mail/sync', headers: { cookie: a } });
+      await sync(async () => new Map());
+    }
+    assert.deepEqual({ ...attempts() }, { n: 3, outcome: 'review' });
+    assert.equal(calls, 0);
+    assert.deepEqual((await s.app.inject({ url: '/reviews', headers: { cookie: a } })).json().map(r => r.reason), ['연결 불명']);
+  } finally { await s.done(); }
+});
+
+test('저장된 비밀정보를 풀 수 없으면(비밀 키 변경) 인증 실패로 표시해 다시 연결하게 한다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    await s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 'tester@naver.com', appPassword: 'app-password', consent: true } });
+    const raw = new DatabaseSync(s.path);
+    try { raw.prepare("UPDATE mail_connections SET secret = 'v1.AAAA.AAAA.AAAA'").run(); } finally { raw.close(); }
+    await s.run();
+    const conn = (await s.app.inject({ url: '/mail/connection', headers: { cookie: a } })).json();
+    assert.equal(conn.status, '인증 실패');
+    assert.equal(conn.lastError, 'secret_invalid');
+    assert.equal(conn.lastJob.errorCode, 'secret_invalid');
+  } finally { await s.done(); }
+});
+
+test('메일 연결이 없으면 CSV를 가져와도 연결 불명 확인 요청을 되돌리지 않는다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const raw = new DatabaseSync(s.path);
+    try {
+      const userId = raw.prepare('SELECT id FROM users').get().id;
+      raw.prepare("INSERT INTO mail_messages (id, user_id, provider, message_key, received_at, subject, classification, outcome, processed_at) VALUES ('m1', ?, 'naver', '<k1>', NULL, '결과 안내', '불합격', 'review', '2026-11-14')").run(userId);
+      raw.prepare("INSERT INTO review_requests (id, user_id, message_id, reason, status, created_at) VALUES ('r1', ?, 'm1', '연결 불명', '대기', '2026-11-14')").run(userId);
+    } finally { raw.close(); }
+    const res = (await s.app.inject({ method: 'POST', url: '/applications/import', headers: { cookie: a }, payload: { csv: '회사,직무,상태\n가상회사,QA,지원 완료\n' } })).json();
+    assert.equal(res.requeued, 0);
+    assert.deepEqual((await s.app.inject({ url: '/reviews', headers: { cookie: a } })).json().map(r => r.reason), ['연결 불명']);
+  } finally { await s.done(); }
 });

@@ -1,7 +1,7 @@
 // wanted 공개 페이지 해석. 수집 정책(모드)은 호출하는 쪽이 확인한다.
 import type { JobFamily, Profile } from '@nextstep/contracts';
 import { FAMILY_KEYS, type CollectedPosting, type CollectFailure } from './types.js';
-import { nextData, politeGet } from './http.js';
+import { kstDeadline, nextData, politeGet } from './http.js';
 import { careerOk, regionOk } from './filter.js';
 
 export const ORIGIN = 'https://www.wanted.co.kr';
@@ -65,7 +65,7 @@ export function parseDetail(id: string, html: string): WantedPosting | { code: '
     url: `${ORIGIN}/wd/${id}`,
     title: d.position,
     company: d.company.company_name,
-    deadline: d.due_time ?? null,
+    deadline: kstDeadline(d.due_time),
     // 원티드는 마감일 없는 공고를 상시로 표시한다.
     alwaysHire: !d.due_time,
     active: d.status === 'active',

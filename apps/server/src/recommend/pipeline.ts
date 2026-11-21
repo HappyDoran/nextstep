@@ -72,7 +72,7 @@ function upsertPosting(db: DatabaseSync, p: CollectedPosting, acquiredBy: 'auto'
   const values = [p.url, p.title, p.company, p.deadline, p.alwaysHire ? 1 : 0, p.location, p.remote === null ? null : p.remote ? 1 : 0, JSON.stringify(p.careers), p.companyType, p.employeeCount, p.externalApplyUrl, p.bodyFailure, acquiredBy, at] as const;
   if (existing) {
     // 사용자가 링크로 넣은 공고는 자동 수집에 다시 걸려도 링크 공고로 둔다(필터로 숨기지 않음).
-    db.prepare("UPDATE postings SET url = ?, title = ?, company = ?, deadline = ?, always_hire = ?, location = ?, remote = ?, careers = ?, company_type = ?, employee_count = ?, external_apply_url = ?, body_failure = ?, acquired_by = CASE acquired_by WHEN 'link' THEN 'link' ELSE ? END, checked_at = ? WHERE id = ?").run(...values, existing.id);
+    db.prepare("UPDATE postings SET url = ?, title = ?, company = ?, deadline = ?, always_hire = ?, location = ?, remote = ?, careers = ?, company_type = ?, employee_count = ?, external_apply_url = ?, body_failure = ?, acquired_by = CASE acquired_by WHEN 'link' THEN 'link' ELSE ? END, checked_at = ? WHERE id = ? AND owner_user_id = ?").run(...values, existing.id, ownerUserId);
     return existing.id;
   }
   const id = randomUUID();
@@ -82,13 +82,14 @@ function upsertPosting(db: DatabaseSync, p: CollectedPosting, acquiredBy: 'auto'
 }
 
 // 원문은 조건 추출에만 쓰고 버린다. 추출 결과(구조화 사실)만 저장한다.
-async function storeRequirements(db: DatabaseSync, deps: PipelineDeps, postingId: string, p: CollectedPosting, counts: Counts) {
-  const row = db.prepare('SELECT requirements FROM postings WHERE id = ?').get(postingId) as { requirements: string | null };
+async function storeRequirements(db: DatabaseSync, deps: PipelineDeps, userId: string, postingId: string, p: CollectedPosting, counts: Counts) {
+  const row = db.prepare('SELECT requirements FROM postings WHERE id = ? AND owner_user_id = ?').get(postingId, userId) as { requirements: string | null } | undefined;
+  if (!row) return;
   if (row.requirements && JSON.parse(row.requirements).version === REQUIREMENTS_PROMPT_VERSION) return;
   if (!p.body) return;
   try {
     const req = await deps.extract({ title: p.title, company: p.company, body: p.body });
-    db.prepare('UPDATE postings SET requirements = ? WHERE id = ?').run(JSON.stringify({ version: REQUIREMENTS_PROMPT_VERSION, ...req }), postingId);
+    db.prepare('UPDATE postings SET requirements = ? WHERE id = ? AND owner_user_id = ?').run(JSON.stringify({ version: REQUIREMENTS_PROMPT_VERSION, ...req }), postingId, userId);
   } catch (error) {
     countFailure(counts, error);
   }
@@ -137,9 +138,16 @@ async function candidateFacts(deps: PipelineDeps, basis: { profile: Profile; res
   return { ...c, careers, skills: [...c.skills, ...basis.profile.skills], text: basis.resume.text };
 }
 
+// 판정에 쓰는 저장된 공고 사실의 버전. 나중 수집에서 조건 추출·마감·경력 등이 바뀌면 다시 판정한다(규칙만 다시 돌고 공고 추출은 하지 않음).
+export function postingVersion(row: Pick<PostingRow, 'title' | 'deadline' | 'always_hire' | 'location' | 'remote' | 'careers' | 'company_type' | 'requirements' | 'body_failure'>) {
+  const facts = [row.title, row.deadline, row.always_hire, row.location, row.remote, row.careers, row.company_type, row.requirements, row.body_failure];
+  return createHash('sha256').update(JSON.stringify(facts)).digest('hex').slice(0, 16);
+}
+
 async function judgeFor(db: DatabaseSync, deps: PipelineDeps, userId: string, basis: { profile: Profile; resume: { text: string }; basis: string }, rows: PostingRow[], counts: Counts & { judged: number }) {
   const at = new Date().toISOString();
-  const pending = rows.filter(row => (db.prepare('SELECT basis FROM recommendations WHERE user_id = ? AND posting_id = ?').get(userId, row.id) as { basis: string } | undefined)?.basis !== basis.basis);
+  const keyOf = (row: PostingRow) => `${basis.basis}|${postingVersion(row)}`;
+  const pending = rows.filter(row => (db.prepare('SELECT basis FROM recommendations WHERE user_id = ? AND posting_id = ?').get(userId, row.id) as { basis: string } | undefined)?.basis !== keyOf(row));
   if (!pending.length) return;
   let candidate: Candidate;
   try { candidate = await candidateFacts(deps, basis); } catch (error) { countFailure(counts, error); return; }
@@ -150,7 +158,7 @@ async function judgeFor(db: DatabaseSync, deps: PipelineDeps, userId: string, ba
     try {
       db.prepare(`INSERT INTO recommendations (user_id, posting_id, basis, classification, judgement, evaluated_at) VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, posting_id) DO UPDATE SET basis = excluded.basis, classification = excluded.classification, judgement = excluded.judgement, evaluated_at = excluded.evaluated_at`)
-        .run(userId, row.id, basis.basis, j.classification, JSON.stringify(j), at);
+        .run(userId, row.id, keyOf(row), j.classification, JSON.stringify(j), at);
     } catch { return; }
     counts.judged++;
   }
@@ -170,27 +178,30 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
       const fetched = await deps.fetchOne[link.source](link.id);
       if ('code' in fetched) return { status: '실패', errorCode: `fetch_${fetched.code}`, result: {} };
       const id = upsertPosting(db, fetched, 'link', job.userId);
-      await storeRequirements(db, deps, id, fetched, counts);
-      await judgeFor(db, deps, job.userId, basis, [db.prepare('SELECT * FROM postings WHERE id = ?').get(id) as PostingRow], counts);
+      await storeRequirements(db, deps, job.userId, id, fetched, counts);
+      await judgeFor(db, deps, job.userId, basis, [db.prepare('SELECT * FROM postings WHERE id = ? AND owner_user_id = ?').get(id, job.userId) as PostingRow], counts);
       return { status: counts.aiFailures ? '일부 실패' : '성공', result: { postingId: id, judged: counts.judged, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes } };
     }
 
     const families = basis.profile.jobFamilies;
-    const runs: (() => Promise<Collected>)[] = [];
+    const runs: [SourceId, () => Promise<Collected>][] = [];
     for (const family of families) {
-      runs.push(() => deps.collect.saramin(family, PER_FAMILY, basis.profile));
-      runs.push(() => deps.collect.jobkorea(family, PER_FAMILY, basis.profile));
-      runs.push(() => deps.collect.wanted(family, PER_FAMILY, basis.profile));
-      if (DEV_FAMILIES.includes(family)) runs.push(() => deps.collect.jumpit(family, PER_FAMILY, basis.profile));
+      runs.push(['saramin', () => deps.collect.saramin(family, PER_FAMILY, basis.profile)]);
+      runs.push(['jobkorea', () => deps.collect.jobkorea(family, PER_FAMILY, basis.profile)]);
+      runs.push(['wanted', () => deps.collect.wanted(family, PER_FAMILY, basis.profile)]);
+      if (DEV_FAMILIES.includes(family)) runs.push(['jumpit', () => deps.collect.jumpit(family, PER_FAMILY, basis.profile)]);
     }
-    runs.push(() => deps.collect.jasoseol(families, JASOSEOL_PER_FAMILY));
+    runs.push(['jasoseol', () => deps.collect.jasoseol(families, JASOSEOL_PER_FAMILY)]);
     // 출처끼리는 순서대로 요청한다(같은 출처에 동시 요청을 만들지 않는다).
     // 진행: 끝낸 출처·직무 묶음 수와 지금까지 걸린 시간으로 남은 시간을 어림한다(공고 수·AI 속도가 묶음마다 달라 대략값).
     const started = Date.now();
     const progress = (done: number) => reportProgress(db, job.id, { done, total: runs.length, collected: counts.collected, etaSeconds: done ? Math.round((Date.now() - started) / done * (runs.length - done) / 1000) : null });
     progress(0);
-    for (const [index, run] of runs.entries()) {
-      const { postings, failures } = await run();
+    for (const [index, [source, run]] of runs.entries()) {
+      // 출처 하나의 예외(응답 해석 실패 등)는 그 출처 실패로 기록하고 다음 출처를 계속한다.
+      let collected: Collected;
+      try { collected = await run(); } catch (error) { collected = { postings: [], failures: [{ source, code: failureCode(error) }] }; }
+      const { postings, failures } = collected;
       counts.sourceFailures.push(...failures);
       for (const p of postings) counts.sourceCollected[p.source] = (counts.sourceCollected[p.source] ?? 0) + 1;
       for (const p of postings) {
@@ -199,7 +210,7 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
         const twin = SAME_POSTING[p.source];
         if (twin && db.prepare('SELECT 1 FROM postings WHERE source = ? AND source_id = ? AND owner_user_id = ?').get(twin, p.sourceId, job.userId)) continue;
         const id = upsertPosting(db, p, 'auto', job.userId);
-        await storeRequirements(db, deps, id, p, counts);
+        await storeRequirements(db, deps, job.userId, id, p, counts);
         counts.collected++;
       }
       progress(index + 1);

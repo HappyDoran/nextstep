@@ -1,7 +1,7 @@
 // jasoseol 공개 페이지 해석. 수집 정책(모드)은 호출하는 쪽이 확인한다.
 import type { JobFamily } from '@nextstep/contracts';
 import type { CollectedPosting, CollectFailure } from './types.js';
-import { htmlText, nextData, politeGet, type BodyFailure } from './http.js';
+import { htmlText, kstDeadline, nextData, politeGet, type BodyFailure } from './http.js';
 
 export const ORIGIN = 'https://jasoseol.com';
 // 사이트맵에 직무 정보가 없어 최신 공고 상세를 정해진 수만 확인한다.
@@ -68,7 +68,7 @@ export function parseDetail(id: string, html: string): JasoseolPosting | { code:
     title: d.title,
     company: d.name,
     startAt: d.start_time ?? null,
-    deadline: d.end_time ?? null,
+    deadline: kstDeadline(d.end_time),
     fields,
     roles: Object.keys(ROLE_KEYWORDS).filter(role => ROLE_KEYWORDS[role]!.test(haystack)),
     externalApplyUrl: d.employment_page_url && /^https:\/\//.test(d.employment_page_url) ? d.employment_page_url : null,

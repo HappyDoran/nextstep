@@ -19,7 +19,7 @@ function logEvent(db: DatabaseSync, appId: string, field: 'status' | 'readStatus
     .run(randomUUID(), appId, field, from, to, now(), messageId);
 }
 
-function review(db: DatabaseSync, msg: StoredMessage, reason: '연결 불명' | '모호' | '최종 결과 충돌', hint: { company?: string | null; roleTitle?: string | null } = {}): Outcome {
+export function requestReview(db: DatabaseSync, msg: StoredMessage, reason: '연결 불명' | '모호' | '최종 결과 충돌', hint: { company?: string | null; roleTitle?: string | null } = {}): Outcome {
   // 같은 근거는 다시 요청하지 않는다(메시지당 하나).
   db.prepare("INSERT OR IGNORE INTO review_requests (id, user_id, message_id, reason, status, created_at, company, role_title) VALUES (?, ?, ?, ?, '대기', ?, ?, ?)")
     .run(randomUUID(), msg.userId, msg.id, reason, now(), hint.company?.slice(0, 200) ?? null, hint.roleTitle?.slice(0, 200) ?? null);
@@ -29,31 +29,31 @@ function review(db: DatabaseSync, msg: StoredMessage, reason: '연결 불명' | 
 // 연결 대상이 정해진 뒤 상태를 반영한다. 확인 목록에서 사용자가 연결할 때도 이 함수를 쓴다.
 export function applyToApplication(db: DatabaseSync, msg: StoredMessage, app: AppRow, options: { force?: boolean } = {}): Outcome {
   const status = msg.verdict.status;
-  db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ?').run(app.id, msg.id);
+  db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ? AND user_id = ?').run(app.id, msg.id, msg.userId);
   // 사용자가 잠근 필드는 메일로 바꾸지 않는다. 확인 목록에서 사용자가 직접 확정한 경우(force)만 반영한다.
   const locked = JSON.parse(app.locked_fields ?? '[]') as string[];
   if (status === '열람') {
     if (!options.force && locked.includes('readStatus')) return 'no_change';
     if (app.read_status === '열람') return 'no_change';
-    db.prepare("UPDATE applications SET read_status = '열람', updated_at = ? WHERE id = ?").run(now(), app.id);
+    db.prepare("UPDATE applications SET read_status = '열람', updated_at = ? WHERE id = ? AND user_id = ?").run(now(), app.id, msg.userId);
     logEvent(db, app.id, 'readStatus', app.read_status, '열람', msg.id);
     return 'applied';
   }
-  if (status === '모호') return review(db, msg, '모호');
+  if (status === '모호') return requestReview(db, msg, '모호');
   // 모호한 결과는 잠금과 상관없이 확인받는다. 확정된 결과만 잠금을 지킨다.
   if (!options.force && locked.includes('status')) return 'no_change';
   // 사용자가 확인 목록에서 확정하면 순서 규칙 대신 사용자 선택을 따른다.
   if (options.force) {
     if (app.status === status) return 'no_change';
-    db.prepare('UPDATE applications SET status = ?, updated_at = ? WHERE id = ?').run(status, now(), app.id);
+    db.prepare('UPDATE applications SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?').run(status, now(), app.id, msg.userId);
     logEvent(db, app.id, 'status', app.status, status, msg.id);
     return 'applied';
   }
   const current = RANK[app.status] ?? 0;
   const next = RANK[status]!;
-  if (current === 3 && next === 3 && app.status !== status) return review(db, msg, '최종 결과 충돌');
+  if (current === 3 && next === 3 && app.status !== status) return requestReview(db, msg, '최종 결과 충돌');
   if (next <= current) return 'no_change';
-  db.prepare('UPDATE applications SET status = ?, updated_at = ? WHERE id = ?').run(status, now(), app.id);
+  db.prepare('UPDATE applications SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?').run(status, now(), app.id, msg.userId);
   logEvent(db, app.id, 'status', app.status, status, msg.id);
   return 'applied';
 }
@@ -64,7 +64,7 @@ export function applyMessage(db: DatabaseSync, msg: StoredMessage): Outcome {
   const apps = db.prepare('SELECT id, status, read_status, posting_url, locked_fields FROM applications WHERE user_id = ?').all(msg.userId) as AppRow[];
   const matches = keys.size ? apps.filter(a => a.posting_url && keys.has(postingKey(a.posting_url) ?? '')) : [];
   if (matches.length === 1) return applyToApplication(db, msg, matches[0]!);
-  if (matches.length > 1) return review(db, msg, '연결 불명');
+  if (matches.length > 1) return requestReview(db, msg, '연결 불명');
   // 지원 건은 없지만 공고 식별자가 수집한 공고와 일치하면 회사·직무가 명확하므로 지원 건을 만든다. 지원일은 만들지 않는다.
   if (keys.size === 1 && msg.verdict.status !== '모호' && msg.verdict.status !== '열람') {
     const [source, id] = [...keys][0]!.split(':');
@@ -75,7 +75,7 @@ export function applyMessage(db: DatabaseSync, msg: StoredMessage): Outcome {
       db.prepare("INSERT INTO applications (id, user_id, company, role_title, posting_url, status, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'mail')")
         .run(appId, msg.userId, posting.company.slice(0, 200), posting.title.slice(0, 200), posting.url, msg.verdict.status, at, at);
       logEvent(db, appId, 'status', '미지원', msg.verdict.status, msg.id);
-      db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ?').run(appId, msg.id);
+      db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ? AND user_id = ?').run(appId, msg.id, msg.userId);
       return 'created';
     }
   }
@@ -136,7 +136,7 @@ export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp
   }
   const hint = { company: badCompany ? null : interp.company, roleTitle: interp.roleTitle };
   if (interp.confidence !== 'high' || badCompany || !interp.roleTitle || status === '모호') {
-    return review(db, verdictMsg, status === '모호' ? '모호' : '연결 불명', hint);
+    return requestReview(db, verdictMsg, status === '모호' ? '모호' : '연결 불명', hint);
   }
   const role = normalizeName(interp.roleTitle);
   const apps = appsOf(interp.company!);
@@ -147,13 +147,13 @@ export function applyInterpretation(db: DatabaseSync, msg: StoredMessage, interp
   const contained = exact.length === 0 && apps.length === 1 && Math.min(role.length, normalizeName(apps[0]!.role_title).length) >= 2
     && (normalizeName(apps[0]!.role_title).includes(role) || role.includes(normalizeName(apps[0]!.role_title)));
   if (contained) return applyToApplication(db, verdictMsg, apps[0]!);
-  if (exact.length > 1 || apps.length > 0) return review(db, verdictMsg, '연결 불명', hint);
+  if (exact.length > 1 || apps.length > 0) return requestReview(db, verdictMsg, '연결 불명', hint);
   // 결과만 있어도 회사·직무·결과가 명확하면 지원 건을 만든다. 실제 지원일은 만들지 않는다.
   const appId = randomUUID();
   const at = now();
   db.prepare("INSERT INTO applications (id, user_id, company, role_title, status, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, ?, ?, 'mail')")
     .run(appId, msg.userId, interp.company!.slice(0, 200), interp.roleTitle.slice(0, 200), status, at, at);
   logEvent(db, appId, 'status', '미지원', status, msg.id);
-  db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ?').run(appId, msg.id);
+  db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ? AND user_id = ?').run(appId, msg.id, msg.userId);
   return 'created';
 }

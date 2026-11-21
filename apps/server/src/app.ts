@@ -41,7 +41,7 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
   // 수집·추천 작업은 요청 경로 밖의 작업자가 처리한다. 테스트는 worker:false로 끄고 직접 실행한다.
   if (options.worker) {
     const recommend = createHandler(db, options.deps);
-    const mail = createMailHandler(db, secretKey, mailSource, { interpret: interpretMail, bodies: naverBodies }, options.mailBackfill ?? naverBackfill);
+    const mail = createMailHandler(db, secretKey, mailSource, { interpret: interpretMail, bodies: options.mailBodies ?? naverBodies }, options.mailBackfill ?? naverBackfill);
     const stop = startWorker(db, (job: ClaimedJob) => (job.kind === 'mail' ? mail(job) : recommend(job)));
     // 예약 실행은 작업자와 같은 서버 프로세스에서 돈다. 브라우저를 닫아도 계속된다.
     const stopSchedule = startScheduler(db, options.scheduleHour ?? 21);

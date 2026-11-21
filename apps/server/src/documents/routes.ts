@@ -55,6 +55,7 @@ export function registerDocuments(app: FastifyInstance, db: DatabaseSync, filesD
     let filename = '';
     try { filename = typeof rawName === 'string' ? decodeURIComponent(rawName).slice(0, 200) : ''; } catch { /* 빈 이름 */ }
     if (!filename) return reply.status(400).send({ message: '파일 이름을 확인하세요.' });
+    // 변환 본문은 직접 수정 상한(DOCUMENT_TEXT_MAX)까지만 저장한다(넘으면 고칠 수 없게 된다). 원본 파일은 그대로 둔다.
     const result = await extractResumeText(new Uint8Array(request.body), filename);
     if (!result.ok) return reply.status(422).send({ message: `${NAMES[kind]}를 읽지 못했습니다.`, code: result.code });
 
@@ -74,7 +75,7 @@ export function registerDocuments(app: FastifyInstance, db: DatabaseSync, filesD
       }
       db.prepare('UPDATE documents SET active = 0 WHERE user_id = ? AND kind = ? AND active = 1').run(user.id, kind);
       db.prepare('INSERT INTO documents (id, user_id, kind, filename, size, storage_key, text, empty_pages, ocr_pages, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(id, user.id, kind, filename, request.body.length, key, result.text, JSON.stringify(result.emptyPages ?? []), JSON.stringify(result.ocrPages ?? []), new Date().toISOString());
+        .run(id, user.id, kind, filename, request.body.length, key, result.text.slice(0, DOCUMENT_TEXT_MAX), JSON.stringify(result.emptyPages ?? []), JSON.stringify(result.ocrPages ?? []), new Date().toISOString());
       pruned = db.prepare(`DELETE FROM documents WHERE active = 0 AND id IN (
           SELECT id FROM documents WHERE user_id = ? AND kind = ? ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?)
         RETURNING storage_key`).all(user.id, kind, DOCUMENT_VERSION_MAX) as { storage_key: string }[];
@@ -85,7 +86,7 @@ export function registerDocuments(app: FastifyInstance, db: DatabaseSync, filesD
       throw error;
     }
     for (const old of pruned) removeFile(old.storage_key);
-    return toDocument(db.prepare('SELECT * FROM documents WHERE id = ?').get(id) as Row);
+    return toDocument(db.prepare('SELECT * FROM documents WHERE id = ? AND user_id = ?').get(id, user.id) as Row);
   });
 
   // 변환된 MD를 사용자가 고친다(OCR 오인식 등). 고친 본문이 추천에 쓰인다.

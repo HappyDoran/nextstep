@@ -1,7 +1,7 @@
 // jobkorea 공개 페이지 해석. 수집 정책(모드)은 호출하는 쪽이 확인한다.
 import type { JobFamily, Profile } from '@nextstep/contracts';
 import type { CollectedPosting, CollectFailure } from './types.js';
-import { htmlText, politeGet } from './http.js';
+import { htmlText, kstDeadline, politeGet } from './http.js';
 import { careerOk, regionOk } from './filter.js';
 export const ORIGIN = 'https://www.jobkorea.co.kr';
 // 사람 속도의 소량 요청: 직무당 목록 1회·상세 3건.
@@ -92,7 +92,7 @@ export function parsePosting(id: string, html: string): JobkoreaPosting | { code
     url: `${ORIGIN}/Recruit/GI_Read/${id}`,
     title: base.title,
     company: base.post.postingCompanyName,
-    deadline: recruitment.alwaysHire ? null : (recruitment.applicationEndAt ?? null),
+    deadline: recruitment.alwaysHire ? null : kstDeadline(recruitment.applicationEndAt),
     alwaysHire: recruitment.alwaysHire === true,
     workFields: recruitment.workFields ?? [],
     careers: (base.requirement?.careers ?? []).map(c => ({ type: c.type, fromYears: c.range?.from ?? null, toYears: c.range?.to ?? null })),

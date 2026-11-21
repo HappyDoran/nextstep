@@ -8,7 +8,7 @@ import { createApp } from '../dist/app.js';
 import { openDatabase } from '../dist/database.js';
 import { createInvite } from '../dist/auth.js';
 import { signIn } from './fake-google.mjs';
-import { runNext, claim, recoverExpired } from '../dist/recommend/jobs.js';
+import { runNext, claim, recoverExpired, startWorker } from '../dist/recommend/jobs.js';
 import { createHandler, isNotHiring, parsePostingLink } from '../dist/recommend/pipeline.js';
 
 // 출처·AI를 가짜로 바꿔 작업·저장·격리 규칙만 확인한다(실제 수집·AI 검증이 아님).
@@ -249,5 +249,94 @@ test('좋아요·별로·제외 복구는 그 사용자 목록에만 반영되�
     items = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items;
     assert.equal(items.find(i => i.postingId === second.postingId).feedback, 'up');
     assert.equal(items.find(i => i.postingId === first.postingId).restored, true);
+  } finally { await s.done(); }
+});
+
+test('작업자 시작 시 만료 전이라도 남아 있는 실행중 작업을 대기로 되돌린다(단일 작업자)', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const job = (await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } })).json();
+    const db = openDatabase(s.path);
+    try {
+      claim(db);
+      const stop = startWorker(db, async () => ({ status: '성공', result: {} }), 3_600_000);
+      stop();
+      assert.equal(db.prepare('SELECT status FROM jobs WHERE id = ?').get(job.id).status, '대기');
+    } finally { db.close(); }
+  } finally { await s.done(); }
+});
+
+test('출처 하나가 예외를 던져도 그 출처만 실패로 기록하고 나머지를 계속한다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+    const deps = fakeDeps([]);
+    deps.collect.wanted = async () => { JSON.parse('<html>차단 안내</html>'); };
+    const db = openDatabase(s.path);
+    try { await runNext(db, createHandler(db, deps)); } finally { db.close(); }
+    const job = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().lastJob;
+    assert.equal(job.status, '일부 실패');
+    assert.ok(job.result.sourceFailures.includes('wanted:internal'));
+    assert.equal(job.result.collected, 2);
+  } finally { await s.done(); }
+});
+
+test('공고 조건이 나중에 저장되면 다시 판정하고, 바뀌지 않은 공고는 다시 추출·판정하지 않는다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const calls = [];
+    const deps = fakeDeps(calls);
+    deps.collect.saramin = async () => ({ postings: [], failures: [] });
+    deps.collect.jumpit = async () => ({ postings: [], failures: [] });
+    const extract = deps.extract;
+    let fail = true;
+    deps.extract = async p => { if (fail) throw Object.assign(new Error('x'), { code: 'ai_timeout' }); return extract(p); };
+    const refresh = async () => {
+      await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+      const db = openDatabase(s.path);
+      try { await runNext(db, createHandler(db, deps)); } finally { db.close(); }
+      return (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json();
+    };
+    assert.equal((await refresh()).items[0].classification, '미확인');
+    fail = false;
+    const second = await refresh();
+    assert.equal(second.items[0].classification, '기본');
+    assert.equal(second.lastJob.result.judged, 1);
+    calls.length = 0;
+    const third = await refresh();
+    assert.equal(third.lastJob.result.judged, 0);
+    assert.equal(calls.some(c => c.startsWith('extract:')), false, '이미 추출한 공고는 다시 추출하지 않는다');
+  } finally { await s.done(); }
+});
+
+test('링크 작업이 대기 중일 때 다른 링크는 409로 알리고 같은 링크는 같은 작업을 돌려준다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const add = url => s.app.inject({ method: 'POST', url: '/postings/link', headers: { cookie: a }, payload: { url } });
+    const first = await add('https://www.wanted.co.kr/wd/1');
+    assert.equal(first.statusCode, 202);
+    const same = await add('https://www.wanted.co.kr/wd/1');
+    assert.equal(same.statusCode, 202);
+    assert.equal(same.json().id, first.json().id);
+    const other = await add('https://www.wanted.co.kr/wd/2');
+    assert.equal(other.statusCode, 409);
+    assert.match(other.json().message, /처리하는 중/);
+  } finally { await s.done(); }
+});
+
+test('저장된 마감 값을 읽을 수 없어도 추천 목록은 열리고 그 공고는 미확인으로 보인다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+    const db = openDatabase(s.path);
+    try { await runNext(db, createHandler(db, fakeDeps([]))); db.prepare("UPDATE postings SET deadline = '채용시 마감'").run(); } finally { db.close(); }
+    const res = await s.app.inject({ url: '/recommendations', headers: { cookie: a } });
+    assert.equal(res.statusCode, 200);
+    assert.ok(res.json().items.every(i => i.postingStatus === '미확인'));
   } finally { await s.done(); }
 });
