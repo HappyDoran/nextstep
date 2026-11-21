@@ -46,7 +46,7 @@ sh scripts/home-deploy.sh   # 받기·설치·서버/웹 빌드·서비스 재�
 | `pnpm --filter @nextstep/server start` | 빌드된 API 실행 |
 | `pnpm --filter @nextstep/web start` | 빌드된 웹 실행 |
 | `pnpm --filter @nextstep/server verify:jobkorea` | 잡코리아 네 직무 공개 공고 소량 조회(직무당 목록 1회·상세 3건, 요청 간 2.5초). 원문 없이 추출 결과·실패 구분만 출력. 공고 검증 명령은 403·429를 받은 호스트에는 다시 요청하지 않음 |
-| `pnpm --filter @nextstep/server invite` | 운영자용 초대 링크 발급(`NEXTSTEP_WEB_URL/?invite=코드`, 14일 유효, 1회용). 서버와 같은 DB에 코드 해시만 저장하고 링크는 이 출력에서만 보임. 링크를 연 사람은 구글로 로그인해 가입하고(그 구글 계정으로만 이후 로그인), 화면을 열면 주소에서 코드를 지움 |
+| `pnpm --filter @nextstep/server invite` | 운영자용 초대 링크 발급(`NEXTSTEP_WEB_URL/?invite=코드`, 14일 유효, 1회용). 서버와 같은 DB에 코드 해시만 저장하고 링크는 이 출력에서만 보임. 링크를 연 사람은 구글로 로그인해 가입하고(그 구글 계정으로만 이후 로그인), 화면을 열면 주소에서 코드를 지움. 구글 OAuth 앱이 테스트 중이므로 초대할 구글 주소를 Google Cloud(프로젝트 `nextstep-515406`) 대상의 테스트 사용자에 먼저 추가 |
 | `pnpm --filter @nextstep/server eval:recommend` | 정답 사례 57건(합성)의 공고 조건·지원자 사실을 로컬 AI로 추출하고 규칙으로 분류해 직무별 일치율·주입 사례·오판 근거를 출력(조정용 74건, `EVAL_SET=holdout`이면 검증용 20건) |
 | `pnpm --filter @nextstep/server verify:saramin` | 사람인 네 직무 공개 검색 목록 1회·상세 3건 조회(요청 간 2.5초). 원문 없이 추출 결과·본문 길이·실패 구분만 출력 |
 | `pnpm --filter @nextstep/server verify:wanted` | 원티드 네 직무 공개 목록·상세 각 3건 조회 |
