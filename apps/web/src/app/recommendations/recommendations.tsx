@@ -4,7 +4,7 @@ import { ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, buttonClass, ClassLabel, DueDate, Field, Input, Lane, Row, RowList, RowTrigger, Select, Sheet, Skeleton, StatePanel, Tag, Toggle } from '@nextstep/design-system';
 import { jobSchema, profileSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
-import { call, useMe, useWhen } from '../api-client';
+import { call, useMe, useStored, useWhen } from '../api-client';
 import { Account } from '../account';
 import { Frame, AuthLayout, progressText } from '../frame';
 import { AI_CAUSES } from '../settings/ai';
@@ -78,13 +78,13 @@ function RecommendationList({ me }: { me: Me }) {
     onSuccess: j => { setJobId(j.id); setLinkOpen(false); },
   });
   const [linkOpen, setLinkOpen] = useState(false);
-  const [filter, setFilter] = useState<Group | null>(null);
-  const [showHidden, setShowHidden] = useState(false);
-  // 보는 방식만 바꾼다(서버 판정은 그대로): 출처·마감 임박·검색어·정렬.
-  const [source, setSource] = useState<keyof typeof SOURCE_NAMES | '전체'>('전체');
-  const [soon, setSoon] = useState(false);
+  // 보는 방식만 바꾼다(서버 판정은 그대로): 분류·출처·마감 임박·관심 없음·정렬은 이 기기에 기억하고 검색어는 기억하지 않는다.
+  const [filter, setFilter] = useStored<Group | null>('recommendations.class', null);
+  const [showHidden, setShowHidden] = useStored('recommendations.hidden', false);
+  const [source, setSource] = useStored<keyof typeof SOURCE_NAMES | '전체'>('recommendations.source', '전체');
+  const [soon, setSoon] = useStored('recommendations.soon', false);
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<'마감순' | '분류순'>('마감순');
+  const [sort, setSort] = useStored<'마감순' | '분류순'>('recommendations.sort', '마감순');
   const [limit, setLimit] = useState(PAGE);
   const [openId, setOpenId] = useState<string | null>(null);
   const busy = running || refresh.isPending || link.isPending;

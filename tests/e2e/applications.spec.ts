@@ -49,13 +49,16 @@ test('지원 직접 등록·검색·필터·공고 열기와 접수 구분·상�
     await expect(apps).toHaveCount(1);
     await page.getByRole('button', { name: '불합격', exact: true }).click();
     await expect(apps).toHaveCount(2);
+    // 펼친 묶음은 이 기기에 기억한다.
+    await page.reload();
+    await expect(apps).toHaveCount(2);
 
     await page.route('**/api/applications', route => route.request().method() === 'GET' ? route.fulfill({ status: 503, body: '{}' }) : route.continue());
     await page.reload();
     await expect(alert(page)).toContainText('서버 연결을 확인');
     await page.unroute('**/api/applications');
     await page.getByRole('button', { name: '다시 시도' }).click();
-    await expect(apps).toHaveCount(1);
+    await expect(apps).toHaveCount(2);
   } finally {
     await deleteAccount(page);
   }

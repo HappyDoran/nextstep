@@ -7,7 +7,7 @@ import {
   applicationDetailSchema, applicationImportResultSchema, applicationSchema, applicationStatusSchema, readStatusSchema,
   type Application, type ApplicationStatus, type Me,
 } from '@nextstep/contracts';
-import { call, useWhen } from './api-client';
+import { call, useStored, useWhen } from './api-client';
 import { Frame } from './frame';
 
 const STATUSES = applicationStatusSchema.options;
@@ -33,9 +33,9 @@ export function Applications({ me }: { me: Me }) {
   const list = useQuery({ queryKey: key, queryFn: async () => applicationSchema.array().parse(await call('applications')), retry: false, refetchOnWindowFocus: false });
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<ApplicationStatus | '전체'>('전체');
-  const [group, setGroup] = useState<'상태별' | '회사별'>('상태별');
-  // 불합격 묶음은 처음에 접어 둔다(2026-11-18 결정).
-  const [folded, setFolded] = useState<Record<string, boolean>>({ 불합격: true });
+  // 묶음 방식과 접은 묶음은 이 기기에 기억한다. 불합격 묶음은 처음에 접어 둔다(2026-11-18 결정).
+  const [group, setGroup] = useStored<'상태별' | '회사별'>('applications.group', '상태별');
+  const [folded, setFolded] = useStored<Record<string, boolean>>('applications.folded', { 불합격: true });
   const [limit, setLimit] = useState(PAGE);
   const [openId, setOpenId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<'new' | 'csv' | null>(null);

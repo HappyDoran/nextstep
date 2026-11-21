@@ -1,5 +1,5 @@
 'use client';
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { meSchema, type Me } from '@nextstep/contracts';
 import { formatWhen, prefsStore } from './prefs';
@@ -51,4 +51,23 @@ export const usePrefs = () => useSyncExternalStore(prefsStore.subscribe, prefsSt
 export function useWhen() {
   const { timeFormat } = usePrefs();
   return (iso: string) => formatWhen(iso, timeFormat);
+}
+
+/**
+ * 이 기기에 기억하는 보기 조건(추천 필터·정렬, 지원 현황 묶음 등). 로그인 후에만 그리는 화면에서 쓴다
+ * (서버 렌더링 값과 어긋나지 않게). 저장 값의 형태가 기본값과 다르면 기본값을 쓴다.
+ */
+export function useStored<T>(name: string, initial: T) {
+  const key = `nextstep:view:${name}`;
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) ?? 'null') as unknown;
+      return saved !== null && (initial === null || typeof saved === typeof initial) ? saved as T : initial;
+    } catch { return initial; }
+  });
+  const set = (next: T) => {
+    setValue(next);
+    try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* 이번 화면에만 적용 */ }
+  };
+  return [value, set] as const;
 }

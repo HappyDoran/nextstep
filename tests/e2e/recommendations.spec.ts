@@ -83,6 +83,12 @@ test('추천 목록 표시·관심 없음·지원 현황 저장과 작업 실패
     await expect(page.getByRole('button', { name: '제외 1' })).toBeVisible();
     await page.getByLabel('출처').selectOption('jobkorea');
     await expect(row('가상 프론트엔드')).toHaveCount(0);
+    // 보기 조건(출처·정렬)은 이 기기에 기억해 다시 열어도 유지된다.
+    await page.getByLabel('정렬').selectOption('분류순');
+    await page.reload();
+    await expect(page.getByLabel('출처')).toHaveValue('jobkorea');
+    await expect(page.getByLabel('정렬')).toHaveValue('분류순');
+    await page.getByLabel('정렬').selectOption('마감순');
     await page.getByLabel('출처').selectOption('전체');
     await page.getByLabel('검색(제목·회사)').fill('다른회사');
     await expect(row('가상 백엔드')).toBeVisible();
