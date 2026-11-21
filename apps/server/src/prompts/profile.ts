@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { jobFamilySchema, profileSchema } from '@nextstep/contracts';
-import { dataBlock, structured } from '../ai/llm.js';
+import { dataBlock, MAX_INPUT_CHARS, structured } from '../ai/llm.js';
 
 // 이력서에서 프로필 초안을 만든다. 저장은 사용자가 확인·수정한 뒤에만 한다.
 const draftSchema = z.object({
@@ -17,7 +17,7 @@ const INSTRUCTIONS = `너는 이력서에서 확인되는 사실만 뽑는다. �
 - summary: 경력 요약 2문장 이내.`;
 
 export async function suggestProfile(resumeText: string) {
-  const draft = await structured('profile_draft', draftSchema, INSTRUCTIONS, dataBlock('resume', resumeText.slice(0, 20_000)));
+  const draft = await structured('profile_draft', draftSchema, INSTRUCTIONS, dataBlock('resume', resumeText.slice(0, MAX_INPUT_CHARS)));
   // 계약 범위로 정리한다. 선호(지역·원격·고용 형태·요구 경력)는 사용자만 고르므로 비워 둔다(제한 없음).
   return profileSchema.parse({
     jobFamilies: draft.jobFamilies.length ? [...new Set(draft.jobFamilies)] : ['프론트엔드'],

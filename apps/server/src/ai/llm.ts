@@ -63,6 +63,10 @@ function fakeValue(s: Record<string, unknown>): unknown {
   return null;
 }
 
+// 한 번에 보내는 자료 본문 상한(글자). 한국어 약 0.58토큰/글자라 지시문·출력(1,536토큰)과 함께 문맥 8,192토큰 안에 든다.
+// 문맥을 넘으면 Ollama가 앞쪽(지시문 포함)을 잘라 버리므로 보내기 전에 자른다(2026-11-21 지원자 추출에서 확인).
+export const MAX_INPUT_CHARS = 7000;
+
 // Ollama 구조화 출력: JSON Schema를 format으로 넘기고 Qwen3 생각 모드는 끈다. 온도 0, 문맥 8,192 토큰.
 // 형식이 틀리면 한 번 다시 묻고, 그래도 틀리면 ai_invalid_output(호출한 쪽이 미확인으로 처리).
 async function requestOllama<T extends z.ZodType>(schema: T, instructions: string, input: string): Promise<z.infer<T>> {
@@ -79,8 +83,9 @@ async function requestOllama<T extends z.ZodType>(schema: T, instructions: strin
           options: { temperature: 0, num_ctx: 8192, num_predict: think() ? 6144 : 1536 },
           messages: [{ role: 'system', content: instructions }, { role: 'user', content: input }],
         }),
-        // 로컬 CPU·작은 장비는 느리다. 홈서버에서 실측 후 조정한다.
-        signal: AbortSignal.timeout(300_000),
+        // 홈서버 실측(2026-11-21): 입력 읽기 약 20~30토큰/초(길수록 느려져 6,600토큰에 375초), 출력 약 5~8토큰/초.
+        // 입력 상한(MAX_INPUT_CHARS)과 출력 상한(1,536토큰)을 다 채워도 끝나게 10분을 준다.
+        signal: AbortSignal.timeout(600_000),
       });
     } catch (error) {
       throw new AiError((error as Error).name === 'TimeoutError' ? 'ai_timeout' : 'ai_network');

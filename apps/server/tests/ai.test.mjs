@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { structured, dataBlock, AiError } from '../dist/ai/llm.js';
+import { structured, dataBlock, AiError, MAX_INPUT_CHARS } from '../dist/ai/llm.js';
+import { extractCandidate } from '../dist/prompts/candidate.js';
 import { judgementSchema } from '../dist/prompts/recommend.js';
 
 // 실제 Ollama 대신 로컬 모의 서버로 요청 형식·응답 검증만 확인한다(실제 연동 검증이 아님).
@@ -35,6 +36,20 @@ test('로컬 AI(Ollama): JSON Schema·생각 모드 끔으로 요청하고, 형�
     // 두 번 다 틀리거나 생성 실패(5xx)면 잘못된 출력으로 끝난다(메일 해석은 그 메일만 넘기고 계속한다).
     await assert.rejects(structured('j', judgementSchema, '지시', '5xx 입력'), e => e instanceof AiError && e.code === 'ai_invalid_output');
     await assert.rejects(structured('j', judgementSchema, '지시', '다른 입력'), e => e.code === 'ai_invalid_output');
+  });
+});
+
+test('지원자 추출: 문맥을 넘지 않게 앞에서부터 자르고(지시문 유지), 같은 서류는 다시 묻지 않는다', async () => {
+  const facts = { careers: [], skills: ['React'], experiences: [], roles: [], education: '대졸' };
+  const seen = [];
+  await withOllama((_req, res, body) => { seen.push(body); reply(res, 200, { message: { content: JSON.stringify(facts) } }); }, async () => {
+    const docs = `# 이력서\n${'가'.repeat(MAX_INPUT_CHARS)}\n# 포트폴리오\n끝부분`;
+    assert.deepEqual(await extractCandidate(docs), facts);
+    assert.deepEqual(await extractCandidate(docs), facts);
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].messages[0].role, 'system');
+    assert.ok(seen[0].messages[1].content.includes('# 이력서'));
+    assert.equal(seen[0].messages[1].content.includes('끝부분'), false);
   });
 });
 
