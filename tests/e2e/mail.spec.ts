@@ -51,3 +51,23 @@ test('네이버 연결 동의 필수·연결 상태 표시와 확인 목록 처�
     await expect.poll(() => posted).toEqual({ action: 'create', company: '가상회사', roleTitle: '디자이너', status: '불합격' });
   } finally { await deleteAccount(page); }
 });
+
+// 확인 목록 처리 규칙만 확인한다(응답은 모의).
+test('확인 목록 묶음 연결은 열람 메일에 열람을 보내고, 반영할 상태 기본값은 지원 건을 읽은 뒤 정한다', async ({ page }) => {
+  await signup(page, `e2e-review-${Date.now()}@example.com`);
+  try {
+    const app = (id: string, company: string, status: string) => ({ id, company, roleTitle: '디자이너', postingUrl: null, status, readStatus: '정보 없음', lockedFields: [], createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z' });
+    const review = (id: string, company: string, classification: string, suggestedApplicationId: string) => ({ id, reason: '연결 불명', createdAt: '2026-11-07T00:00:00.000Z', subject: `${company} 메일`, receivedAt: null, platform: null, classification, evidence: null, company, roleTitle: null, suggestedApplicationId });
+    await page.route('**/api/reviews', route => route.fulfill({ json: [review('r1', '가상회사', '열람', 'a1'), review('r2', '다른회사', '지원 완료', 'a2')] }));
+    // 지원 건 응답을 늦춰도 기본값이 메일 분류(지원 완료)로 굳지 않아야 한다.
+    await page.route('**/api/applications', async route => { await new Promise(r => setTimeout(r, 1000)); return route.fulfill({ json: [app('a1', '가상회사', '미지원'), app('a2', '다른회사', '불합격')] }); });
+    const posted: unknown[] = [];
+    await page.route('**/api/reviews/r*', route => { posted.push(route.request().postDataJSON()); return route.fulfill({ status: 204 }); });
+    await page.goto('/reviews');
+    await page.getByRole('button', { name: /다른회사 메일/ }).click();
+    await expect(page.getByRole('region', { name: '선택한 메일' }).getByRole('combobox', { name: '반영할 상태' })).toHaveValue('불합격');
+    // 미지원 지원 건에 붙는 열람 메일은 상태 대신 열람을 보낸다(미지원을 보내면 서버가 거부).
+    await page.getByRole('region', { name: '가상회사 확인 요청' }).getByRole('button', { name: '제안대로 1건 연결' }).click();
+    await expect.poll(() => posted).toEqual([{ action: 'link', applicationId: 'a1', status: '열람' }]);
+  } finally { await deleteAccount(page); }
+});

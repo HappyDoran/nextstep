@@ -1,12 +1,12 @@
 'use client';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Check, ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, buttonClass, ClassLabel, classTag, DueDate, Field, Input, Lane, Row, RowList, RowTrigger, Select, Sheet, Skeleton, StatePanel, Tag, Toggle } from '@nextstep/design-system';
-import { jobSchema, profileSchema, resumeSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
+import { applicationSchema, jobSchema, profileSchema, resumeSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
 import { ACTIVE_JOB, buttonIcon as icon, call, monthDay, optional, SOURCE_NAMES, useMailConnection, useMe, useStored, useWhen } from '../api-client';
 import { Account } from '../account';
-import { Frame, AuthLayout, progressText } from '../frame';
+import { Frame, AuthLayout, progressText, useLatestRefresh } from '../frame';
 import { formatWhen } from '../prefs';
 import { AI_CAUSES } from '../settings/ai';
 
@@ -69,6 +69,9 @@ function RecommendationList({ me }: { me: Me }) {
     refetchInterval: q => (q.state.data && !ACTIVE_JOB.includes(q.state.data.status) ? false : 3000),
   });
   const running = Boolean(jobId) && (!job.data || ACTIVE_JOB.includes(job.data.status));
+  // 다른 화면·트레이·자동 갱신이 시작한 갱신도 따라간다: 상태바가 읽는 마지막 갱신이 처리 중이면 그 작업을 조회 대상으로 삼는다.
+  const latest = useLatestRefresh(me).data?.job;
+  if (latest && ACTIVE_JOB.includes(latest.status) && latest.id !== jobId && !running) setJobId(latest.id);
   const refresh = useMutation({ mutationFn: async () => jobSchema.parse(await call('postings/refresh', { method: 'POST' })), onSuccess: j => setJobId(j.id) });
   const link = useMutation({
     mutationFn: async (url: string) => jobSchema.parse(await call('postings/link', { method: 'POST', body: JSON.stringify({ url }), messages: { 400: '사람인·잡코리아·자소설닷컴·원티드·점핏 공고 상세 링크(https)를 넣으세요.', 409: '앞서 넣은 링크를 처리하는 중이에요. 끝난 뒤 다시 넣으세요.' } })),
@@ -87,7 +90,9 @@ function RecommendationList({ me }: { me: Me }) {
   const busy = running || refresh.isPending || link.isPending;
   const currentJob = job.data ?? list.data?.lastJob ?? null;
   const all = list.data?.items ?? [];
-  const [now] = useState(() => Date.now());
+  // 창을 며칠 띄워 둬도 D-day·마감 묶음·7일 안 필터가 맞도록 1분마다 기준 시각을 다시 잡는다.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(id); }, []);
   const q = search.trim().toLowerCase();
   const matches = (i: Recommendation) => i.hidden === showHidden && (source === '전체' || i.source === source)
     && (!soon || (!i.alwaysHire && i.deadline !== null && Date.parse(i.deadline) >= now && Date.parse(i.deadline) - now <= 7 * DAY))
@@ -95,7 +100,9 @@ function RecommendationList({ me }: { me: Me }) {
   const visible = all.filter(matches);
   const counts = Object.fromEntries(GROUPS.map(g => [g, visible.filter(i => groupOf(i) === g).length])) as Record<Group, number>;
   const items = visible.filter(i => !filter || groupOf(i) === filter)
-    .sort((a, b) => sort === '분류순' ? GROUPS.indexOf(groupOf(a)) - GROUPS.indexOf(groupOf(b)) || dueTime(a) - dueTime(b) : dueTime(a) - dueTime(b));
+    // 마감순은 그리는 묶음 순서(마감 지남이 맨 뒤)대로 먼저 나눠야 앞 30건이 화면 위 묶음부터 채워진다.
+    .sort((a, b) => sort === '분류순' ? GROUPS.indexOf(groupOf(a)) - GROUPS.indexOf(groupOf(b)) || dueTime(a) - dueTime(b)
+      : DUE_LANES.indexOf(laneOf(a, now)) - DUE_LANES.indexOf(laneOf(b, now)) || dueTime(a) - dueTime(b));
   const shown = items.slice(0, limit);
   const lanes = (sort === '마감순' ? DUE_LANES : [...GROUPS]).map(name => ({
     name,
@@ -146,7 +153,7 @@ function RecommendationList({ me }: { me: Me }) {
                     <span className="block truncate text-caption text-muted-foreground">{item.company} · {SOURCE_NAMES[item.source]}{item.linkOnly ? ' · 링크 판정' : ''}{item.restored ? ' · 직접 복구' : ''}{item.feedback === 'up' ? ' · 좋아요' : ''}</span>
                   </RowTrigger>
                   <span className="line-clamp-2 text-caption text-muted-foreground">{item.reason}</span>
-                  <DueDate days={item.alwaysHire || !item.deadline ? null : Math.max(0, Math.floor((Date.parse(item.deadline) - now) / DAY))} {...(item.deadline && !item.alwaysHire ? { date: monthDay(item.deadline) } : {})} />
+                  <DueDate days={item.alwaysHire || !item.deadline ? null : Math.floor((Date.parse(item.deadline) - now) / DAY)} {...(item.deadline && !item.alwaysHire ? { date: monthDay(item.deadline) } : {})} />
                 </Row>)}</RowList>
               </Lane>)}
               {items.length > limit && <div className="flex justify-center"><Button variant="secondary" onClick={() => setLimit(limit + PAGE)}>{PAGE}건 더 보기 <span className="tabular-nums text-primary">{shown.length} / {items.length}</span></Button></div>}
@@ -173,6 +180,9 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
     mutationFn: () => call('applications', { method: 'POST', body: JSON.stringify({ company: item.company.slice(0, 200), roleTitle: item.title.slice(0, 200), postingUrl: item.url }) }),
     onSuccess: () => client.invalidateQueries({ queryKey: ['applications', me.id] }),
   });
+  // 이미 같은 공고 URL로 저장한 지원 건이 있으면 저장됨으로 보인다(서버도 같은 URL은 새로 만들지 않는다).
+  const apps = useQuery({ queryKey: ['applications', me.id], queryFn: async () => applicationSchema.array().parse(await call('applications')), retry: false, refetchOnWindowFocus: false });
+  const saved = track.isSuccess || Boolean(apps.data?.some(a => a.postingUrl === item.url));
   const deadline = item.alwaysHire ? '상시채용' : item.deadline ? formatWhen(item.deadline, 'absolute') : '마감 미확인';
   const size = item.companyType || item.employeeCount ? [item.companyType, item.employeeCount ? `${item.employeeCount}명` : null].filter(Boolean).join(' · ') : '기업 유형·규모 미확인';
   const reasonTone = classTag[item.classification];
@@ -187,7 +197,7 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
     footer={<>
       <Button variant="quiet" disabled={hide.isPending || feedback.isPending} onClick={() => item.feedback === 'down' ? feedback.mutate({ feedback: null }) : hide.mutate(!item.hidden)}>{item.hidden ? '숨김 해제' : '관심 없음'}</Button>
       <div className="ml-auto flex flex-wrap gap-2">
-        <Button variant="secondary" disabled={track.isPending || track.isSuccess} onClick={() => track.mutate()}>{track.isSuccess ? '지원 현황에 저장됨' : '지원 현황에 저장'}</Button>
+        <Button variant="secondary" disabled={track.isPending || saved} onClick={() => track.mutate()}>{saved ? '지원 현황에 저장됨' : '지원 현황에 저장'}</Button>
         {item.externalApplyUrl && <a href={item.url} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary')}>원문 보기</a>}
         <a href={item.externalApplyUrl ?? item.url} target="_blank" rel="noopener noreferrer" className={buttonClass()}><ExternalLink className={icon} aria-hidden="true" focusable="false" />지원 페이지 열기</a>
       </div>

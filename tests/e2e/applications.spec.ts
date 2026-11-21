@@ -8,6 +8,12 @@ test('지원 직접 등록·검색·필터·공고 열기와 접수 구분·상�
   const row = (company: string) => apps.filter({ hasText: company });
   try {
     await expect(page.getByText('등록한 지원 건이 없습니다.')).toBeVisible();
+    // 잘못 인코딩된 주소 해시는 설정이 아닌 것으로 보고 화면을 그대로 둔다(오류 화면 없음).
+    await page.goto('/#%E0%A4');
+    await expect(page.getByRole('heading', { name: '지원 현황' })).toBeVisible();
+    await page.goto('/settings#%E0%A4');
+    await expect(page.getByRole('dialog', { name: '설정' })).toBeVisible();
+    await page.goto('/');
     for (const [company, role, url] of [['가상커머스', '프론트엔드 개발자', 'https://example.com/posting/1'], ['가상페이', 'iOS 개발자', '']]) {
       await page.getByRole('button', { name: '직접 등록' }).first().click();
       const dialog = page.getByRole('dialog', { name: '지원 직접 등록' });
@@ -31,10 +37,15 @@ test('지원 직접 등록·검색·필터·공고 열기와 접수 구분·상�
     await page.getByLabel('검색 (회사·직무)').fill('');
     await commerce.getByRole('button', { name: /가상커머스/ }).click();
     const detail = page.getByRole('dialog', { name: '가상커머스' });
+    // 상세 저장은 바꾼 값만 보낸다(창을 연 뒤 메일이 바꾼 값을 덮어쓰지 않음).
+    let patched: unknown;
+    await page.route('**/api/applications/*', route => { if (route.request().method() === 'PATCH') patched = route.request().postDataJSON(); return route.continue(); });
     await detail.getByRole('combobox', { name: '상태' }).selectOption('지원 완료');
     await detail.getByRole('combobox', { name: '열람' }).selectOption('미열람');
     await detail.getByRole('button', { name: '저장' }).click();
     await expect(detail.getByText('저장했습니다.')).toBeVisible();
+    expect(patched).toEqual({ status: '지원 완료', readStatus: '미열람' });
+    await page.unroute('**/api/applications/*');
     await expect(detail.getByText(/상태 미지원 → 지원 완료/)).toBeVisible();
     await detail.getByRole('button', { name: '닫기' }).click();
     // 줄 안에서 바로 상태를 바꿀 수 있다.
@@ -62,4 +73,20 @@ test('지원 직접 등록·검색·필터·공고 열기와 접수 구분·상�
   } finally {
     await deleteAccount(page);
   }
+});
+
+test('접힌 묶음을 펼치면 앞 페이지 밖이어도 묶음 머리와 더 보기가 남는다', async ({ page }) => {
+  await signup(page, `e2e-lane-${Date.now()}@example.com`);
+  try {
+    // 표시 규칙만 확인한다(목록 응답은 모의): 지원 완료 30건으로 첫 페이지를 채우고 불합격 1건은 접힌 묶음에 둔다.
+    const app = (i: number, status: string) => ({ id: `a${i}`, company: `가상회사${i}`, roleTitle: '디자이너', postingUrl: null, status, readStatus: '정보 없음', lockedFields: [], createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z' });
+    await page.route('**/api/applications', route => route.fulfill({ json: [...Array.from({ length: 30 }, (_, i) => app(i, '지원 완료')), app(30, '불합격')] }));
+    await page.reload();
+    const lane = page.getByRole('button', { name: '불합격', exact: true });
+    await expect(lane).toHaveAttribute('aria-expanded', 'false');
+    await lane.click();
+    await expect(lane).toHaveAttribute('aria-expanded', 'true');
+    await page.getByRole('button', { name: '30건 더 보기', exact: true }).click();
+    await expect(page.getByRole('listitem').filter({ hasText: '가상회사30' })).toBeVisible();
+  } finally { await deleteAccount(page); }
 });

@@ -78,6 +78,11 @@ export function registerApplications(app: FastifyInstance, db: DatabaseSync) {
     if (!user) return reply;
     const body = applicationCreateSchema.safeParse(request.body);
     if (!body.success) return reply.status(400).send({ message: '요청을 확인하세요.' });
+    // 같은 공고 URL의 지원 건이 있으면 새로 만들지 않고 그 건을 돌려준다(추천에서 두 번 저장해도 하나). 조회와 삽입 사이에 await가 없어 같은 프로세스에서 겹치지 않는다.
+    if (body.data.postingUrl) {
+      const same = db.prepare('SELECT * FROM applications WHERE user_id = ? AND posting_url = ? ORDER BY created_at LIMIT 1').get(user.id, body.data.postingUrl) as Row | undefined;
+      if (same) return reply.status(200).send(toApplication(same));
+    }
     const at = new Date().toISOString();
     const id = randomUUID();
     // 계정 삭제와 겹치면 외래키가 삽입을 거부해 삭제된 사용자의 자료가 되살아나지 않는다.

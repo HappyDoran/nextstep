@@ -4,7 +4,7 @@ import { Check, Mail } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Field, Input, Segmented, Select, StatePanel, Tag } from '@nextstep/design-system';
 import { applicationSchema, mailStatusSchema, reviewBodySchema, reviewSchema, type Me, type Review } from '@nextstep/contracts';
-import { buttonIcon as icon, call, useMe, useWhen } from '../api-client';
+import { buttonIcon as icon, call, SLOW, useMe, useWhen } from '../api-client';
 import { Account } from '../account';
 import { Frame, AuthLayout } from '../frame';
 
@@ -51,14 +51,17 @@ function ReviewList({ me }: { me: Me }) {
             <nav aria-label="확인할 메일" className="flex max-h-[calc(100dvh-12rem)] flex-col gap-5 overflow-auto border-r border-border p-4">
               {groups.map(([company, items]) => <QueueGroup key={company} company={company} items={items} apps={apps.data ?? []} currentId={current.id} onSelect={setSelected} onDone={refresh} />)}
             </nav>
-            <ReviewDetail key={current.id} review={current} apps={apps.data ?? []} onDone={() => { advance(current.id); refresh(); }} />
+            {/* 반영할 상태 기본값은 지원 건 상태로 정하므로 지원 건을 읽은 뒤에 그린다(읽지 못했으면 빈 목록으로). */}
+            {apps.isPending ? <p role="status" className="px-8 py-7 text-muted-foreground">지원 건을 불러오고 있습니다.</p>
+              : <ReviewDetail key={current.id} review={current} apps={apps.data ?? []} onDone={() => { advance(current.id); refresh(); }} />}
           </div>}
   </Frame>;
 }
 
 function QueueGroup({ company, items, apps, currentId, onSelect, onDone }: { company: string; items: Review[]; apps: AppOption[]; currentId: string; onSelect: (id: string) => void; onDone: () => void }) {
-  // 묶음 연결은 지원 건 상태가 바뀌지 않는 메일(더 앞 단계이거나 같은 결과)만 대상으로 하고 현재 상태를 그대로 보낸다.
+  // 묶음 연결은 지원 건 상태가 바뀌지 않는 메일(더 앞 단계이거나 같은 결과, 열람)만 대상으로 하고 현재 상태를 그대로 보낸다.
   // 확인 목록 확정은 고른 상태로 덮어쓰므로, 메일 상태를 보내면 불합격이 지원 완료로 되돌아갈 수 있다.
+  // 열람 메일은 '열람'을 보내 열람 표시만 남긴다(지원 상태는 그대로). 미지원 지원 건은 열람 메일만 대상이 된다(다른 메일 상태는 모두 더 뒤 단계).
   const linkable = items.filter(r => !r.held && keepsStatus(r, apps.find(a => a.id === r.suggestedApplicationId)));
   const target = apps.find(a => a.id === linkable[0]?.suggestedApplicationId);
   // 한 건씩 차례로 보낸다. 중간에 실패하면 멈추고 남은 항목은 목록에 그대로 둔다.
@@ -71,7 +74,7 @@ function QueueGroup({ company, items, apps, currentId, onSelect, onDone }: { com
       <h2 className="text-body-sm font-extrabold">{company}</h2><span className="text-caption tabular-nums text-muted-foreground">{items.length}</span>
       <div className="ml-auto flex gap-1">
         {target && linkable.length > 0 && <Button size="sm" variant="quiet" className="text-primary" disabled={bulk.isPending} title={`${target.company} · ${target.roleTitle}`}
-          onClick={() => bulk.mutate({ list: linkable, body: r => ({ action: 'link', applicationId: r.suggestedApplicationId, status: apps.find(a => a.id === r.suggestedApplicationId)!.status }) })}>제안대로 {linkable.length}건 연결</Button>}
+          onClick={() => bulk.mutate({ list: linkable, body: r => ({ action: 'link', applicationId: r.suggestedApplicationId, status: r.classification === '열람' ? '열람' : apps.find(a => a.id === r.suggestedApplicationId)!.status }) })}>제안대로 {linkable.length}건 연결</Button>}
         {items.length > 1 && <Button size="sm" variant="quiet" disabled={bulk.isPending}
           onClick={() => { if (window.confirm(`${company} ${items.length}건을 모두 무시할까요? 무시한 메일은 다시 묻지 않습니다.`)) bulk.mutate({ list: items, body: () => ({ action: 'ignore' }) }); }}>모두 무시</Button>}
       </div>
@@ -98,7 +101,7 @@ function ReviewDetail({ review, apps, onDone }: { review: Review; apps: AppOptio
   const [role, setRole] = useState(review.roleTitle ?? '');
   const [fullOpen, setFullOpen] = useState(false);
   // 전체 본문은 열 때만 메일함에서 읽고 화면을 닫으면 버린다(서버도 저장하지 않음).
-  const full = useQuery({ queryKey: ['review-body', review.id], enabled: fullOpen, retry: false, gcTime: 0, staleTime: Infinity, queryFn: async () => reviewBodySchema.parse(await call(`reviews/${review.id}/body`)) });
+  const full = useQuery({ queryKey: ['review-body', review.id], enabled: fullOpen, retry: false, gcTime: 0, staleTime: Infinity, queryFn: async () => reviewBodySchema.parse(await call(`reviews/${review.id}/body`, { timeout: SLOW })) });
   const act = useMutation({ mutationFn: (body: object) => call(`reviews/${review.id}`, { method: 'POST', body: JSON.stringify(body) }), onSuccess: onDone });
   const canConfirm = !!status && (mode === 'link' ? !!target : !!company.trim() && !!role.trim() && status !== '열람');
 

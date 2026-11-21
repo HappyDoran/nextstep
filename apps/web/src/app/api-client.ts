@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { mailConnectionSchema, meSchema, type Me } from '@nextstep/contracts';
 import { formatWhen, prefsStore } from './prefs';
 
@@ -18,11 +18,14 @@ export class RequestError extends Error {
   }
 }
 
-// 동일 출처 API 경유 호출. 응답 계약 검증은 호출하는 쪽이 schema로 한다.
-export async function call(path: string, init?: RequestInit & { messages?: Record<number, string> }) {
+/** 로컬 LLM·메일함을 기다리는 요청의 제한 시간. 동일 출처 경유 route의 API 대기 시간(120초)과 같다. */
+export const SLOW = 120_000;
+
+// 동일 출처 API 경유 호출. 응답 계약 검증은 호출하는 쪽이 schema로 한다. 기본 10초, 오래 걸리는 요청은 timeout으로 늘린다.
+export async function call(path: string, init?: RequestInit & { messages?: Record<number, string>; timeout?: number }) {
   let response: Response;
   try {
-    response = await fetch(`/api/${path}`, { ...init, cache: 'no-store', signal: AbortSignal.timeout(10_000), ...(init?.body ? { headers: { 'content-type': 'application/json' } } : {}) });
+    response = await fetch(`/api/${path}`, { ...init, cache: 'no-store', signal: AbortSignal.timeout(init?.timeout ?? 10_000), ...(init?.body ? { headers: { 'content-type': 'application/json' } } : {}) });
   } catch {
     throw new RequestError(0);
   }
@@ -44,13 +47,26 @@ export async function optional(path: string) {
   try { return await call(path); } catch (error) { if (error instanceof RequestError && error.status === 404) return null; throw error; }
 }
 
-/** 네이버 메일 연결(없으면 null). 상태바·설정·시작 단계가 같은 캐시를 같은 형태로 쓴다. poll이면 동기화 작업 중에만 다시 읽는다. */
+/** 네이버 메일 연결(없으면 null). 상태바·설정·시작 단계가 같은 캐시를 같은 형태로 쓴다. poll이면 동기화 작업 중에 3초마다, 아니면 1분마다 다시 읽는다. */
 export function useMailConnection(me: Me, poll = false) {
+  const client = useQueryClient();
+  const key = ['mail', 'connection', me.id];
   return useQuery({
     // 메일 설정 화면(poll)은 창으로 돌아오면 다시 읽고, 상태바는 1분 조회에 맡긴다.
-    queryKey: ['mail', 'connection', me.id], retry: false, refetchOnWindowFocus: poll,
-    queryFn: async () => { const data = await optional('mail/connection'); return data === null ? null : mailConnectionSchema.parse(data); },
-    refetchInterval: q => (poll && q.state.data?.lastJob && ACTIVE_JOB.includes(q.state.data.lastJob.status) ? 3000 : false),
+    queryKey: key, retry: false, refetchOnWindowFocus: poll,
+    queryFn: async () => {
+      const data = await optional('mail/connection');
+      const next = data === null ? null : mailConnectionSchema.parse(data);
+      // 메일 확인 작업(설정·트레이·예약 어느 쪽이든)이 새로 끝났으면 메일이 바꾼 지원 현황·확인 목록을 다시 읽는다.
+      const before = client.getQueryData<typeof next>(key)?.lastJob;
+      const job = next?.lastJob;
+      if (client.getQueryData(key) !== undefined && job && !ACTIVE_JOB.includes(job.status) && (before?.id !== job.id || before.status !== job.status)) {
+        void client.invalidateQueries({ queryKey: ['applications', me.id] });
+        void client.invalidateQueries({ queryKey: ['reviews', me.id] });
+      }
+      return next;
+    },
+    refetchInterval: q => (poll && q.state.data?.lastJob && ACTIVE_JOB.includes(q.state.data.lastJob.status) ? 3000 : 60_000),
   });
 }
 

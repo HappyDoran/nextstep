@@ -86,6 +86,10 @@ test('추천 목록 표시·관심 없음·지원 현황 저장과 작업 실패
     await card.getByRole('button', { name: '지원 현황에 저장' }).click();
     await expect(card.getByRole('button', { name: '지원 현황에 저장됨' })).toBeVisible();
     await card.getByRole('button', { name: '닫기' }).click();
+    // 다시 열어도 같은 공고 URL의 지원 건이 있으면 저장됨으로 보인다(중복 저장 방지).
+    await row('가상 프론트엔드').click();
+    await expect(card.getByRole('button', { name: '지원 현황에 저장됨' })).toBeDisabled();
+    await card.getByRole('button', { name: '닫기' }).click();
     // 분류별 건수와 고급 필터(출처·검색).
     await expect(page.getByRole('button', { name: '제외 1' })).toBeVisible();
     await page.getByLabel('출처').selectOption('jobkorea');
@@ -113,5 +117,29 @@ test('추천 목록 표시·관심 없음·지원 현황 저장과 작업 실패
     await page.goto('/');
     const saved = page.getByRole('listitem').filter({ hasText: '가상 프론트엔드' });
     await expect(saved.getByRole('combobox', { name: '상태' })).toHaveValue('미지원');
+  } finally { await deleteAccount(page); }
+});
+
+test('마감순은 묶음 순서대로 첫 페이지를 채우고 지난 공고는 마감으로, 다른 곳에서 시작한 갱신도 따라간다', async ({ page }) => {
+  await signup(page, `e2e-rec3-${Date.now()}@example.com`);
+  try {
+    // 표시 규칙만 확인한다(추천·작업 응답은 모의, 실제 수집 아님).
+    const at = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString();
+    const base = { linkOnly: false, externalApplyUrl: null, company: '가상회사', alwaysHire: false, postingStatus: '모집중', companyType: null, employeeCount: null, checkedAt: '2026-11-07T00:00:00.000Z', classification: '기본', met: [], unmet: [], unknown: [], reason: '조건 맞음', hidden: false, evaluatedAt: '2026-11-07T00:00:00.000Z' };
+    const past = Array.from({ length: 31 }, (_, i) => ({ ...base, postingId: `old${i}`, source: 'saramin', url: `https://www.saramin.co.kr/zf_user/jobs/view?rec_idx=${i}`, title: `지난 공고 ${i}`, deadline: at(-2 - i) }));
+    const soon = { ...base, postingId: 'soon', source: 'wanted', url: 'https://www.wanted.co.kr/wd/9', title: '곧 마감 공고', deadline: at(3) };
+    await page.route('**/api/recommendations', route => route.fulfill({ json: { items: [...past, soon], lastJob: null } }));
+    // 트레이·자동 갱신 등 다른 곳에서 시작한 갱신 작업.
+    const job = { id: 'outside', kind: 'refresh', status: '실행중', errorCode: null, result: null, createdAt: '2026-11-07T00:00:00.000Z', finishedAt: null };
+    await page.route('**/api/jobs/latest', route => route.fulfill({ json: { job, counts: null } }));
+    await page.route('**/api/jobs/outside', route => route.fulfill({ json: job }));
+    await page.goto('/recommendations');
+    await expect(page.getByRole('heading', { name: '7일 안에 마감' })).toBeVisible();
+    await expect(page.getByRole('listitem').filter({ hasText: '곧 마감 공고' })).toBeVisible();
+    const old = page.getByRole('listitem').filter({ hasText: '지난 공고 30' });
+    await expect(old).toContainText('마감');
+    await expect(old).not.toContainText('오늘');
+    await expect(page.getByRole('button', { name: '새로 가져오기' })).toBeDisabled();
+    await expect(page.getByRole('status').filter({ hasText: '창을 닫아도 서버에서 계속합니다' })).toBeVisible();
   } finally { await deleteAccount(page); }
 });

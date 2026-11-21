@@ -46,7 +46,8 @@ export function Applications({ me }: { me: Me }) {
   const items = all.filter(item => (status === '전체' || item.status === status) && (!needle || `${item.company} ${item.roleTitle}`.toLowerCase().includes(needle)));
   const groupOf = (a: Application) => (group === '상태별' ? a.status : a.company);
   const names = group === '상태별' ? STATUSES.filter(s => items.some(i => i.status === s)) : [...new Set(items.map(i => i.company))].sort((a, b) => a.localeCompare(b, 'ko'));
-  const ordered = names.flatMap(name => items.filter(i => groupOf(i) === name));
+  // 접은 묶음의 줄은 그리지 않으므로 '더 보기' 수에서 뺀다.
+  const ordered = names.filter(name => !folded[name]).flatMap(name => items.filter(i => groupOf(i) === name));
   const shown = new Set(ordered.slice(0, limit).map(i => i.id));
 
   const actions = <>
@@ -69,9 +70,11 @@ export function Applications({ me }: { me: Me }) {
               {names.map(name => {
                 const rows = items.filter(i => groupOf(i) === name);
                 const visible = rows.filter(i => shown.has(i.id));
-                if (visible.length === 0 && !folded[name]) return null;
+                // 앞 페이지에 줄이 없는 묶음은 숨긴다. 다만 사용자가 직접 펼친 묶음(folded=false)은 머리를 남기고 더 보기를 준다.
+                if (visible.length === 0 && folded[name] === undefined) return null;
                 return <Lane key={name} title={name} count={`${rows.length}건`} expanded={!folded[name]} onToggle={() => setFolded({ ...folded, [name]: !folded[name] })}>
-                  <RowList>{visible.map(item => <ApplicationRow key={item.id} item={item} userKey={key} showStatus={group === '회사별'} onOpen={() => setOpenId(item.id)} />)}</RowList>
+                  {visible.length > 0 ? <RowList>{visible.map(item => <ApplicationRow key={item.id} item={item} userKey={key} showStatus={group === '회사별'} onOpen={() => setOpenId(item.id)} />)}</RowList>
+                    : <Button size="sm" variant="secondary" onClick={() => setLimit(limit + PAGE)}>{PAGE}건 더 보기</Button>}
                 </Lane>;
               })}
               {ordered.length > limit && <div className="flex justify-center"><Button variant="secondary" onClick={() => setLimit(limit + PAGE)}>{PAGE}건 더 보기 <span className="tabular-nums text-primary">{shown.size} / {ordered.length}</span></Button></div>}
@@ -141,15 +144,26 @@ function ImportCsv({ open, userKey, onClose }: { open: boolean; userKey: string[
   </Sheet>;
 }
 
+const fieldsOf = (a: Application): Record<string, unknown> => ({ company: a.company, roleTitle: a.roleTitle, status: a.status, readStatus: a.readStatus, postingUrl: a.postingUrl, lockedFields: a.lockedFields });
+
 function ApplicationDetail({ id, userKey, onClose }: { id: string; userKey: string[]; onClose: () => void }) {
   const time = useWhen();
   const client = useQueryClient();
   const detailKey = [...userKey, id];
   const detail = useQuery({ queryKey: detailKey, queryFn: async () => applicationDetailSchema.parse(await call(`applications/${id}`)), retry: false });
   const refresh = () => client.invalidateQueries({ queryKey: userKey });
+  // 바꾼 값만 보낸다. 폼이 처음 보여 준 값(저장하면 저장한 값)과 비교해, 창을 연 뒤 메일이 바꾼 상태·열람을 덮어쓰지 않게 한다.
+  const [base, setBase] = useState<Record<string, unknown> | null>(null);
+  if (detail.data && !base) setBase(fieldsOf(detail.data));
   const update = useMutation({
-    mutationFn: async (form: FormData) => applicationSchema.parse(await call(`applications/${id}`, { method: 'PATCH', body: formBody(form, true) })),
-    onSuccess: refresh,
+    mutationFn: async (form: FormData) => {
+      const body = JSON.parse(formBody(form, true)) as Record<string, unknown>;
+      const same = (a: unknown, b: unknown) => (Array.isArray(a) && Array.isArray(b) ? [...a].sort().join() === [...b].sort().join() : a === b);
+      for (const k of Object.keys(body)) if (same(body[k], base?.[k])) delete body[k];
+      if (Object.keys(body).length === 0) return null;
+      return applicationSchema.parse(await call(`applications/${id}`, { method: 'PATCH', body: JSON.stringify(body) }));
+    },
+    onSuccess: a => { if (a) setBase(fieldsOf(a)); void refresh(); },
   });
   const remove = useMutation({ mutationFn: () => call(`applications/${id}`, { method: 'DELETE' }), onSuccess: () => { void refresh(); onClose(); } });
   const d = detail.data;

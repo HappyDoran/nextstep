@@ -49,7 +49,7 @@ export function Frame({ me, title, description, actions, children }: { me: Me; t
     return () => window.removeEventListener('hashchange', read);
   }, []);
   const showSettings = (s: Section | null) => { setSettings(s); window.history.replaceState(null, '', s ? `#settings-${s}` : window.location.pathname + window.location.search); };
-  const reviews = useQuery({ queryKey: ['reviews', me.id], queryFn: async () => reviewSchema.array().parse(await call('reviews')), retry: false, refetchOnWindowFocus: false });
+  const reviews = useQuery({ queryKey: ['reviews', me.id], queryFn: async () => reviewSchema.array().parse(await call('reviews')), retry: false, refetchOnWindowFocus: false, refetchInterval: 60_000 });
   const waiting = reviews.data?.filter(r => !r.held).length ?? 0;
   // 창 제목(데스크톱 앱 창·브라우저 탭)에 확인 목록 대기 건수를 붙인다.
   useEffect(() => {
@@ -106,14 +106,17 @@ function MailState({ me }: { me: Me }) {
   return <><Mail className={small} aria-hidden="true" focusable="false" /><span className={mail.data?.status === '인증 실패' ? 'text-destructive' : undefined}>{text}</span></>;
 }
 
-/** 공고 갱신 결과. 처리 중이면 자주, 아니면 1분마다 다시 읽는다. 실패하면 설정의 연결 확인으로 안내한다. */
+/** 마지막 공고 갱신 작업. 처리 중이면 자주, 아니면 1분마다 다시 읽는다(상태바·추천 화면이 같은 캐시를 쓴다). */
+export const useLatestRefresh = (me: Me) => useQuery({
+  queryKey: ['jobs', 'latest', me.id], retry: false,
+  queryFn: async () => latestRefreshSchema.parse(await call('jobs/latest')),
+  refetchInterval: q => (q.state.data?.job && ACTIVE_JOB.includes(q.state.data.job.status) ? 3000 : 60_000),
+});
+
+/** 공고 갱신 결과. 실패하면 설정의 연결 확인으로 안내한다. */
 function RefreshState({ me }: { me: Me }) {
   const time = useWhen();
-  const latest = useQuery({
-    queryKey: ['jobs', 'latest', me.id], retry: false,
-    queryFn: async () => latestRefreshSchema.parse(await call('jobs/latest')),
-    refetchInterval: q => (q.state.data?.job && ACTIVE_JOB.includes(q.state.data.job.status) ? 3000 : 60_000),
-  });
+  const latest = useLatestRefresh(me);
   const job = latest.data?.job;
   if (latest.isError) return <span className="text-destructive">갱신 결과를 읽지 못함</span>;
   if (!job) return <span>{latest.isPending ? '갱신 결과 확인 중' : '아직 공고를 가져온 적이 없어요'}</span>;

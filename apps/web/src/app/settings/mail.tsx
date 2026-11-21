@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Select } from '@nextstep/design-system';
 import { jobSchema, type Me } from '@nextstep/contracts';
-import { ACTIVE_JOB, call, useMailConnection, useWhen } from '../api-client';
+import { ACTIVE_JOB, call, SLOW, useMailConnection, useWhen } from '../api-client';
 import { AI_CAUSES } from './ai';
 
 const ERRORS: Record<string, string> = { auth_failed: '인증 실패: 네이버 애플리케이션 비밀번호와 IMAP 사용 설정을 확인하세요.', network: '네트워크 오류', tls: '보안 연결 오류', protocol: '메일 서버 응답 오류', not_connected: '연결 정보 없음', disconnected: '조회 중 연결이 해제됨', secret_invalid: '저장한 연결 정보를 읽지 못함. 다시 연결하세요' };
@@ -24,7 +24,7 @@ export function MailSetting({ me }: { me: Me }) {
   const when = useWhen();
   const refresh = () => client.invalidateQueries({ queryKey: key });
   const connect = useMutation({
-    mutationFn: async (form: FormData) => jobSchema.parse(await call('mail/connection', { method: 'PUT', body: JSON.stringify({ account: form.get('account'), appPassword: form.get('appPassword'), consent: form.get('consent') === 'on', days: Number(form.get('days')) }), messages: CONNECT_ERRORS })),
+    mutationFn: async (form: FormData) => jobSchema.parse(await call('mail/connection', { method: 'PUT', body: JSON.stringify({ account: form.get('account'), appPassword: form.get('appPassword'), consent: form.get('consent') === 'on', days: Number(form.get('days')) }), timeout: SLOW, messages: CONNECT_ERRORS })),
     onSuccess: refresh,
   });
   const sync = useMutation({ mutationFn: async () => jobSchema.parse(await call('mail/sync', { method: 'POST' })), onSuccess: refresh });

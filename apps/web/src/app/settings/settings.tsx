@@ -25,10 +25,12 @@ export const SECTIONS = [
   { value: 'account', label: '계정' },
 ] as const;
 export type Section = (typeof SECTIONS)[number]['value'];
+// 잘못 인코딩된 해시(예: #%E0)는 설정이 아닌 것으로 본다.
+const decode = (s: string) => { try { return decodeURIComponent(s); } catch { return ''; } };
 export const isSection = (v: string): v is Section => SECTIONS.some(s => s.value === v);
 /** 주소의 해시에서 열 구역을 읽는다. #settings는 첫 구역(일반), #settings-mail은 메일. 설정이 아니면 null. */
 export function sectionFromHash(hash: string): Section | null {
-  const h = decodeURIComponent(hash.replace(/^#/, ''));
+  const h = decode(hash.replace(/^#/, ''));
   if (h === 'settings') return SECTIONS[0].value;
   const s = h.startsWith('settings-') ? h.slice('settings-'.length) : '';
   return isSection(s) ? s : null;
@@ -39,7 +41,7 @@ export function Settings() {
   const me = useMe();
   useEffect(() => {
     if (!me.data) return;
-    const old = decodeURIComponent(window.location.hash.slice(1));
+    const old = decode(window.location.hash.slice(1));
     window.location.replace(`/#settings${isSection(old) ? `-${old}` : ''}`);
   }, [me.data]);
   if (me.data) return <p role="status" className="p-6 text-muted-foreground">설정을 여는 중입니다.</p>;

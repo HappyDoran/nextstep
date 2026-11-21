@@ -32,6 +32,14 @@ test('두 계정의 지원 건은 서로 조회·삭제할 수 없고 재시작 
       assert.equal(created.statusCode, 201);
       idA = created.json().id;
       assert.equal(created.json().status, '미지원');
+      // 같은 공고 URL은 다시 저장해도 기존 건을 돌려준다(다른 사용자는 따로 만든다).
+      const url = { company: '가상회사', roleTitle: '백엔드', postingUrl: 'https://example.com/jobs/1' };
+      const first = await app.inject({ method: 'POST', url: '/applications', headers: { cookie: a }, payload: url });
+      const again = await app.inject({ method: 'POST', url: '/applications', headers: { cookie: a }, payload: url });
+      assert.equal(first.statusCode, 201);
+      assert.equal(again.statusCode, 200);
+      assert.equal(again.json().id, first.json().id);
+      assert.equal((await app.inject({ method: 'DELETE', url: `/applications/${first.json().id}`, headers: { cookie: a } })).statusCode, 204);
       assert.deepEqual((await app.inject({ url: '/applications', headers: { cookie: b } })).json(), []);
       assert.equal((await app.inject({ url: `/applications/${idA}`, headers: { cookie: b } })).statusCode, 404);
       assert.equal((await app.inject({ method: 'DELETE', url: `/applications/${idA}`, headers: { cookie: b } })).statusCode, 404);

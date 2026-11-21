@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Input, Textarea } from '@nextstep/design-system';
 import { jobFamilySchema, profileSchema, type JobFamily, type Me, type Profile } from '@nextstep/contracts';
-import { call, optional, RequestError, useWhen } from '../api-client';
+import { call, optional, RequestError, SLOW, useWhen } from '../api-client';
 
 const FAMILIES = jobFamilySchema.options;
 const EMPLOYMENT = ['정규직', '계약직', '인턴', '프리랜서'] as const;
@@ -37,10 +37,11 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
   const load = (p: Profile) => { setForm({ ...form, jobFamilies: p.jobFamilies, experiences: p.experiences, skills: p.skills, summary: p.summary }); setSkills(p.skills.join(', ')); };
   const save = useMutation({
     mutationFn: async () => (await call('profile', { method: 'PUT', body: JSON.stringify(profileSchema.parse({ ...form, regions: list(regions), skills: list(skills) })) })) as { profile: Profile; updatedAt: string },
-    onSuccess: data => client.setQueryData(key, data),
+    // 추천 목록의 필터 적용 결과도 바뀌므로 다시 읽는다.
+    onSuccess: data => { client.setQueryData(key, data); void client.invalidateQueries({ queryKey: ['recommendations', me.id] }); },
   });
   const suggest = useMutation({
-    mutationFn: async () => profileSchema.parse(((await call('profile/suggest', { method: 'POST', messages: { 409: '이력서를 먼저 등록하세요.', 502: '초안을 만들지 못했습니다. 잠시 후 다시 시도하세요.' } })) as { profile: unknown }).profile),
+    mutationFn: async () => profileSchema.parse(((await call('profile/suggest', { method: 'POST', timeout: SLOW, messages: { 409: '이력서를 먼저 등록하세요.', 502: '초안을 만들지 못했습니다. 잠시 후 다시 시도하세요.' } })) as { profile: unknown }).profile),
     onSuccess: load,
   });
   const toggle = <T,>(items: T[], item: T) => items.includes(item) ? items.filter(i => i !== item) : [...items, item];
