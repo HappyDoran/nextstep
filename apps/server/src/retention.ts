@@ -8,9 +8,10 @@ export function purgeExpired(db: DatabaseSync, now = new Date()) {
   const cutoff = new Date(now.getTime() - 30 * DAY).toISOString();
   const jobs = db.prepare("DELETE FROM jobs WHERE status IN ('성공', '일부 실패', '실패') AND finished_at < ?").run(cutoff).changes;
   const reviews = db.prepare("DELETE FROM review_requests WHERE status IN ('처리', '무시') AND resolved_at < ?").run(cutoff).changes;
-  // 만료된 세션·데스크톱 로그인 코드·초대 코드도 지운다.
+  // 만료된 세션·데스크톱 로그인 코드·코드 입력 대기·초대 코드도 지운다.
   const sessions = db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now.toISOString()).changes;
   db.prepare('DELETE FROM login_codes WHERE expires_at < ?').run(now.toISOString());
+  db.prepare('DELETE FROM pending_logins WHERE expires_at < ?').run(now.toISOString());
   const invites = db.prepare('DELETE FROM invites WHERE expires_at < ? AND used_at IS NULL').run(cutoff).changes;
   // 매시간 메일 예약 기록이 쌓이므로 30일 지난 예약 실행 기록도 지운다.
   const runs = db.prepare('DELETE FROM schedule_runs WHERE created_at < ?').run(cutoff).changes;

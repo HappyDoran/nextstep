@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -291,6 +291,29 @@ export function openDatabase(filename: string) {
           expires_at TEXT NOT NULL
         ) STRICT;
         PRAGMA user_version = 17;`);
+    }
+    if (version < 18) {
+      // 가입 흐름 변경(기획서 0.2.13): 구글 로그인 먼저, 미등록 계정은 그 계정 전용 초대 코드를 요청해 입력한다.
+      // invites.google_sub: 요청한 구글 계정에만 쓰이는 코드(NULL은 운영자가 명령으로 만든 누구나 쓰는 코드).
+      // pending_logins: 코드 입력을 기다리는 구글 계정(14일). 앱을 다시 열어도 입력 화면부터 잇는다.
+      // login_codes: 데스크톱 1회용 코드가 등록 계정(user_id) 또는 입력 대기 계정(google_sub·email)을 넘긴다.
+      db.exec(`ALTER TABLE invites ADD COLUMN google_sub TEXT;
+        CREATE TABLE pending_logins (
+          token_hash TEXT PRIMARY KEY,
+          google_sub TEXT NOT NULL,
+          email TEXT NOT NULL,
+          expires_at TEXT NOT NULL
+        ) STRICT;
+        DROP TABLE login_codes;
+        CREATE TABLE login_codes (
+          code_hash TEXT PRIMARY KEY,
+          user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+          google_sub TEXT,
+          email TEXT,
+          expires_at TEXT NOT NULL,
+          CHECK ((user_id IS NULL) != (google_sub IS NULL))
+        ) STRICT;
+        PRAGMA user_version = 18;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

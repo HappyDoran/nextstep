@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../dist/app.js';
 import { openDatabase } from '../dist/database.js';
 import { createInvite } from '../dist/auth.js';
-import { signIn } from './fake-google.mjs';
+import { discord, googleCallback, inviteCodeIn, signIn } from './fake-google.mjs';
 
 function invite(path) {
   const db = openDatabase(path);
@@ -53,29 +53,79 @@ test('두 계정의 지원 건은 서로 조회·삭제할 수 없고 재시작 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('초대 코드는 한 번만, 만료 전에만 쓰고 초대 없는 구글 계정·확인 안 된 이메일·중복 이메일을 거부한다', async () => {
+const cookieOf = (response, name) => [response.headers['set-cookie']].flat().map(String).find(v => v.startsWith(`${name}=`) && !v.startsWith(`${name}=;`))?.split(';')[0];
+
+test('미등록 구글 계정은 로그인 즉시 그 계정 전용 초대 코드 요청이 운영자 Discord로 가고, 코드를 넣어야 가입한다', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'nextstep-invite-'));
   const path = join(dir, 'db.sqlite');
   const app = createApp(path);
   try {
-    const code = invite(path);
-    await signIn(app, 'a@example.com', code);
-    await assert.rejects(signIn(app, 'b@example.com', code), e => e.response.headers.location === '/?login_error=invite');
-    await assert.rejects(signIn(app, 'nobody@example.com'), e => e.response.headers.location === '/?login_error=invite');
-    await assert.rejects(signIn(app, 'unverified@example.com', invite(path)), e => e.response.headers.location === '/?login_error=failed');
-    const fresh = invite(path);
-    // 다른 구글 계정이 이미 쓰는 이메일은 새로 만들지 않고, 실패한 가입은 초대 코드를 소모하지 않는다.
-    const db = new DatabaseSync(path);
-    db.prepare("UPDATE users SET google_sub = 'someone-else'").run();
-    await assert.rejects(signIn(app, 'A@EXAMPLE.com', fresh), e => e.response.headers.location === '/?login_error=invite');
-    await signIn(app, 'c@example.com', fresh);
+    await signIn(app, 'warmup@example.com', invite(path));
+    const sent = discord.messages.length;
+    await assert.rejects(signIn(app, 'new@example.com'), e => e.response.headers.location === '/' && Boolean(e.pending));
+    assert.equal(discord.messages.length, sent + 1);
+    const message = discord.messages.at(-1);
+    assert.match(message.content, /new@example\.com/);
+    assert.deepEqual(message.allowed_mentions, { parse: [] });
+    const code = inviteCodeIn(message);
+    assert.match(code, /^[\w-]{16}$/);
+    // 다시 로그인해도(앱을 닫았다 열어도) 같은 요청이 이어지고 알림을 또 보내지 않는다.
+    const again = cookieOf(await googleCallback(app, 'new@example.com'), 'ns_pending');
+    assert.equal(discord.messages.length, sent + 1);
+    assert.deepEqual((await app.inject({ url: '/auth/pending', headers: { cookie: again } })).json(), { email: 'new@example.com', requested: true });
+    assert.equal((await app.inject({ url: '/auth/me', headers: { cookie: again } })).statusCode, 401);
+    // 그 계정 전용 코드는 다른 구글 계정이 쓸 수 없다.
+    const other = cookieOf(await googleCallback(app, 'other@example.com'), 'ns_pending');
+    assert.equal((await app.inject({ method: 'POST', url: '/auth/invite', headers: { cookie: other }, payload: { code } })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: '/auth/invite', headers: { cookie: again }, payload: { code: 'wrong-code-123' } })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url: '/auth/invite', payload: { code } })).statusCode, 401);
+    const joined = await app.inject({ method: 'POST', url: '/auth/invite', headers: { cookie: again }, payload: { code } });
+    assert.equal(joined.statusCode, 201);
+    assert.equal(joined.json().email, 'new@example.com');
+    assert.equal((await app.inject({ url: '/auth/pending', headers: { cookie: again } })).statusCode, 401);
+    // 가입한 뒤에는 코드 없이 바로 로그인한다.
+    const session = await signIn(app, 'NEW@example.com');
+    assert.equal((await app.inject({ url: '/auth/me', headers: { cookie: session } })).json().email, 'new@example.com');
+    // 운영자 명령 코드는 누구나 한 번, 만료 전에만 쓴다.
+    const general = invite(path);
+    await signIn(app, 'c@example.com', general);
+    await assert.rejects(signIn(app, 'd@example.com', general), e => e.response.statusCode === 403);
     const expired = invite(path);
-    db.prepare("UPDATE invites SET expires_at = '2000-01-01T00:00:00.000Z' WHERE used_at IS NULL").run();
+    const db = new DatabaseSync(path);
+    db.prepare("UPDATE invites SET expires_at = '2000-01-01T00:00:00.000Z' WHERE used_at IS NULL AND google_sub IS NULL").run();
     db.close();
-    await assert.rejects(signIn(app, 'd@example.com', expired), e => e.response.headers.location === '/?login_error=invite');
-    // 이메일·비밀번호 로그인은 없다.
+    await assert.rejects(signIn(app, 'd@example.com', expired), e => e.response.statusCode === 403);
+    // 확인 안 된 이메일은 거부하고, 이메일·비밀번호 로그인은 없다.
+    await assert.rejects(signIn(app, 'unverified@example.com'), e => e.response.headers.location === '/?login_error=failed');
     assert.equal((await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'a@example.com', password: 'correct horse battery' } })).statusCode, 404);
+    // 로그아웃하면 코드 입력 대기도 끝난다.
+    const waiting = cookieOf(await googleCallback(app, 'later@example.com'), 'ns_pending');
+    assert.equal((await app.inject({ method: 'POST', url: '/auth/logout', headers: { cookie: waiting } })).statusCode, 204);
+    assert.equal((await app.inject({ url: '/auth/pending', headers: { cookie: waiting } })).statusCode, 401);
   } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('Discord 알림을 보내지 못하면 요청하지 않은 것으로 두고 다음 로그인에서 다시 보낸다', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-notify-'));
+  const path = join(dir, 'db.sqlite');
+  const app = createApp(path);
+  try {
+    await signIn(app, 'warmup@example.com', invite(path));
+    discord.fails = true;
+    const pending = cookieOf(await googleCallback(app, 'retry@example.com'), 'ns_pending');
+    assert.deepEqual((await app.inject({ url: '/auth/pending', headers: { cookie: pending } })).json(), { email: 'retry@example.com', requested: false });
+    discord.fails = false;
+    const sent = discord.messages.length;
+    const next = cookieOf(await googleCallback(app, 'retry@example.com'), 'ns_pending');
+    assert.equal(discord.messages.length, sent + 1);
+    assert.equal((await app.inject({ url: '/auth/pending', headers: { cookie: next } })).json().requested, true);
+    const webhook = process.env.NEXTSTEP_DISCORD_WEBHOOK_URL;
+    delete process.env.NEXTSTEP_DISCORD_WEBHOOK_URL;
+    try {
+      const none = cookieOf(await googleCallback(app, 'nowebhook@example.com'), 'ns_pending');
+      assert.equal((await app.inject({ url: '/auth/pending', headers: { cookie: none } })).json().requested, false);
+    } finally { process.env.NEXTSTEP_DISCORD_WEBHOOK_URL = webhook; }
+  } finally { discord.fails = false; await app.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
 test('구글 로그인은 state가 맞아야 하고, 기존 비밀번호 계정은 같은 이메일의 첫 로그인에서 연결된다', async () => {
@@ -94,7 +144,7 @@ test('구글 로그인은 state가 맞아야 하고, 기존 비밀번호 계정�
     await app.close();
     // 비밀번호 시절(DB 버전 16) 계정: 버전 17 이행이 비밀번호 해시를 지우고, 구글 로그인이 같은 계정에 연결한다.
     const raw = new DatabaseSync(path);
-    raw.exec("INSERT INTO users (id, email, password_hash, created_at) VALUES ('old', 'old@example.com', 'scrypt$x', '2026-01-01'); PRAGMA user_version = 16; DROP INDEX users_google_sub; DROP TABLE login_codes; ALTER TABLE users DROP COLUMN google_sub;");
+    raw.exec("INSERT INTO users (id, email, password_hash, created_at) VALUES ('old', 'old@example.com', 'scrypt$x', '2026-01-01'); PRAGMA user_version = 16; DROP TABLE pending_logins; ALTER TABLE invites DROP COLUMN google_sub; DROP INDEX users_google_sub; DROP TABLE login_codes; ALTER TABLE users DROP COLUMN google_sub;");
     raw.close();
     app = createApp(path);
     const a = await signIn(app, 'OLD@example.com');
@@ -105,30 +155,32 @@ test('구글 로그인은 state가 맞아야 하고, 기존 비밀번호 계정�
   } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('데스크톱 로그인 코드는 앱 주소로 넘어가 한 번만, 2분 안에만 세션으로 바뀐다', async () => {
+test('데스크톱 로그인 코드는 앱 주소로 넘어가 한 번만, 2분 안에만 세션 또는 코드 입력 대기로 바뀐다', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'nextstep-desktop-'));
   const path = join(dir, 'db.sqlite');
   const app = createApp(path);
   try {
     await signIn(app, 'a@example.com', invite(path));
-    const desktopCode = async () => {
-      const start = await app.inject({ url: '/auth/google/start?client=desktop' });
-      const state = new URL(start.headers.location).searchParams.get('state');
-      const callback = await app.inject({ url: `/auth/google/callback?code=${b64('a@example.com')}&state=${state}`, headers: { cookie: String(start.headers['set-cookie']).split(';')[0] } });
-      assert.equal([callback.headers['set-cookie']].flat().some(v => String(v).startsWith('ns_session=') && !String(v).startsWith('ns_session=;')), false);
+    const desktopCode = async email => {
+      const callback = await googleCallback(app, email, 'desktop');
+      assert.equal(cookieOf(callback, 'ns_session') ?? cookieOf(callback, 'ns_pending'), undefined);
       const url = new URL(callback.headers.location);
       assert.equal(url.protocol, 'nextstep:');
       return url.searchParams.get('code');
     };
     const exchange = code => app.inject({ method: 'POST', url: '/auth/desktop/exchange', payload: { code } });
-    const code = await desktopCode();
+    const code = await desktopCode('a@example.com');
     const first = await exchange(code);
     assert.equal(first.statusCode, 200);
     assert.equal(first.json().email, 'a@example.com');
-    const cookie = String(first.headers['set-cookie']).split(';')[0];
-    assert.equal((await app.inject({ url: '/auth/me', headers: { cookie } })).statusCode, 200);
+    assert.equal((await app.inject({ url: '/auth/me', headers: { cookie: cookieOf(first, 'ns_session') } })).statusCode, 200);
     assert.equal((await exchange(code)).statusCode, 401);
-    const late = await desktopCode();
+    // 미등록 계정은 앱 창에서도 코드 입력 대기로 이어진다.
+    const waiting = await exchange(await desktopCode('desk@example.com'));
+    assert.equal(waiting.statusCode, 202);
+    assert.deepEqual(waiting.json(), { email: 'desk@example.com', requested: true });
+    assert.equal((await app.inject({ url: '/auth/pending', headers: { cookie: cookieOf(waiting, 'ns_pending') } })).json().email, 'desk@example.com');
+    const late = await desktopCode('a@example.com');
     const db = new DatabaseSync(path);
     db.prepare("UPDATE login_codes SET expires_at = '2000-01-01T00:00:00.000Z'").run();
     db.close();

@@ -1,10 +1,12 @@
-// 테스트용 구글 로그인 모의 서버. 실제 구글 대신 인가 화면(이메일 입력)과 토큰 주소를 흉내 낸다.
+// 테스트용 구글 로그인 모의 서버. 실제 구글 대신 인가 화면(이메일 입력)과 토큰 주소, 운영자 Discord 웹훅을 흉내 낸다.
 // 서버 테스트는 signIn()으로 쓰고, e2e는 `node apps/server/tests/fake-google.mjs <포트>`로 띄운다.
 import { createServer } from 'node:http';
 import { URLSearchParams } from 'node:url';
 
 const b64 = value => Buffer.from(value).toString('base64url');
 export const CLIENT_ID = 'test-client';
+// 받은 Discord 알림 본문. discordFails=true면 웹훅이 실패한다.
+export const discord = { messages: [], fails: false };
 
 export function startFakeGoogle(port = 0) {
   const server = createServer(async (request, response) => {
@@ -32,6 +34,18 @@ export function startFakeGoogle(port = 0) {
       response.writeHead(200, { 'content-type': 'application/json' });
       return response.end(JSON.stringify({ id_token: `${b64('{"alg":"none"}')}.${b64(JSON.stringify(claims))}.` }));
     }
+    if (url.pathname === '/discord' && request.method === 'POST') {
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      if (discord.fails) { response.writeHead(500); return response.end(); }
+      discord.messages.push(JSON.parse(body));
+      response.writeHead(204);
+      return response.end();
+    }
+    if (url.pathname === '/discord/last') {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      return response.end(JSON.stringify(discord.messages.at(-1) ?? null));
+    }
     response.writeHead(404);
     response.end();
   });
@@ -44,19 +58,31 @@ export function useFakeGoogle(server) {
   process.env.NEXTSTEP_GOOGLE_CLIENT_SECRET = 'test-secret';
   process.env.NEXTSTEP_GOOGLE_AUTH_URL = `${base}/auth`;
   process.env.NEXTSTEP_GOOGLE_TOKEN_URL = `${base}/token`;
+  process.env.NEXTSTEP_DISCORD_WEBHOOK_URL = `${base}/discord`;
 }
 
 let fake;
-// 구글 로그인 흐름(시작 → 콜백)을 거쳐 세션 쿠키('ns_session=…')를 돌려준다. 실패하면 콜백 응답을 던진다.
-export async function signIn(app, email, inviteCode) {
+export const inviteCodeIn = message => message?.content.match(/초대 코드: `([\w-]+)`/)?.[1];
+const cookieOf = (response, name) => [response.headers['set-cookie']].flat().map(String).find(value => value.startsWith(`${name}=`) && !value.startsWith(`${name}=;`))?.split(';')[0];
+
+// 구글 로그인 흐름(시작 → 콜백)을 거친다. 등록 계정이면 세션 쿠키('ns_session=…')를 돌려주고,
+// 미등록 계정이면 inviteCode로 가입까지 한다. inviteCode가 없으면 대기 쿠키를 담은 오류를 던진다.
+export async function googleCallback(app, email, client = '') {
   if (!fake) { fake = await startFakeGoogle(); fake.unref(); useFakeGoogle(fake); }
-  const start = await app.inject({ method: 'GET', url: `/auth/google/start${inviteCode ? `?invite=${inviteCode}` : ''}` });
+  const start = await app.inject({ method: 'GET', url: `/auth/google/start${client ? `?client=${client}` : ''}` });
   const state = new URL(start.headers.location).searchParams.get('state');
-  const cookie = String(start.headers['set-cookie']).split(';')[0];
-  const callback = await app.inject({ method: 'GET', url: `/auth/google/callback?code=${b64(email)}&state=${state}`, headers: { cookie } });
-  const session = [callback.headers['set-cookie']].flat().map(String).find(value => value.startsWith('ns_session=') && !value.startsWith('ns_session=;'));
-  if (!session) throw Object.assign(new Error(`로그인 실패: ${callback.headers.location}`), { response: callback });
-  return session.split(';')[0];
+  return app.inject({ method: 'GET', url: `/auth/google/callback?code=${b64(email)}&state=${state}`, headers: { cookie: cookieOf(start, 'ns_oauth') } });
+}
+
+export async function signIn(app, email, inviteCode) {
+  const callback = await googleCallback(app, email);
+  const session = cookieOf(callback, 'ns_session');
+  if (session) return session;
+  const pending = cookieOf(callback, 'ns_pending');
+  if (!pending || !inviteCode) throw Object.assign(new Error(`등록되지 않은 계정: ${callback.headers.location}`), { response: callback, pending });
+  const joined = await app.inject({ method: 'POST', url: '/auth/invite', headers: { cookie: pending }, payload: { code: inviteCode } });
+  if (joined.statusCode !== 201) throw Object.assign(new Error(`가입 실패: ${joined.statusCode}`), { response: joined, pending });
+  return cookieOf(joined, 'ns_session');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
