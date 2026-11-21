@@ -8,7 +8,8 @@ export const requestedCode = async () => {
   const message = await (await fetch('http://127.0.0.1:4199/discord/last')).json() as { content: string } | null;
   return message?.content.match(/초대 코드: `([\w-]+)`/)?.[1] ?? '';
 };
-export const alert = (page: Page) => page.getByRole('alert').filter({ hasText: /\S/ });
+// Next 경로 안내(창 제목을 읽는 숨은 alert)는 빼고 화면의 오류 알림만 본다.
+export const alert = (page: Page) => page.locator('[role=alert]:not(#__next-route-announcer__)').filter({ hasText: /\S/ });
 
 // 구글 로그인 버튼 → 모의 구글 인가 화면(e2e 설정의 fake-google)에서 이메일 고르기 → 첫 화면으로 돌아옴.
 export async function googleLogin(page: Page, email: string, path = '/') {

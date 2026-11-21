@@ -138,7 +138,7 @@ function RecommendationList({ me }: { me: Me }) {
 
     {list.isPending ? <><p role="status" className="sr-only">추천을 불러오고 있습니다.</p><RowList>{[0, 1, 2, 3].map(i => <Row key={i} className="grid-cols-[4.5rem_1fr_5rem]"><Skeleton className="w-10" /><div className="grid gap-2"><Skeleton className="h-3.5 w-3/5" /><Skeleton className="w-1/3" /></div><Skeleton className="h-4 w-10 justify-self-end" /></Row>)}</RowList></>
       : list.isError ? <StatePanel tone="error" title="추천을 불러오지 못했어요" description={list.error.message} actions={<Button variant="secondary" onClick={() => { void list.refetch(); }}>다시 시도</Button>} />
-        : all.length === 0 ? <StatePanel title="아직 추천이 없어요" description="추천이 없습니다. 설정에서 이력서·프로필을 저장한 뒤 새로 가져오기를 누르세요." actions={<a href="/settings" className={buttonClass('secondary')}>설정으로 가기</a>} />
+        : all.length === 0 ? <StatePanel title="아직 추천이 없어요" description="추천이 없습니다. 설정에서 이력서·프로필을 저장한 뒤 새로 가져오기를 누르세요." actions={<a href="#settings-documents" className={buttonClass('secondary')}>설정으로 가기</a>} />
           : items.length === 0 ? <p role="status" className="py-10 text-center text-muted-foreground">조건에 맞는 추천이 없습니다.</p>
             : <>
               {lanes.map(l => <Lane key={l.name} title={l.name} count={`${l.total}건`}>
@@ -219,7 +219,7 @@ function FilterSummary({ me }: { me: Me }) {
     queryFn: async () => { try { return (await call('profile')) as { profile: unknown; updatedAt: string }; } catch { return null; } },
   });
   const p = profile.data ? profileSchema.safeParse(profile.data.profile) : null;
-  if (!p?.success) return <p className="mb-6 text-caption text-muted-foreground">공고 필터가 없습니다. <a href="/settings" className="font-semibold text-primary">설정</a>에서 프로필과 필터를 저장하세요.</p>;
+  if (!p?.success) return <p className="mb-6 text-caption text-muted-foreground">공고 필터가 없습니다. <a href="#settings-profile" className="font-semibold text-primary">설정</a>에서 프로필과 필터를 저장하세요.</p>;
   const f = p.data;
   const text = [
     f.jobFamilies.join('·'),
@@ -227,5 +227,5 @@ function FilterSummary({ me }: { me: Me }) {
     f.employmentTypes.length ? f.employmentTypes.join('·') : '고용 형태 전체',
     f.careerMax === null ? '경력 제한 없음' : `경력 ${f.careerMax}년 이하`,
   ].join(' · ');
-  return <p className="mb-6 text-caption text-muted-foreground" aria-label="적용 중인 공고 필터">적용 중인 필터: {text} <a href="/settings" className="ml-1 font-semibold text-primary">필터 바꾸기</a></p>;
+  return <p className="mb-6 text-caption text-muted-foreground" aria-label="적용 중인 공고 필터">적용 중인 필터: {text} <a href="#settings-profile" className="ml-1 font-semibold text-primary">필터 바꾸기</a></p>;
 }

@@ -25,7 +25,12 @@ test('미등록 구글 계정은 코드 입력 화면에서 이어지고, 받은
   await page.getByRole('button', { name: '계정', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: email })).toHaveText(email);
   await page.getByRole('button', { name: '로그아웃' }).click();
-  // 가입한 뒤에는 코드 없이 같은 구글 계정으로 로그인한다.
+  // 가입한 뒤에는 코드 없이 같은 구글 계정으로 로그인한다. 왼쪽 메뉴의 계정 메뉴로도 로그아웃한다.
+  await googleLogin(page, email);
+  await expect(page).toHaveTitle(/지원 현황 · NextStep/);
+  await page.getByRole('button', { name: `계정 메뉴 (${email})` }).click();
+  await page.getByRole('button', { name: '로그아웃' }).click();
+  await expect(page.getByRole('link', { name: 'Google로 계속하기' })).toBeVisible();
   await googleLogin(page, email);
   await page.goto('/settings');
   await page.getByRole('button', { name: '계정', exact: true }).click();
@@ -42,6 +47,9 @@ test('미등록 구글 계정은 코드 입력 화면에서 이어지고, 받은
   expect((await page.request.get('/api/internal')).status()).toBe(404);
   expect((await page.request.post('/api/auth/login', { headers: { origin: new URL(page.url()).origin } })).status()).toBe(404);
 
+  // 없는 주소는 공통 안내 화면을 보여 준다.
+  await page.goto('/no-such-page');
+  await expect(page.getByText('찾는 화면이 없어요')).toBeVisible();
   // 구글 동의 화면이 연결하는 개인정보처리방침은 로그인 없이 열린다.
   await page.goto('/privacy');
   await expect(page.getByRole('heading', { name: '개인정보처리방침' })).toBeVisible();

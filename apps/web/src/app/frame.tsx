@@ -1,13 +1,14 @@
 'use client';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, BriefcaseBusiness, Check, Inbox, LoaderCircle, Mail, Settings, Star } from 'lucide-react';
+import { AlertCircle, BriefcaseBusiness, Check, Inbox, LoaderCircle, LogOut, Mail, Settings, Star, WifiOff } from 'lucide-react';
 import { AppShell, Logo, LogoMark, NavItem, PageHeader, Rail, StatusBar } from '@nextstep/design-system';
 import { latestRefreshSchema, mailConnectionSchema, reviewSchema, type Me } from '@nextstep/contracts';
 import { call, RequestError } from './api-client';
 import { SettingsDialog, sectionFromHash, type Section } from './settings/settings';
+import { useSignOut } from './account';
 
 const icon = 'size-icon-md shrink-0 stroke-icon';
 const small = 'size-icon-sm shrink-0 stroke-icon';
@@ -51,6 +52,9 @@ export function Frame({ me, title, description, actions, children }: { me: Me; t
   const showSettings = (s: Section | null) => { setSettings(s); window.history.replaceState(null, '', s ? `#settings-${s}` : window.location.pathname + window.location.search); };
   const reviews = useQuery({ queryKey: ['reviews', me.id], queryFn: async () => reviewSchema.array().parse(await call('reviews')), retry: false, refetchOnWindowFocus: false });
   const waiting = reviews.data?.filter(r => !r.held).length ?? 0;
+  // 창 제목(데스크톱 앱 창·브라우저 탭)에 확인 목록 대기 건수를 붙인다.
+  useEffect(() => { document.title = `${waiting ? `(${waiting}) ` : ''}${title} · NextStep`; }, [waiting, title]);
+  const online = useOnline();
   const items = [
     { href: '/recommendations', label: '추천', icon: <Star className={icon} aria-hidden="true" focusable="false" /> },
     { href: '/', label: '지원 현황', icon: <BriefcaseBusiness className={icon} aria-hidden="true" focusable="false" /> },
@@ -58,14 +62,36 @@ export function Frame({ me, title, description, actions, children }: { me: Me; t
     { href: '#settings', label: '설정', icon: <Settings className={icon} aria-hidden="true" focusable="false" /> },
   ];
   return <AppShell
-    rail={<Rail brand={<Link href="/recommendations" aria-label="NextStep 추천으로" className="block rounded-control"><LogoMark /></Link>}>
+    rail={<Rail footer={<AccountMenu me={me} />} brand={<Link href="/recommendations" aria-label="NextStep 추천으로" className="block rounded-control"><LogoMark /></Link>}>
       {items.map(item => <NavItem key={item.href} {...(item.href.startsWith('#') ? {} : { link: Link })} href={item.href} icon={item.icon} label={item.label} current={item.href.startsWith('#') ? settings !== null : settings === null && path === item.href} {...(item.count ? { count: item.count } : {})} />)}
     </Rail>}
     status={<StatusBar start={<MailState me={me} />} end={<RefreshState me={me} />} />}>
+    {!online && <p role="status" className="flex items-center gap-2 bg-warning-muted px-7 py-2 text-body-sm font-semibold text-warning"><WifiOff className={small} aria-hidden="true" focusable="false" />인터넷 연결이 끊겼어요. 다시 연결되면 자동으로 이어서 불러와요.</p>}
     <PageHeader title={title} description={description} actions={actions} />
     {settings && <SettingsDialog me={me} section={settings} onSection={showSettings} onClose={() => showSettings(null)} />}
     <div className="min-h-0 flex-1 overflow-auto"><div className="mx-auto max-w-content px-7 py-6">{children}</div></div>
   </AppShell>;
+}
+
+// 브라우저의 온라인 상태(이벤트로만 바뀐다, 따로 묻지 않음). 서버 렌더링에서는 온라인으로 본다.
+const subscribeOnline = (notify: () => void) => { window.addEventListener('online', notify); window.addEventListener('offline', notify); return () => { window.removeEventListener('online', notify); window.removeEventListener('offline', notify); }; };
+const useOnline = () => useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true);
+
+/** 왼쪽 메뉴 맨 아래 계정 메뉴: 로그인한 이메일·설정·로그아웃. 브라우저 기본 팝오버라 바깥을 누르거나 Esc로 닫힌다. */
+function AccountMenu({ me }: { me: Me }) {
+  const signOut = useSignOut();
+  const hide = () => document.getElementById('account-menu')?.hidePopover();
+  const item = 'flex h-control w-full cursor-pointer items-center gap-2.5 rounded-control px-3 text-left text-body-sm text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring';
+  return <>
+    <button type="button" popoverTarget="account-menu" aria-label={`계정 메뉴 (${me.email})`} className="grid size-9 cursor-pointer place-items-center rounded-full bg-secondary text-body-sm font-bold uppercase text-secondary-foreground focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus">{me.email[0]}</button>
+    <div id="account-menu" popover="auto" className="fixed inset-auto bottom-12 left-[calc(var(--ns-rail-width)+0.5rem)] m-0 w-64 rounded-surface border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+      <p className="truncate px-3 pb-2 pt-1.5 text-caption text-muted-foreground">{me.email}</p>
+      <a href="#settings" onClick={hide} className={`${item} no-underline`}><Settings className={small} aria-hidden="true" focusable="false" />설정</a>
+      <div className="my-1 border-t border-border" />
+      <button type="button" disabled={signOut.isPending} onClick={() => signOut.mutate()} className={`${item} text-destructive`}><LogOut className={small} aria-hidden="true" focusable="false" />로그아웃</button>
+      {signOut.isError && <p role="alert" className="px-3 py-1 text-caption text-destructive">{signOut.error.message}</p>}
+    </div>
+  </>;
 }
 
 function MailState({ me }: { me: Me }) {

@@ -14,6 +14,19 @@ const LOGIN_ERRORS: Record<string, string> = {
 };
 const takeParam = (name: string) => typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(name);
 
+/** 로그아웃: 서버 세션을 끝내고 이전 사용자의 캐시를 버린다(계정 화면·계정 메뉴 공용). */
+export function useSignOut() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => call('auth/logout', { method: 'POST' }),
+    onSuccess: () => {
+      client.removeQueries({ predicate: query => query.queryKey[0] !== ME_KEY[0] });
+      client.setQueryData(ME_KEY, null);
+      client.setQueryData(PENDING_KEY, null);
+    },
+  });
+}
+
 async function fetchPending(): Promise<Pending | null> {
   try {
     return pendingSchema.parse(await call('auth/pending'));
@@ -60,7 +73,7 @@ export function Account() {
     mutationFn: (code: string) => call('auth/invite', { method: 'POST', body: JSON.stringify({ code }), messages: { 400: '초대 코드를 확인하세요.', 401: '구글 로그인부터 다시 하세요.', 403: '초대 코드를 확인하세요.', 409: '이미 가입한 구글 계정입니다. 다시 로그인하세요.' } }),
     onSuccess: reload,
   });
-  const logout = useMutation({ mutationFn: () => call('auth/logout', { method: 'POST' }), onSuccess: () => reset(null) });
+  const logout = useSignOut();
   const remove = useMutation({ mutationFn: () => call('account', { method: 'DELETE' }), onSuccess: () => reset(null) });
 
   if (me.isPending || (me.data === null && pending.isPending)) return <p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p>;
