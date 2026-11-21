@@ -13,6 +13,7 @@ const rows: { c: Classification; t: string; s: string; why: string; days: number
   { c: '미확인', t: '2026 하반기 신입사원 채용', s: '예시테크 · 자소설닷컴 · 근무지 미기재', why: '근무지·원격 여부 미기재', days: 3, date: '11/21' },
   { c: '기본', t: '모바일 앱 개발 담당자', s: '예시에듀 · 사람인 · 서울 강남구', why: '맞지 않는 조건 없음', days: 5, date: '11/23' },
   { c: '제외', t: 'Flutter 개발자 (POS)', s: '예시시스 · 점핏 · 서울 송파구', why: 'Flutter 실무 2년 이상: 실무 경력 없음', days: null },
+  { c: '미확인', t: '웹 프론트엔드 개발자 (마감)', s: '예시랩 · 원티드 · 서울 마포구', why: '이미 마감된 공고', days: -3, date: '11/15' },
 ];
 
 export const Fields: Story = {

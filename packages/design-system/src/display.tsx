@@ -51,7 +51,8 @@ export function RowTrigger({ className, ...props }: ButtonHTMLAttributes<HTMLBut
 /** 줄 오른쪽 마감 표시. 3일 이하는 강조한다. null이면 상시. */
 export function DueDate({ days, date }: { days: number | null; date?: string }) {
   if (days === null) return <span className="text-right text-body-sm font-bold text-muted-foreground">상시</span>;
-  return <span className={join('grid text-right tabular-nums', days <= 3 ? 'text-destructive' : 'text-foreground')}><span className="text-body-lg font-extrabold">{days === 0 ? '오늘' : `D-${days}`}</span>{date ? <span className="text-micro font-normal text-muted-foreground">{date}</span> : null}</span>;
+  // 음수는 이미 마감된 공고: 강조하지 않고 '마감'으로 보인다.
+  return <span className={join('grid text-right tabular-nums', days < 0 ? 'text-muted-foreground' : days <= 3 ? 'text-destructive' : 'text-foreground')}><span className="text-body-lg font-extrabold">{days < 0 ? '마감' : days === 0 ? '오늘' : `D-${days}`}</span>{date ? <span className="text-micro font-normal text-muted-foreground">{date}</span> : null}</span>;
 }
 
 /** 빈 상태와 오류. 오류는 다시 시도 같은 행동을 함께 준다. */

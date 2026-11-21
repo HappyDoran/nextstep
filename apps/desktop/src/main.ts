@@ -18,6 +18,7 @@ let tray: Tray | undefined;
 let quitting = false;
 let status = '확인 전';
 let notice: Notification | undefined; // 클릭 처리기가 수거되지 않게 붙잡아 둔다.
+let loadFailed = false; // 마지막 화면 불러오기가 실패해 창이 오류 페이지에 있다(오류 페이지에서도 getURL은 원래 주소라 따로 적는다).
 
 const settingsPath = () => join(app.getPath('userData'), 'settings.json');
 function readSettings(): Settings | undefined {
@@ -49,21 +50,34 @@ function createWindow() {
   });
   contents.on('will-redirect', (event, target) => { if (!isServiceNavigation(target, service)) event.preventDefault(); });
   contents.on('will-attach-webview', event => event.preventDefault());
+  contents.on('did-finish-load', () => { if (loadFailed) return; void poll(); });
   contents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => {
     if (!mainFrame || code === -3) return;
+    loadFailed = true;
     status = '서비스에 연결하지 못함';
     updateTray();
     // 빈 창만 남지 않게 이유를 알린다(초대 사용자는 Tailscale 연결이 먼저다).
-    if (window?.isVisible() || !app.getLoginItemSettings().wasOpenedAtLogin) void dialog.showMessageBox({ type: 'warning', message: '서비스에 연결하지 못했습니다.', detail: `${service.host}에 연결되지 않습니다. Tailscale 연결을 확인한 뒤 보기 > 새로고침을 누르세요.` });
+    // 창에 붙인다: 창 없는 대화상자는 macOS에서 앱 전체를 멈춰 1분 조회(다시 열기)까지 막는다.
+    if (window && (window.isVisible() || !app.getLoginItemSettings().wasOpenedAtLogin)) void dialog.showMessageBox(window, { type: 'warning', message: '서비스에 연결하지 못했습니다.', detail: `${service.host}에 연결되지 않습니다. Tailscale 연결을 확인한 뒤 보기 > 새로고침을 누르세요.` });
   });
   // 창 닫기는 숨기기다. 종료는 아이콘 메뉴의 '종료'로만 한다.
   window.on('close', event => { if (!quitting) { event.preventDefault(); window?.hide(); app.dock?.hide(); } });
   void window.loadURL(service.href);
 }
 
+// 로드가 실패하면(로그인 직후 Tailscale 연결 전 등) 창은 오류 페이지에 남는다. 불러오는 중이 아니면 다시 연다.
+// 성공하면 did-finish-load가 바로 결과를 다시 읽는다.
+function reloadIfOffService() {
+  if (!loadFailed || window!.webContents.isLoading()) return loadFailed;
+  loadFailed = false;
+  window!.loadURL(service.href).catch(() => undefined);
+  return true;
+}
+
 function showWindow(path?: string) {
   if (!window) createWindow();
   if (path) void window!.loadURL(new URL(path, service).href);
+  else reloadIfOffService();
   void app.dock?.show();
   window!.show();
   window!.focus();
@@ -83,6 +97,7 @@ async function refreshNow() {
 // 창에서 로그인했는데 아이콘 메뉴만 '로그인 필요'로 남는 일이 없게 한다.
 async function poll() {
   if (!window) createWindow();
+  if (reloadIfOffService()) { status = '서비스에 연결하지 못함'; updateTray(); return; }
   try {
     // 알림 조건·소리는 웹 설정 일반 구역이 같은 창의 저장소(nextstep:prefs)에 둔다.
     const { code, body, prefs } = await window!.webContents.executeJavaScript("fetch('/api/jobs/latest', { cache: 'no-store' }).then(async r => ({ code: r.status, body: r.ok ? await r.json() : null, prefs: localStorage.getItem('nextstep:prefs') }))") as { code: number; body: LatestRefresh | null; prefs: string | null };
@@ -170,7 +185,7 @@ else {
     if (pendingLogin) showWindow(pendingLogin);
     else if (!app.getLoginItemSettings().wasOpenedAtLogin) window!.once('ready-to-show', () => showWindow());
     else app.dock?.hide();
-    void poll();
+    // 첫 조회는 창 화면을 다 불러온 뒤(did-finish-load) 한다. 두 조회가 겹쳐 같은 결과를 두 번 알리지 않게.
     setInterval(() => void poll(), POLL_MS);
   });
   app.on('activate', () => showWindow());

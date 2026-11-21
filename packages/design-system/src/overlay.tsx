@@ -9,13 +9,15 @@ import { classBar as bar, type Classification } from './display.js';
 export function Sheet({ open, onClose, title, eyebrow, meta, classification, footer, size = 'md', children }: PropsWithChildren<{ open: boolean; onClose: () => void; title: ReactNode; eyebrow?: ReactNode; meta?: ReactNode; classification?: Classification; footer?: ReactNode; size?: 'md' | 'sm' | 'lg' }>) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  // 바깥 누르기로 닫기: 누른 곳과 뗀 곳이 모두 바깥일 때만(입력 칸에서 끌어 선택하다 바깥에서 떼도 닫히지 않게).
+  const downOutside = useRef(false);
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
     if (open && !dialog.open) dialog.showModal();
     if (!open && dialog.open) dialog.close();
   }, [open]);
-  return <dialog ref={ref} onClose={onClose} onClick={event => { if (event.target === ref.current) onClose(); }} aria-labelledby={titleId}
+  return <dialog ref={ref} onClose={onClose} onMouseDown={event => { downOutside.current = event.target === ref.current; }} onClick={event => { if (event.target === ref.current && downOutside.current) onClose(); }} aria-labelledby={titleId}
     className={`m-auto max-h-[calc(100dvh-4rem)] w-[calc(100vw-2rem)] overflow-hidden rounded-dialog bg-card p-0 text-foreground shadow-lg backdrop:bg-black/40 open:flex open:flex-col ${size === 'sm' ? 'max-w-lg' : size === 'lg' ? 'h-[min(52rem,calc(100dvh-4rem))] max-w-5xl' : 'max-w-3xl'}`}>
     <header className={`relative border-b border-border px-8 pb-5 pt-7 before:absolute before:inset-x-0 before:top-0 before:h-1.5 before:content-[''] ${classification ? bar[classification] : 'before:bg-primary'}`}>
       {eyebrow}
