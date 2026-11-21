@@ -34,8 +34,7 @@
     "@storybook/react-vite": "10.6.5",
     "vite": "^7.3.1",
     "tailwindcss": "catalog:",
-    "postcss": "catalog:",
-    "autoprefixer": "catalog:"
+    "postcss": "catalog:"
   },
   "dependencies": {
     "lucide-react": "catalog:",

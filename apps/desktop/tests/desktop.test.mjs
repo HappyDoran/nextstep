@@ -45,7 +45,7 @@ test('갱신 알림 조건: 모두·기본 추천 있을 때·실패만·끄기'
   assert.equal(wanted(ok, {}), true);
   assert.equal(wanted(ok, { notify: 'basic' }), false);
   assert.equal(wanted(hit, { notify: 'basic' }), true);
-  assert.equal(wanted(bad, { notify: 'basic' }), true);
+  assert.equal(wanted(bad, { notify: 'basic' }), false);
   assert.equal(wanted(hit, { notify: 'failures' }), false);
   assert.equal(wanted(bad, { notify: 'failures' }), true);
   assert.equal(wanted(bad, { notify: 'off' }), false);

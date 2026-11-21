@@ -21,5 +21,5 @@ export function noticeFor(latest: LatestRefresh, lastNotifiedId: string | undefi
 /** 사용자가 고른 조건으로 이 알림을 보일지 정한다. 안 보이는 알림도 알린 것으로 적어 나중에 다시 뜨지 않게 한다. */
 export function wanted(notice: Notice, prefs: NotifyPrefs): boolean {
   const mode = prefs.notify ?? 'all';
-  return mode === 'all' || (mode === 'failures' && notice.failed) || (mode === 'basic' && (notice.basic > 0 || notice.failed));
+  return mode === 'all' || (mode === 'failures' && notice.failed) || (mode === 'basic' && notice.basic > 0);
 }

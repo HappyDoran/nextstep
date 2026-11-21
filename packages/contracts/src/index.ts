@@ -208,9 +208,6 @@ export const automationStatusSchema = z.object({
   lastScheduled: z.array(z.object({ kind: z.string(), status: jobStatusSchema.nullable(), finishedAt: z.string().nullable(), runDate: z.string() })),
 });
 
-// 서버가 쓰는 로컬 LLM 모델 이름(설정 화면 표시용). 사용자별 AI 설정은 없다(P1-10).
-export const aiSettingsSchema = z.object({ model: z.string() });
-export type AiSettings = z.infer<typeof aiSettingsSchema>;
 // 설정 '연결 상태': 로컬 AI는 확인할 때마다 실제로 묻고, 메일·공고 출처는 마지막 실행 결과를 보여 준다.
 export const connectionStatusSchema = z.object({
   checkedAt: z.string(),

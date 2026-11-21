@@ -20,7 +20,6 @@
   },
   "devDependencies": {
     "tailwindcss": "catalog:",
-    "postcss": "catalog:",
-    "autoprefixer": "catalog:"
+    "postcss": "catalog:"
   }
 }

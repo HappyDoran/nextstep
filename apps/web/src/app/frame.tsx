@@ -5,15 +5,14 @@ import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, BriefcaseBusiness, Check, Inbox, LoaderCircle, LogOut, Mail, Settings, Star, WifiOff } from 'lucide-react';
 import { AppShell, Logo, LogoMark, NavItem, PageHeader, Rail, StatusBar } from '@nextstep/design-system';
-import { latestRefreshSchema, mailConnectionSchema, reviewSchema, type Me } from '@nextstep/contracts';
-import { call, RequestError, useWhen } from './api-client';
+import { latestRefreshSchema, reviewSchema, type Me } from '@nextstep/contracts';
+import { ACTIVE_JOB, call, useMailConnection, useWhen } from './api-client';
 import { LAST_PATH_KEY } from './prefs';
 import { SettingsDialog, sectionFromHash, type Section } from './settings/settings';
 import { useSignOut } from './account';
 
 const icon = 'size-icon-md shrink-0 stroke-icon';
 const small = 'size-icon-sm shrink-0 stroke-icon';
-const ACTIVE: string[] = ['대기', '실행중'];
 type Progress = { done: number; total: number; collected: number; etaSeconds: number | null };
 /** 실행 중 갱신 작업의 진행 문구. 서버가 끝낸 출처 묶음 수와 남은 시간 어림을 적어 둔다. */
 export function progressText(result: Record<string, unknown> | null) {
@@ -53,7 +52,10 @@ export function Frame({ me, title, description, actions, children }: { me: Me; t
   const reviews = useQuery({ queryKey: ['reviews', me.id], queryFn: async () => reviewSchema.array().parse(await call('reviews')), retry: false, refetchOnWindowFocus: false });
   const waiting = reviews.data?.filter(r => !r.held).length ?? 0;
   // 창 제목(데스크톱 앱 창·브라우저 탭)에 확인 목록 대기 건수를 붙인다.
-  useEffect(() => { document.title = `${waiting ? `(${waiting}) ` : ''}${title} · NextStep`; }, [waiting, title]);
+  useEffect(() => {
+    document.title = `${waiting ? `(${waiting}) ` : ''}${title} · NextStep`;
+    return () => { document.title = 'NextStep'; };
+  }, [waiting, title]);
   const online = useOnline();
   // 시작 화면 '마지막으로 본 화면'용. 앱 틀이 있는 화면만 적는다.
   useEffect(() => { try { localStorage.setItem(LAST_PATH_KEY, path); } catch { /* 저장 못 함 */ } }, [path]);
@@ -98,10 +100,7 @@ function AccountMenu({ me }: { me: Me }) {
 
 function MailState({ me }: { me: Me }) {
   const time = useWhen();
-  const mail = useQuery({
-    queryKey: ['mail', 'connection', me.id], retry: false, refetchOnWindowFocus: false,
-    queryFn: async () => { try { return mailConnectionSchema.parse(await call('mail/connection')); } catch (e) { if (e instanceof RequestError && e.status === 404) return null; throw e; } },
-  });
+  const mail = useMailConnection(me);
   const text = mail.isPending ? '메일 확인 중' : mail.isError ? '메일 상태를 읽지 못함' : !mail.data ? '메일 연결 안 됨'
     : mail.data.status === '인증 실패' ? '네이버 메일 인증 실패' : `네이버 메일 · 마지막 확인 ${mail.data.lastSuccessAt ? time(mail.data.lastSuccessAt) : '없음'}`;
   return <><Mail className={small} aria-hidden="true" focusable="false" /><span className={mail.data?.status === '인증 실패' ? 'text-destructive' : undefined}>{text}</span></>;
@@ -113,12 +112,12 @@ function RefreshState({ me }: { me: Me }) {
   const latest = useQuery({
     queryKey: ['jobs', 'latest', me.id], retry: false,
     queryFn: async () => latestRefreshSchema.parse(await call('jobs/latest')),
-    refetchInterval: q => (q.state.data?.job && ACTIVE.includes(q.state.data.job.status) ? 3000 : 60_000),
+    refetchInterval: q => (q.state.data?.job && ACTIVE_JOB.includes(q.state.data.job.status) ? 3000 : 60_000),
   });
   const job = latest.data?.job;
   if (latest.isError) return <span className="text-destructive">갱신 결과를 읽지 못함</span>;
   if (!job) return <span>{latest.isPending ? '갱신 결과 확인 중' : '아직 공고를 가져온 적이 없어요'}</span>;
-  if (ACTIVE.includes(job.status)) {
+  if (ACTIVE_JOB.includes(job.status)) {
     const p = job.result?.progress as Progress | undefined;
     return <><LoaderCircle className={`${small} animate-spin motion-reduce:animate-none`} aria-hidden="true" focusable="false" /><span>{job.status === '대기' ? '공고 가져오기 대기 중' : progressText(job.result)}</span>
       {p && p.total > 0 && <progress value={p.done} max={p.total} aria-label="공고 가져오기 진행" className="h-1.5 w-28 overflow-hidden rounded-full [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary" />}</>;

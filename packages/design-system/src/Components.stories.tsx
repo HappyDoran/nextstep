@@ -30,6 +30,8 @@ export const Fields: Story = {
       <Toggle disabled>비활성 토글</Toggle>
       <div className="flex flex-wrap gap-1.5">{['프론트엔드', '앱 개발', '디자인', 'QA'].map(job => <OptionChip key={job} selected={jobs.includes(job)} onClick={() => setJobs(jobs.includes(job) ? jobs.filter(j => j !== job) : [...jobs, job])}>{jobs.includes(job) ? <Check className="size-icon-xs shrink-0 stroke-emphasis" aria-hidden="true" focusable="false" /> : null}{job}</OptionChip>)}</div>
       <Segmented label="묶는 방식" value={view} onChange={setView} options={[{ value: '상태별', label: '상태별' }, { value: '회사별', label: '회사별' }]} />
+      {/* 비활성: fieldset disabled로 감싸면 안의 선택지가 함께 잠긴다(설정 일반의 데스크톱 전용 항목). */}
+      <fieldset disabled className="contents"><Segmented label="비활성 예시" value="모두" onChange={() => undefined} options={[{ value: '모두', label: '모두' }, { value: '끄기', label: '끄기' }]} /></fieldset>
     </div>;
   },
 };

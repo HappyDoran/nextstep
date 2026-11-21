@@ -7,7 +7,7 @@ import { z } from 'zod';
 // SDK 없이 fetch로 JSON Schema 구조화 출력을 받고 zod로 다시 검증한다. 요청 본문(이력서·공고·메일)은 로그에 남기지 않는다.
 export type AiFailure = 'ai_model_unavailable' | 'ai_http' | 'ai_invalid_output' | 'ai_network' | 'ai_timeout';
 export class AiError extends Error {
-  constructor(readonly code: AiFailure, readonly status?: number) { super(code); }
+  constructor(readonly code: AiFailure) { super(code); }
 }
 
 // 호출 사용량 누계(평가·속도 추정용). 요청 본문은 남기지 않는다.
@@ -90,10 +90,10 @@ async function requestOllama<T extends z.ZodType>(schema: T, instructions: strin
     } catch (error) {
       throw new AiError((error as Error).name === 'TimeoutError' ? 'ai_timeout' : 'ai_network');
     }
-    if (res.status === 404) throw new AiError('ai_model_unavailable', 404);
+    if (res.status === 404) throw new AiError('ai_model_unavailable');
     // 5xx는 생성 중 일시 실패(구조화 출력 실패 등)가 많아 한 번 더 묻고, 그래도 실패하면 그 항목만 잘못된 출력으로 넘긴다.
     if (res.status >= 500) continue;
-    if (!res.ok) throw new AiError('ai_http', res.status);
+    if (!res.ok) throw new AiError('ai_http');
     const body = await res.json() as { message?: { content?: string }; prompt_eval_count?: number; eval_count?: number };
     usageTotals.calls++;
     usageTotals.inputTokens += body.prompt_eval_count ?? 0;

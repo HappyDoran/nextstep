@@ -3,14 +3,13 @@ import { useState } from 'react';
 import { Check, Mail } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Field, Input, Segmented, Select, StatePanel, Tag } from '@nextstep/design-system';
-import { applicationSchema, reviewBodySchema, reviewSchema, type Me, type Review } from '@nextstep/contracts';
-import { call, useMe, useWhen } from '../api-client';
+import { applicationSchema, mailStatusSchema, reviewBodySchema, reviewSchema, type Me, type Review } from '@nextstep/contracts';
+import { buttonIcon as icon, call, useMe, useWhen } from '../api-client';
 import { Account } from '../account';
 import { Frame, AuthLayout } from '../frame';
 
-const STATUSES = ['지원 완료', '전형 진행중', '합격', '불합격', '열람'] as const;
+const STATUSES = mailStatusSchema.exclude(['모호']).options;
 const NO_COMPANY = '회사 미확인';
-const icon = 'size-icon-base shrink-0 stroke-emphasis';
 
 export function Reviews() {
   const me = useMe();

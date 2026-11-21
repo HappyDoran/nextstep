@@ -7,6 +7,8 @@ cd /srv/nextstep/app
 git pull --ff-only
 export ELECTRON_SKIP_BINARY_DOWNLOAD=1
 ~/.local/bin/mise exec -- pnpm install --frozen-lockfile
+# 설정 화면의 웹 버전: turbo 캐시 키에 커밋을 넣어 서버만 바뀐 커밋에서도 새 값으로 빌드한다.
+export NEXTSTEP_BUILD=$(git rev-parse --short HEAD)
 ~/.local/bin/mise exec -- pnpm turbo run build --filter=@nextstep/server --filter=@nextstep/web
 sudo -n /usr/bin/systemctl restart nextstep-api
 sudo -n /usr/bin/systemctl restart nextstep-web

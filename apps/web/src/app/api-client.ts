@@ -1,7 +1,7 @@
 'use client';
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { meSchema, type Me } from '@nextstep/contracts';
+import { mailConnectionSchema, meSchema, type Me } from '@nextstep/contracts';
 import { formatWhen, prefsStore } from './prefs';
 
 export const ME_KEY = ['auth', 'me'];
@@ -39,30 +39,57 @@ async function fetchMe(): Promise<Me | null> {
   }
 }
 
+/** 있으면 값, 없으면(404) null인 조회. */
+export async function optional(path: string) {
+  try { return await call(path); } catch (error) { if (error instanceof RequestError && error.status === 404) return null; throw error; }
+}
+
+/** 네이버 메일 연결(없으면 null). 상태바·설정·시작 단계가 같은 캐시를 같은 형태로 쓴다. poll이면 동기화 작업 중에만 다시 읽는다. */
+export function useMailConnection(me: Me, poll = false) {
+  return useQuery({
+    queryKey: ['mail', 'connection', me.id], retry: false, refetchOnWindowFocus: false,
+    queryFn: async () => { const data = await optional('mail/connection'); return data === null ? null : mailConnectionSchema.parse(data); },
+    refetchInterval: q => (poll && q.state.data?.lastJob && ACTIVE_JOB.includes(q.state.data.lastJob.status) ? 3000 : false),
+  });
+}
+
+/** 처리 중인 작업 상태. */
+export const ACTIVE_JOB: string[] = ['대기', '실행중'];
+export const SOURCE_NAMES = { saramin: '사람인', jobkorea: '잡코리아', jasoseol: '자소설닷컴', wanted: '원티드', jumpit: '점핏' } as const;
+/** 목록·창의 버튼 아이콘 크기. */
+export const buttonIcon = 'size-icon-base shrink-0 stroke-emphasis';
+export const monthDay = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
+
 export function useMe() {
   return useQuery({ queryKey: ME_KEY, queryFn: fetchMe, retry: false, refetchOnWindowFocus: false });
 }
 
-export const fieldClass = 'h-control w-full rounded-control border border-border-strong bg-card px-3 text-body-sm focus:border-primary focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus';
 
 /** 이 기기 화면 설정(prefs.ts). 바꾸면 이 창과 다른 창이 함께 다시 그린다. */
 export const usePrefs = () => useSyncExternalStore(prefsStore.subscribe, prefsStore.get, prefsStore.server);
 /** 설정 일반 구역의 시간 표기(상대·절대)를 따르는 시각 문구. */
 export function useWhen() {
   const { timeFormat } = usePrefs();
-  return (iso: string) => formatWhen(iso, timeFormat);
+  // 상대 표기는 시간이 지나면 바뀌므로 1분마다 다시 그린다.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (timeFormat !== 'relative') return;
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, [timeFormat]);
+  return (iso: string) => formatWhen(iso, timeFormat, now);
 }
 
 /**
- * 이 기기에 기억하는 보기 조건(추천 필터·정렬, 지원 현황 묶음 등). 로그인 후에만 그리는 화면에서 쓴다
- * (서버 렌더링 값과 어긋나지 않게). 저장 값의 형태가 기본값과 다르면 기본값을 쓴다.
+ * 이 기기에 기억하는 보기 조건(추천 필터·정렬, 지원 현황 묶음 등). 사용자별 키에 두고 로그아웃·계정 삭제 때 지운다.
+ * 로그인 후에만 그리는 화면에서 쓴다(서버 렌더링 값과 어긋나지 않게). valid를 통과하지 못한 저장 값은 버린다.
  */
-export function useStored<T>(name: string, initial: T) {
-  const key = `nextstep:view:${name}`;
+export function useStored<T>(me: Me, name: string, initial: T, valid: (value: unknown) => boolean) {
+  const key = `nextstep:view:${me.id}:${name}`;
   const [value, setValue] = useState<T>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(key) ?? 'null') as unknown;
-      return saved !== null && (initial === null || typeof saved === typeof initial) ? saved as T : initial;
+      return saved !== null && valid(saved) ? saved as T : initial;
     } catch { return initial; }
   });
   const set = (next: T) => {

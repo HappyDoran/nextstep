@@ -7,8 +7,8 @@ const join = (...parts: (string | false | undefined)[]) => parts.filter(Boolean)
 /** 추천 분류. 화면은 서버가 준 값을 그대로 넘기고, 색은 글자와 함께만 쓴다. */
 export type Classification = '기본' | '도전' | '미확인' | '제외';
 const classText = { 기본: 'text-class-basic', 도전: 'text-class-challenge', 미확인: 'text-class-unknown', 제외: 'text-class-exclude' } as const;
-const classTag = { 기본: 'bg-class-basic-muted text-class-basic', 도전: 'bg-class-challenge-muted text-class-challenge', 미확인: 'bg-class-unknown-muted text-class-unknown', 제외: 'bg-class-exclude-muted text-class-exclude' } as const;
-const classBar = { 기본: 'before:bg-class-basic', 도전: 'before:bg-class-challenge', 미확인: 'before:bg-class-unknown', 제외: 'before:bg-class-exclude' } as const;
+export const classTag = { 기본: 'bg-class-basic-muted text-class-basic', 도전: 'bg-class-challenge-muted text-class-challenge', 미확인: 'bg-class-unknown-muted text-class-unknown', 제외: 'bg-class-exclude-muted text-class-exclude' } as const;
+export const classBar = { 기본: 'before:bg-class-basic', 도전: 'before:bg-class-challenge', 미확인: 'before:bg-class-unknown', 제외: 'before:bg-class-exclude' } as const;
 
 /** 둥근 표시. 분류를 주면 분류 색, 아니면 회색. */
 export function Tag({ classification, children }: PropsWithChildren<{ classification?: Classification }>) {

@@ -2,11 +2,12 @@
 import { useState, type FormEvent } from 'react';
 import { Check, ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, buttonClass, ClassLabel, DueDate, Field, Input, Lane, Row, RowList, RowTrigger, Select, Sheet, Skeleton, StatePanel, Tag, Toggle } from '@nextstep/design-system';
-import { jobSchema, profileSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
-import { call, RequestError, useMe, useStored, useWhen } from '../api-client';
+import { Button, buttonClass, ClassLabel, classTag, DueDate, Field, Input, Lane, Row, RowList, RowTrigger, Select, Sheet, Skeleton, StatePanel, Tag, Toggle } from '@nextstep/design-system';
+import { jobSchema, profileSchema, resumeSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
+import { ACTIVE_JOB, buttonIcon as icon, call, monthDay, optional, SOURCE_NAMES, useMailConnection, useMe, useStored, useWhen } from '../api-client';
 import { Account } from '../account';
 import { Frame, AuthLayout, progressText } from '../frame';
+import { formatWhen } from '../prefs';
 import { AI_CAUSES } from '../settings/ai';
 
 const CLASSES = recommendationClassSchema.options;
@@ -16,27 +17,22 @@ type Group = (typeof GROUPS)[number];
 const groupOf = (i: Recommendation): Group => (i.restored ? '복구' : i.classification);
 const DAY = 86_400_000;
 const PAGE = 30;
-const SOURCE_NAMES = { saramin: '사람인', jobkorea: '잡코리아', jasoseol: '자소설닷컴', wanted: '원티드', jumpit: '점핏' } as const;
 const ERRORS: Record<string, string> = {
   profile_or_resume_missing: '설정에서 이력서와 프로필을 먼저 저장하세요.',
   collect_failed: '공고를 가져오지 못했습니다. 잠시 후 다시 시도하세요.',
   unsupported_link: '지원하지 않는 링크입니다.',
   lease_expired: '처리 시간이 초과되었습니다. 다시 시도하세요.',
 };
-const ACTIVE: string[] = ['대기', '실행중'];
-const date = (iso: string) => new Date(iso).toLocaleString('ko-KR');
-const short = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-const monthDay = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
-const icon = 'size-icon-base shrink-0 stroke-emphasis';
 
 function JobStatus({ job }: { job: Job | null }) {
+  const when = useWhen();
   if (!job) return null;
   const result = job.result as { collected?: number; judged?: number; sourceFailures?: string[]; aiFailures?: number; aiFailureCodes?: Record<string, number> } | null;
   const aiCauses = Object.keys(result?.aiFailureCodes ?? {}).map(c => AI_CAUSES[c]).filter(Boolean);
   const text = job.status === '대기' ? '공고 가져오기를 기다리고 있습니다.' : job.status === '실행중' ? `${progressText(job.result)}. 창을 닫아도 서버에서 계속합니다.`
     : job.status === '실패' ? `실패: ${ERRORS[job.errorCode ?? ''] ?? job.errorCode ?? '알 수 없는 오류'}`
       : `${job.status}: 공고 ${result?.collected ?? 0}건 확인, ${result?.judged ?? 0}건 판정${result?.sourceFailures?.length ? ` · 출처 실패 ${result.sourceFailures.length}건(${[...new Set(result.sourceFailures.map(f => f.split(':')[0]))].join(', ')})` : ''}${result?.aiFailures ? ` · 분석 실패 ${result.aiFailures}건${aiCauses.length ? `(${aiCauses.join(', ')})` : ''}` : ''}`;
-  return <p role="status" className={`mb-4 text-body-sm ${job.status === '실패' ? 'text-destructive' : 'text-muted-foreground'}`}>{text}{job.finishedAt ? ` (${date(job.finishedAt)})` : ''}</p>;
+  return <p role="status" className={`mb-4 text-body-sm ${job.status === '실패' ? 'text-destructive' : 'text-muted-foreground'}`}>{text}{job.finishedAt ? ` (${when(job.finishedAt)})` : ''}</p>;
 }
 
 export function Recommendations() {
@@ -54,6 +50,7 @@ function laneOf(i: Recommendation, now: number) {
   return days < 0 ? '마감 지남' : days < 7 ? '7일 안에 마감' : days < 14 ? '2주 안에 마감' : '그 이후';
 }
 const DUE_LANES = ['7일 안에 마감', '2주 안에 마감', '그 이후', '상시 채용', '마감 미확인', '마감 지남'];
+const isBool = (v: unknown) => typeof v === 'boolean';
 const dueTime = (i: Recommendation) => (i.alwaysHire || !i.deadline ? Infinity : Date.parse(i.deadline));
 
 function RecommendationList({ me }: { me: Me }) {
@@ -66,12 +63,12 @@ function RecommendationList({ me }: { me: Me }) {
     queryKey: ['jobs', me.id, jobId], enabled: Boolean(jobId), retry: false,
     queryFn: async () => {
       const j = jobSchema.parse(await call(`jobs/${jobId}`));
-      if (!ACTIVE.includes(j.status)) { void client.invalidateQueries({ queryKey: key }); void client.invalidateQueries({ queryKey: ['jobs', 'latest', me.id] }); }
+      if (!ACTIVE_JOB.includes(j.status)) { void client.invalidateQueries({ queryKey: key }); void client.invalidateQueries({ queryKey: ['jobs', 'latest', me.id] }); }
       return j;
     },
-    refetchInterval: q => (q.state.data && !ACTIVE.includes(q.state.data.status) ? false : 3000),
+    refetchInterval: q => (q.state.data && !ACTIVE_JOB.includes(q.state.data.status) ? false : 3000),
   });
-  const running = Boolean(jobId) && (!job.data || ACTIVE.includes(job.data.status));
+  const running = Boolean(jobId) && (!job.data || ACTIVE_JOB.includes(job.data.status));
   const refresh = useMutation({ mutationFn: async () => jobSchema.parse(await call('postings/refresh', { method: 'POST' })), onSuccess: j => setJobId(j.id) });
   const link = useMutation({
     mutationFn: async (url: string) => jobSchema.parse(await call('postings/link', { method: 'POST', body: JSON.stringify({ url }), messages: { 400: '사람인·잡코리아·자소설닷컴·원티드·점핏 공고 상세 링크(https)를 넣으세요.' } })),
@@ -79,12 +76,12 @@ function RecommendationList({ me }: { me: Me }) {
   });
   const [linkOpen, setLinkOpen] = useState(false);
   // 보는 방식만 바꾼다(서버 판정은 그대로): 분류·출처·마감 임박·관심 없음·정렬은 이 기기에 기억하고 검색어는 기억하지 않는다.
-  const [filter, setFilter] = useStored<Group | null>('recommendations.class', null);
-  const [showHidden, setShowHidden] = useStored('recommendations.hidden', false);
-  const [source, setSource] = useStored<keyof typeof SOURCE_NAMES | '전체'>('recommendations.source', '전체');
-  const [soon, setSoon] = useStored('recommendations.soon', false);
+  const [filter, setFilter] = useStored<Group | null>(me, 'recommendations.class', null, v => (GROUPS as readonly unknown[]).includes(v));
+  const [showHidden, setShowHidden] = useStored(me, 'recommendations.hidden', false, isBool);
+  const [source, setSource] = useStored<keyof typeof SOURCE_NAMES | '전체'>(me, 'recommendations.source', '전체', v => v === '전체' || (typeof v === 'string' && v in SOURCE_NAMES));
+  const [soon, setSoon] = useStored(me, 'recommendations.soon', false, isBool);
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useStored<'마감순' | '분류순'>('recommendations.sort', '마감순');
+  const [sort, setSort] = useStored<'마감순' | '분류순'>(me, 'recommendations.sort', '마감순', v => v === '마감순' || v === '분류순');
   const [limit, setLimit] = useState(PAGE);
   const [openId, setOpenId] = useState<string | null>(null);
   const busy = running || refresh.isPending || link.isPending;
@@ -176,9 +173,9 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
     mutationFn: () => call('applications', { method: 'POST', body: JSON.stringify({ company: item.company.slice(0, 200), roleTitle: item.title.slice(0, 200), postingUrl: item.url }) }),
     onSuccess: () => client.invalidateQueries({ queryKey: ['applications', me.id] }),
   });
-  const deadline = item.alwaysHire ? '상시채용' : item.deadline ? short(item.deadline) : '마감 미확인';
+  const deadline = item.alwaysHire ? '상시채용' : item.deadline ? formatWhen(item.deadline, 'absolute') : '마감 미확인';
   const size = item.companyType || item.employeeCount ? [item.companyType, item.employeeCount ? `${item.employeeCount}명` : null].filter(Boolean).join(' · ') : '기업 유형·규모 미확인';
-  const reasonTone = { 기본: 'bg-class-basic-muted text-class-basic', 도전: 'bg-class-challenge-muted text-class-challenge', 미확인: 'bg-class-unknown-muted text-class-unknown', 제외: 'bg-class-exclude-muted text-class-exclude' }[item.classification];
+  const reasonTone = classTag[item.classification];
   const section = (title: string, mark: string, tone: string, values: string[]) => <section>
     <h3 className="mb-2 text-body-sm font-extrabold">{title} <span className="text-muted-foreground tabular-nums">{values.length}</span></h3>
     {values.length ? <ul className="grid gap-1.5 text-body-sm">{values.map(v => <li key={v} className="flex gap-2.5"><span aria-hidden="true" className={`w-4 shrink-0 text-center font-extrabold ${tone}`}>{mark}</span>{v}</li>)}</ul> : <p className="text-body-sm text-muted-foreground">없음</p>}
@@ -208,7 +205,7 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
       {item.feedback !== 'down' && <Button size="sm" variant="secondary" disabled={feedback.isPending} onClick={() => feedback.mutate({ feedback: 'down' })}>별로예요</Button>}
       {(item.classification === '제외' || item.restored) && <Button size="sm" variant="secondary" disabled={feedback.isPending} onClick={() => feedback.mutate({ restored: !item.restored })}>{item.restored ? '복구 취소' : '제외 복구'}</Button>}
     </div>
-    <p className="text-caption text-muted-foreground">공고 확인 {date(item.checkedAt)} · 판정 {date(item.evaluatedAt)}. 지원은 기본 브라우저에서 직접 하고, 마치면 지원 현황에서 상태를 바꾸세요.</p>
+    <p className="text-caption text-muted-foreground">공고 확인 {when(item.checkedAt)} · 판정 {when(item.evaluatedAt)}. 지원은 기본 브라우저에서 직접 하고, 마치면 지원 현황에서 상태를 바꾸세요.</p>
     {error && <p role="alert" className="text-body-sm text-destructive">{error.message}</p>}
   </Sheet>;
 }
@@ -231,15 +228,12 @@ function FilterSummary({ me }: { me: Me }) {
   return <p className="mb-6 text-caption text-muted-foreground" aria-label="적용 중인 공고 필터">적용 중인 필터: {text} <a href="#settings-profile" className="ml-1 font-semibold text-primary">필터 바꾸기</a></p>;
 }
 
-// 있으면 값, 없으면(404) null.
-const optional = async (path: string) => { try { return await call(path); } catch (e) { if (e instanceof RequestError && e.status === 404) return null; throw e; } };
-
 /** 추천이 없는 첫 화면: 시작 단계와 완료 여부(기획서 4절 사용 편의). 각 단계는 설정 창의 해당 구역을 연다. */
 function SetupSteps({ me, busy, onRefresh }: { me: Me; busy: boolean; onRefresh: () => void }) {
   // 설정 화면들과 같은 쿼리 키를 써서 거기서 저장하면 여기도 바로 바뀐다.
-  const resume = useQuery({ queryKey: ['documents', 'resume', me.id], retry: false, queryFn: () => optional('documents/resume') });
+  const resume = useQuery({ queryKey: ['documents', 'resume', me.id], retry: false, queryFn: async () => { const doc = await optional('documents/resume'); return doc === null ? null : resumeSchema.parse(doc); } });
   const profile = useQuery({ queryKey: ['profile', me.id], retry: false, queryFn: () => optional('profile') });
-  const mail = useQuery({ queryKey: ['mail', 'connection', me.id], retry: false, refetchOnWindowFocus: false, queryFn: () => optional('mail/connection') });
+  const mail = useMailConnection(me);
   const ready = Boolean(resume.data) && Boolean(profile.data);
   const steps = [
     { done: Boolean(resume.data), title: '이력서 올리기', desc: '추천의 기준이 돼요. 경력기술서·포트폴리오는 선택이에요.', href: '#settings-documents' },

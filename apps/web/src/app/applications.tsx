@@ -7,15 +7,13 @@ import {
   applicationDetailSchema, applicationImportResultSchema, applicationSchema, applicationStatusSchema, readStatusSchema,
   type Application, type ApplicationStatus, type Me,
 } from '@nextstep/contracts';
-import { call, useStored, useWhen } from './api-client';
+import { buttonIcon as icon, call, monthDay, useStored, useWhen } from './api-client';
 import { Frame } from './frame';
 
 const STATUSES = applicationStatusSchema.options;
 const READ_STATUSES = readStatusSchema.options;
 const listKey = (userId: string) => ['applications', userId];
 const PAGE = 30;
-const icon = 'size-icon-base shrink-0 stroke-emphasis';
-const monthDay = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
 
 // 폼 값 중 빈 공고 URL은 보내지 않는다(등록) 또는 null로 지운다(수정).
 function formBody(form: FormData, forUpdate: boolean) {
@@ -34,8 +32,8 @@ export function Applications({ me }: { me: Me }) {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<ApplicationStatus | '전체'>('전체');
   // 묶음 방식과 접은 묶음은 이 기기에 기억한다. 불합격 묶음은 처음에 접어 둔다(2026-11-18 결정).
-  const [group, setGroup] = useStored<'상태별' | '회사별'>('applications.group', '상태별');
-  const [folded, setFolded] = useStored<Record<string, boolean>>('applications.folded', { 불합격: true });
+  const [group, setGroup] = useStored<'상태별' | '회사별'>(me, 'applications.group', '상태별', v => v === '상태별' || v === '회사별');
+  const [folded, setFolded] = useStored<Record<string, boolean>>(me, 'applications.folded', { 불합격: true }, v => typeof v === 'object' && !Array.isArray(v));
   const [limit, setLimit] = useState(PAGE);
   const [openId, setOpenId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<'new' | 'csv' | null>(null);

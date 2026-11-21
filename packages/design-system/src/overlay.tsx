@@ -1,8 +1,6 @@
 import { useEffect, useId, useRef, type PropsWithChildren, type ReactNode } from 'react';
 import { X } from 'lucide-react';
-import type { Classification } from './display.js';
-
-const bar = { 기본: 'before:bg-class-basic', 도전: 'before:bg-class-challenge', 미확인: 'before:bg-class-unknown', 제외: 'before:bg-class-exclude' } as const;
+import { classBar as bar, type Classification } from './display.js';
 
 /**
  * 상세·입력 창. 네이티브 <dialog>의 showModal로 포커스 가두기·Esc·바깥 비활성을 브라우저에 맡긴다.

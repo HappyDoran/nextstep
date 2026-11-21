@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, buttonClass, Field, GoogleMark, Input } from '@nextstep/design-system';
 import { pendingSchema, type Me, type Pending } from '@nextstep/contracts';
 import { call, ME_KEY, RequestError, useMe } from './api-client';
+import { clearViews } from './prefs';
 
 const PENDING_KEY = ['auth', 'pending'];
 const START = '/api/auth/google/start';
@@ -20,6 +21,7 @@ export function useSignOut() {
   return useMutation({
     mutationFn: () => call('auth/logout', { method: 'POST' }),
     onSuccess: () => {
+      clearViews();
       client.removeQueries({ predicate: query => query.queryKey[0] !== ME_KEY[0] });
       client.setQueryData(ME_KEY, null);
       client.setQueryData(PENDING_KEY, null);
@@ -74,7 +76,7 @@ export function Account() {
     onSuccess: reload,
   });
   const logout = useSignOut();
-  const remove = useMutation({ mutationFn: () => call('account', { method: 'DELETE' }), onSuccess: () => reset(null) });
+  const remove = useMutation({ mutationFn: () => call('account', { method: 'DELETE' }), onSuccess: () => { clearViews(); reset(null); } });
 
   if (me.isPending || (me.data === null && pending.isPending)) return <p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p>;
   if (me.isError) return <p role="status" className="text-muted-foreground">계정 상태를 확인하지 못했습니다. 서버 연결을 확인하세요.</p>;

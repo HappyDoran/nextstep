@@ -3,15 +3,14 @@ import { LoaderCircle, RefreshCw } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Tag } from '@nextstep/design-system';
 import { connectionStatusSchema, healthSchema, type Me } from '@nextstep/contracts';
-import { call } from '../api-client';
+import { call, SOURCE_NAMES, useWhen } from '../api-client';
 
-const SOURCE_NAMES = { saramin: '사람인', jobkorea: '잡코리아', jasoseol: '자소설닷컴', wanted: '원티드', jumpit: '점핏' } as const;
 const CODES: Record<string, string> = { network: '연결 실패', blocked: '접속 차단', http_error: '응답 오류', parse_failed: '페이지 형식 바뀜', not_found: '공고 없음', body_missing: '본문 없음' };
-const when = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 const tone = (ok: boolean | null | 'partial') => (ok === 'partial' ? '도전' : ok === null ? '미확인' : ok ? '기본' : '제외') as '미확인' | '기본' | '도전' | '제외';
 
 // 연결 상태(기획서 4절): 홈서버·분석 기능은 지금 확인하고, 메일·공고 출처는 마지막 실행 결과를 보여 준다.
 export function ConnectionPanel({ me }: { me: Me }) {
+  const when = useWhen();
   const health = useQuery({ queryKey: ['service', 'health'], retry: false, refetchOnWindowFocus: false, queryFn: async ({ signal }) => {
     const response = await fetch('/api/health', { cache: 'no-store', signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) });
     if (!response.ok) throw new Error('서버 연결 실패');

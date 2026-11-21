@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, LoaderCircle, Trash2, Upload } from 'lucide-react';
 import { Button, Segmented, Tag } from '@nextstep/design-system';
 import { documentVersionSchema, resumeSchema, resumeFailureSchema, DOCUMENT_VERSION_MAX, type DocumentKind, type Me, type Resume } from '@nextstep/contracts';
-import { call, RequestError } from '../api-client';
+import { call, optional, RequestError, useWhen } from '../api-client';
 
 const FAILURES: Record<string, string> = {
   unsupported_type: 'PDF·MD·Notion ZIP 파일만 등록할 수 있습니다.',
@@ -18,7 +18,6 @@ export const DOCUMENT_NAMES: Record<DocumentKind, string> = { resume: '이력서
 const KINDS: { value: DocumentKind; label: string }[] = [{ value: 'resume', label: '이력서' }, { value: 'career', label: '경력기술서' }, { value: 'portfolio', label: '포트폴리오' }];
 const ACCEPT = '.pdf,.md,.markdown,.zip,application/pdf,text/markdown,application/zip';
 const icon = 'size-icon-base shrink-0 stroke-icon';
-const when = (iso: string) => new Date(iso).toLocaleString('ko-KR', { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 const kb = (size: number) => size < 1024 * 1024 ? `${Math.ceil(size / 1024)}KB` : `${(size / 1024 / 1024).toFixed(1)}MB`;
 
 // 새 파일 변환이 성공하면 새 버전이 사용 중이 되고, 실패하면 기존 서류가 그대로 남는다.
@@ -51,6 +50,7 @@ export function DocumentsSetting({ me }: { me: Me }) {
 }
 
 function DocumentPanel({ me, kind }: { me: Me; kind: DocumentKind }) {
+  const when = useWhen();
   const label = DOCUMENT_NAMES[kind];
   const client = useQueryClient();
   const key = ['documents', kind, me.id];
@@ -58,7 +58,8 @@ function DocumentPanel({ me, kind }: { me: Me; kind: DocumentKind }) {
   const query = useQuery({
     queryKey: key, retry: false,
     queryFn: async () => {
-      try { return resumeSchema.parse(await call(`documents/${kind}`)); } catch (error) { if (error instanceof RequestError && error.status === 404) return null; throw error; }
+      const doc = await optional(`documents/${kind}`);
+      return doc === null ? null : resumeSchema.parse(doc);
     },
   });
   const versions = useQuery({ queryKey: versionsKey, retry: false, queryFn: async () => documentVersionSchema.array().parse(await call(`documents/${kind}/versions`)) });

@@ -22,7 +22,8 @@
       ],
       "env": [
         "NEXTSTEP_API_URL",
-        "NEXTSTEP_WEB_URL"
+        "NEXTSTEP_WEB_URL",
+        "NEXTSTEP_BUILD"
       ]
     },
     "typecheck": {
