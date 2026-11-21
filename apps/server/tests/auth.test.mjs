@@ -7,17 +7,17 @@ import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../dist/app.js';
 import { openDatabase } from '../dist/database.js';
 import { createInvite } from '../dist/auth.js';
+import { signIn } from './fake-google.mjs';
 
 function invite(path) {
   const db = openDatabase(path);
   try { return createInvite(db); } finally { db.close(); }
 }
-const cookieOf = res => res.headers['set-cookie'].split(';')[0];
 async function signup(app, path, email) {
-  const res = await app.inject({ method: 'POST', url: '/auth/signup', payload: { inviteCode: invite(path), email, password: 'correct horse battery' } });
-  assert.equal(res.statusCode, 201, res.body);
-  return cookieOf(res);
+  return signIn(app, email, invite(path));
 }
+const b64 = value => Buffer.from(value).toString('base64url');
+const rejected = async (promise, reason) => assert.equal((await promise).headers.location ?? '', `/?login_error=${reason}`);
 
 test('두 계정의 지원 건은 서로 조회·삭제할 수 없고 재시작 후에도 유지된다', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'nextstep-auth-'));
@@ -44,9 +44,8 @@ test('두 계정의 지원 건은 서로 조회·삭제할 수 없고 재시작 
 
     app = createApp(path);
     try {
-      const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'A@example.com', password: 'correct horse battery' } });
-      assert.equal(login.statusCode, 200);
-      const a = cookieOf(login);
+      // 가입한 뒤에는 초대 코드 없이 같은 구글 계정으로 로그인한다.
+      const a = await signIn(app, 'A@example.com');
       assert.deepEqual((await app.inject({ url: '/applications', headers: { cookie: a } })).json().map(x => x.id), [idA]);
       assert.equal((await app.inject({ method: 'POST', url: '/auth/logout', headers: { cookie: a } })).statusCode, 204);
       assert.equal((await app.inject({ url: '/auth/me', headers: { cookie: a } })).statusCode, 401);
@@ -54,29 +53,91 @@ test('두 계정의 지원 건은 서로 조회·삭제할 수 없고 재시작 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('초대 코드는 한 번만, 만료 전에만 쓰고 중복 이메일을 거부한다', async () => {
+test('초대 코드는 한 번만, 만료 전에만 쓰고 초대 없는 구글 계정·확인 안 된 이메일·중복 이메일을 거부한다', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'nextstep-invite-'));
   const path = join(dir, 'db.sqlite');
   const app = createApp(path);
   try {
     const code = invite(path);
-    const body = email => ({ inviteCode: code, email, password: 'correct horse battery' });
-    assert.equal((await app.inject({ method: 'POST', url: '/auth/signup', payload: body('a@example.com') })).statusCode, 201);
-    assert.equal((await app.inject({ method: 'POST', url: '/auth/signup', payload: body('b@example.com') })).statusCode, 403);
+    await signIn(app, 'a@example.com', code);
+    await assert.rejects(signIn(app, 'b@example.com', code), e => e.response.headers.location === '/?login_error=invite');
+    await assert.rejects(signIn(app, 'nobody@example.com'), e => e.response.headers.location === '/?login_error=invite');
+    await assert.rejects(signIn(app, 'unverified@example.com', invite(path)), e => e.response.headers.location === '/?login_error=failed');
     const fresh = invite(path);
-    assert.equal((await app.inject({ method: 'POST', url: '/auth/signup', payload: { ...body('A@EXAMPLE.com'), inviteCode: fresh } })).statusCode, 409);
-    // 중복 이메일로 실패한 가입은 초대 코드를 소모하지 않는다.
-    assert.equal((await app.inject({ method: 'POST', url: '/auth/signup', payload: { ...body('c@example.com'), inviteCode: fresh } })).statusCode, 201);
-    const expired = invite(path);
+    // 다른 구글 계정이 이미 쓰는 이메일은 새로 만들지 않고, 실패한 가입은 초대 코드를 소모하지 않는다.
     const db = new DatabaseSync(path);
+    db.prepare("UPDATE users SET google_sub = 'someone-else'").run();
+    await assert.rejects(signIn(app, 'A@EXAMPLE.com', fresh), e => e.response.headers.location === '/?login_error=invite');
+    await signIn(app, 'c@example.com', fresh);
+    const expired = invite(path);
     db.prepare("UPDATE invites SET expires_at = '2000-01-01T00:00:00.000Z' WHERE used_at IS NULL").run();
     db.close();
-    assert.equal((await app.inject({ method: 'POST', url: '/auth/signup', payload: { ...body('d@example.com'), inviteCode: expired } })).statusCode, 403);
-    assert.equal((await app.inject({ method: 'POST', url: '/auth/signup', payload: { ...body('e@example.com'), inviteCode: invite(path), password: 'short' } })).statusCode, 400);
+    await assert.rejects(signIn(app, 'd@example.com', expired), e => e.response.headers.location === '/?login_error=invite');
+    // 이메일·비밀번호 로그인은 없다.
+    assert.equal((await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'a@example.com', password: 'correct horse battery' } })).statusCode, 404);
   } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('만료 세션·반복 로그인 실패를 막는다', async () => {
+test('구글 로그인은 state가 맞아야 하고, 기존 비밀번호 계정은 같은 이메일의 첫 로그인에서 연결된다', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-google-'));
+  const path = join(dir, 'db.sqlite');
+  let app = createApp(path);
+  try {
+    await signIn(app, 'warmup@example.com', invite(path));
+    const start = await app.inject({ url: '/auth/google/start' });
+    const location = new URL(start.headers.location);
+    assert.equal(location.searchParams.get('code_challenge_method'), 'S256');
+    assert.equal(location.searchParams.get('redirect_uri'), 'http://127.0.0.1:3100/api/auth/google/callback');
+    const cookie = String(start.headers['set-cookie']).split(';')[0];
+    await rejected(app.inject({ url: `/auth/google/callback?code=${b64('warmup@example.com')}&state=wrong`, headers: { cookie } }), 'failed');
+    await rejected(app.inject({ url: `/auth/google/callback?code=${b64('warmup@example.com')}&state=${location.searchParams.get('state')}` }), 'failed');
+    await app.close();
+    // 비밀번호 시절(DB 버전 16) 계정: 버전 17 이행이 비밀번호 해시를 지우고, 구글 로그인이 같은 계정에 연결한다.
+    const raw = new DatabaseSync(path);
+    raw.exec("INSERT INTO users (id, email, password_hash, created_at) VALUES ('old', 'old@example.com', 'scrypt$x', '2026-01-01'); PRAGMA user_version = 16; DROP INDEX users_google_sub; DROP TABLE login_codes; ALTER TABLE users DROP COLUMN google_sub;");
+    raw.close();
+    app = createApp(path);
+    const a = await signIn(app, 'OLD@example.com');
+    assert.equal((await app.inject({ url: '/auth/me', headers: { cookie: a } })).json().id, 'old');
+    const check = new DatabaseSync(path);
+    assert.deepEqual({ ...check.prepare("SELECT password_hash, google_sub FROM users WHERE id = 'old'").get() }, { password_hash: '', google_sub: 'sub-old@example.com' });
+    check.close();
+  } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('데스크톱 로그인 코드는 앱 주소로 넘어가 한 번만, 2분 안에만 세션으로 바뀐다', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-desktop-'));
+  const path = join(dir, 'db.sqlite');
+  const app = createApp(path);
+  try {
+    await signIn(app, 'a@example.com', invite(path));
+    const desktopCode = async () => {
+      const start = await app.inject({ url: '/auth/google/start?client=desktop' });
+      const state = new URL(start.headers.location).searchParams.get('state');
+      const callback = await app.inject({ url: `/auth/google/callback?code=${b64('a@example.com')}&state=${state}`, headers: { cookie: String(start.headers['set-cookie']).split(';')[0] } });
+      assert.equal([callback.headers['set-cookie']].flat().some(v => String(v).startsWith('ns_session=') && !String(v).startsWith('ns_session=;')), false);
+      const url = new URL(callback.headers.location);
+      assert.equal(url.protocol, 'nextstep:');
+      return url.searchParams.get('code');
+    };
+    const exchange = code => app.inject({ method: 'POST', url: '/auth/desktop/exchange', payload: { code } });
+    const code = await desktopCode();
+    const first = await exchange(code);
+    assert.equal(first.statusCode, 200);
+    assert.equal(first.json().email, 'a@example.com');
+    const cookie = String(first.headers['set-cookie']).split(';')[0];
+    assert.equal((await app.inject({ url: '/auth/me', headers: { cookie } })).statusCode, 200);
+    assert.equal((await exchange(code)).statusCode, 401);
+    const late = await desktopCode();
+    const db = new DatabaseSync(path);
+    db.prepare("UPDATE login_codes SET expires_at = '2000-01-01T00:00:00.000Z'").run();
+    db.close();
+    assert.equal((await exchange(late)).statusCode, 401);
+    assert.equal((await exchange('short')).statusCode, 400);
+  } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('만료 세션은 거부한다', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'nextstep-session-'));
   const path = join(dir, 'db.sqlite');
   const app = createApp(path);
@@ -86,10 +147,6 @@ test('만료 세션·반복 로그인 실패를 막는다', async () => {
     db.prepare("UPDATE sessions SET expires_at = '2000-01-01T00:00:00.000Z'").run();
     db.close();
     assert.equal((await app.inject({ url: '/auth/me', headers: { cookie: a } })).statusCode, 401);
-    const wrong = { method: 'POST', url: '/auth/login', payload: { email: 'a@example.com', password: 'wrong password!' } };
-    for (let i = 0; i < 5; i++) assert.equal((await app.inject(wrong)).statusCode, 401);
-    assert.equal((await app.inject({ ...wrong, payload: { email: 'a@example.com', password: 'correct horse battery' } })).statusCode, 429);
-    assert.equal((await app.inject({ ...wrong, payload: { email: 'nobody@example.com', password: 'whatever12345' } })).statusCode, 401);
   } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 

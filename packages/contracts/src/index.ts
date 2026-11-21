@@ -9,12 +9,9 @@ export type ApplicationStatus = z.infer<typeof applicationStatusSchema>;
 export const sourceIdSchema = z.enum(['saramin', 'jobkorea', 'jasoseol', 'wanted', 'jumpit']);
 export type SourceId = z.infer<typeof sourceIdSchema>;
 
-// 초대 계정 인증: 초대 코드로 가입하고 이메일·비밀번호로 로그인한다.
-export const credentialsSchema = z.object({
-  email: z.email().max(254),
-  password: z.string().min(10).max(200),
-}).strict();
-export const signupSchema = credentialsSchema.extend({ inviteCode: z.string().trim().min(8).max(64) }).strict();
+// 초대 계정 인증: 처음은 초대 링크로 구글 로그인해 가입하고 이후 구글 로그인만 쓴다.
+// 데스크톱 앱 로그인: 기본 브라우저의 구글 로그인 뒤 앱으로 넘겨받은 1회용 코드.
+export const desktopExchangeSchema = z.object({ code: z.string().regex(/^[\w-]{43}$/) }).strict();
 export const meSchema = z.object({ id: z.string(), email: z.string() });
 export type Me = z.infer<typeof meSchema>;
 

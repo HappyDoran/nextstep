@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
@@ -275,6 +275,22 @@ export function openDatabase(filename: string) {
       db.exec(`ALTER TABLE review_requests ADD COLUMN company TEXT;
         ALTER TABLE review_requests ADD COLUMN role_title TEXT;
         PRAGMA user_version = 16;`);
+    }
+    if (version < 17) {
+      // 구글 로그인 전환(기획서 0.2.12): 이메일·비밀번호 로그인을 없앤다. 계정은 구글 sub로 찾고,
+      // 기존 계정은 같은 이메일의 첫 구글 로그인에서 연결한다. 비밀번호 해시는 덮어써 지운다(열은 호환용으로 빈 값).
+      // login_codes: 데스크톱 앱이 기본 브라우저 로그인 결과를 넘겨받는 1회용 코드(해시만, 2분).
+      db.exec(`ALTER TABLE users ADD COLUMN google_sub TEXT;
+        CREATE UNIQUE INDEX users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL;
+        PRAGMA secure_delete = ON;
+        UPDATE users SET password_hash = '';
+        PRAGMA secure_delete = OFF;
+        CREATE TABLE login_codes (
+          code_hash TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          expires_at TEXT NOT NULL
+        ) STRICT;
+        PRAGMA user_version = 17;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

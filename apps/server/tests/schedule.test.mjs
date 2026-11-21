@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createApp } from '../dist/app.js';
 import { openDatabase } from '../dist/database.js';
 import { createInvite } from '../dist/auth.js';
+import { signIn } from './fake-google.mjs';
 import { runSchedule, seoulParts } from '../dist/schedule.js';
 
 const at = iso => new Date(iso);
@@ -17,7 +18,7 @@ test('예약 실행: 공고 갱신은 21시 이후 하루 한 번, 메일은 매
   try {
     const signup = async email => {
       const db = openDatabase(path); const inviteCode = createInvite(db); db.close();
-      return (await app.inject({ method: 'POST', url: '/auth/signup', payload: { inviteCode, email, password: 'correct horse battery' } })).headers['set-cookie'].split(';')[0];
+      return (await signIn(app, email, inviteCode));
     };
     const a = await signup('a@example.com');
     const b = await signup('b@example.com');

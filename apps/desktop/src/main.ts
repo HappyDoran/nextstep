@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, Menu, nativeImage, Notification, session, shell, Tray } from 'electron';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { serviceUrl, isServiceNavigation, isExternalUrl } from './security.js';
+import { serviceUrl, isServiceNavigation, isExternalUrl, googleLoginUrl, desktopLoginPath } from './security.js';
 import { noticeFor, type LatestRefresh } from './notify.js';
 
 // 상주 앱: 창은 홈서버 웹을 그대로 열고, 창을 닫아도 메뉴 막대(macOS)·알림 영역(Windows) 아이콘으로 남아
@@ -35,7 +35,11 @@ function createWindow() {
   window = new BrowserWindow({ width: 1280, height: 860, minWidth: 720, minHeight: 540, title: 'NextStep', icon: join(app.getAppPath(), 'assets/icon.png'), show: false, webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, partition: PARTITION } });
   const contents = window.webContents;
   contents.setWindowOpenHandler(({ url }) => { void openExternal(url); return { action: 'deny' }; });
-  contents.on('will-navigate', (event, target) => { if (!isServiceNavigation(target, service)) { event.preventDefault(); void openExternal(target); } });
+  contents.on('will-navigate', (event, target) => {
+    const google = googleLoginUrl(target, service);
+    if (google) { event.preventDefault(); void shell.openExternal(google); return; }
+    if (!isServiceNavigation(target, service)) { event.preventDefault(); void openExternal(target); }
+  });
   contents.on('will-redirect', (event, target) => { if (!isServiceNavigation(target, service)) event.preventDefault(); });
   contents.on('will-attach-webview', event => event.preventDefault());
   contents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => {
@@ -109,9 +113,20 @@ function createTray() {
   updateTray();
 }
 
+// 기본 브라우저의 구글 로그인이 끝나면 nextstep:// 주소로 앱이 열린다. 준비 전에 오면 준비된 뒤 처리한다.
+let pendingLogin: string | undefined;
+function openLoginLink(link: string | undefined) {
+  const path = link && desktopLoginPath(link);
+  if (!path) return;
+  if (service) showWindow(path); else pendingLogin = path;
+}
+
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => showWindow());
+  app.setAsDefaultProtocolClient('nextstep');
+  app.on('open-url', (event, link) => { event.preventDefault(); openLoginLink(link); });
+  // Windows는 이미 실행 중인 앱에 두 번째 실행의 인자로 주소가 온다.
+  app.on('second-instance', (_event, argv) => { const link = argv.find(arg => arg.startsWith('nextstep://')); if (link) openLoginLink(link); else showWindow(); });
   void app.whenReady().then(() => {
     try { service = serviceUrl(process.env.NEXTSTEP_WEB_URL ?? readSettings()?.webUrl); } catch {
       dialog.showErrorBox('NextStep을 시작하지 못했습니다.', '서비스 주소를 확인하세요. 원격 주소는 HTTPS여야 합니다.');
@@ -130,7 +145,9 @@ else {
     createTray();
     createWindow();
     // 로그인 시 자동 실행으로 켜졌으면 창 없이 아이콘만 둔다.
-    if (!app.getLoginItemSettings().wasOpenedAtLogin) window!.once('ready-to-show', () => showWindow());
+    openLoginLink(process.argv.find(arg => arg.startsWith('nextstep://')));
+    if (pendingLogin) showWindow(pendingLogin);
+    else if (!app.getLoginItemSettings().wasOpenedAtLogin) window!.once('ready-to-show', () => showWindow());
     else app.dock?.hide();
     void poll();
     setInterval(() => void poll(), POLL_MS);

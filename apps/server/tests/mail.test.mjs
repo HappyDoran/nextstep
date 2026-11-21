@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../dist/app.js';
 import { openDatabase } from '../dist/database.js';
 import { createInvite } from '../dist/auth.js';
+import { signIn } from './fake-google.mjs';
 import { runNext } from '../dist/recommend/jobs.js';
 import { createMailHandler } from '../dist/mail/sync.js';
 import { MailSourceError } from '../dist/mail/naver.js';
@@ -56,7 +57,7 @@ async function setup() {
   const app = createApp(path, { mailSource: source, mailBodies });
   const signup = async email => {
     const db = openDatabase(path); const inviteCode = createInvite(db); db.close();
-    return (await app.inject({ method: 'POST', url: '/auth/signup', payload: { inviteCode, email, password: 'correct horse battery' } })).headers['set-cookie'].split(';')[0];
+    return (await signIn(app, email, inviteCode));
   };
   const run = async () => {
     const db = openDatabase(path);
@@ -234,7 +235,7 @@ test('조회 기간을 골라 연결하고, 과거 범위 넓히기는 현재 �
   const app = createApp(path, { mailSource: source });
   try {
     const db0 = openDatabase(path); const inviteCode = createInvite(db0); db0.close();
-    const a = (await app.inject({ method: 'POST', url: '/auth/signup', payload: { inviteCode, email: 'a@example.com', password: 'correct horse battery' } })).headers['set-cookie'].split(';')[0];
+    const a = (await signIn(app, 'a@example.com', inviteCode));
     assert.equal((await app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 't@naver.com', appPassword: 'x', consent: true, days: 45 } })).statusCode, 400);
     assert.equal((await app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 't@naver.com', appPassword: 'x', consent: true, days: 30 } })).statusCode, 202);
     const run = async () => { const db = openDatabase(path); try { await runNext(db, createMailHandler(db, loadSecretKey(join(dir, 'secret.key')), source, undefined, backfill)); } finally { db.close(); } };

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { serviceUrl, isExternalUrl, isServiceNavigation } from '../dist/security.js';
+import { serviceUrl, isExternalUrl, isServiceNavigation, googleLoginUrl, desktopLoginPath } from '../dist/security.js';
 import { noticeFor } from '../dist/notify.js';
 
 test('원격 서비스는 HTTPS만, 같은 컴퓨터는 HTTP도 허용한다', () => {
@@ -15,6 +15,15 @@ test('서비스와 외부 URL·위험 스킴을 구분한다', () => {
   for (const url of ['https://nextstep.example.evil.test', 'javascript:alert(1)', 'file:///tmp/test', 'https://user@nextstep.example']) assert.equal(isServiceNavigation(url, service), false);
   for (const url of ['file:///tmp/test', 'javascript:alert(1)', 'http://example.com', 'https://user@example.com']) assert.equal(isExternalUrl(url), false);
   assert.equal(isExternalUrl('https://example.com/jobs/1'), true);
+});
+
+test('구글 로그인 시작만 기본 브라우저로 넘기고 앱 주소의 로그인 코드는 형식이 맞을 때만 받는다', () => {
+  const service = new URL('https://nextstep.example');
+  assert.equal(googleLoginUrl('https://nextstep.example/api/auth/google/start?invite=abc12345', service), 'https://nextstep.example/api/auth/google/start?invite=abc12345&client=desktop');
+  for (const url of ['https://nextstep.example/api/auth/me', 'https://evil.test/api/auth/google/start']) assert.equal(googleLoginUrl(url, service), undefined);
+  const code = 'a'.repeat(43);
+  assert.equal(desktopLoginPath(`nextstep://auth?code=${code}`), `/?desktop_code=${code}`);
+  for (const link of [`nextstep://other?code=${code}`, 'nextstep://auth?code=short', `https://auth?code=${code}`, `nextstep://auth?code=${'a'.repeat(42)}%26x`, 'not a url']) assert.equal(desktopLoginPath(link), undefined);
 });
 
 test('끝난 갱신만 한 번 알리고 건수와 실패를 구분한다', () => {

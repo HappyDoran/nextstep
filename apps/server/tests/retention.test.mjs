@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../dist/app.js';
 import { openDatabase } from '../dist/database.js';
 import { createInvite } from '../dist/auth.js';
+import { signIn } from './fake-google.mjs';
 import { runNext } from '../dist/recommend/jobs.js';
 import { createHandler } from '../dist/recommend/pipeline.js';
 import { purgeExpired } from '../dist/retention.js';
@@ -17,7 +18,7 @@ async function setup() {
   const app = createApp(path, { mailSource: async () => [] });
   const signup = async email => {
     const db = openDatabase(path); const inviteCode = createInvite(db); db.close();
-    const cookie = (await app.inject({ method: 'POST', url: '/auth/signup', payload: { inviteCode, email, password: 'correct horse battery' } })).headers['set-cookie'].split(';')[0];
+    const cookie = (await signIn(app, email, inviteCode));
     await app.inject({ method: 'PUT', url: '/documents/resume', headers: { cookie, 'content-type': 'application/pdf', 'x-filename': 'r.pdf' }, payload: readFileSync(new URL('./fixtures/resume-text.pdf', import.meta.url)) });
     await app.inject({ method: 'PUT', url: '/profile', headers: { cookie }, payload: { jobFamilies: ['프론트엔드'], experiences: [], regions: ['서울'], remoteOk: true, employmentTypes: ['정규직'], skills: [], summary: '' } });
     return cookie;

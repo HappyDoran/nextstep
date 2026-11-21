@@ -6,14 +6,14 @@ import { join } from 'node:path';
 import { createApp } from '../dist/app.js';
 import { openDatabase } from '../dist/database.js';
 import { createInvite } from '../dist/auth.js';
+import { signIn } from './fake-google.mjs';
 
 const fixture = name => readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
 async function signup(app, path, email) {
   const db = openDatabase(path);
   const inviteCode = createInvite(db);
   db.close();
-  const res = await app.inject({ method: 'POST', url: '/auth/signup', payload: { inviteCode, email, password: 'correct horse battery' } });
-  return res.headers['set-cookie'].split(';')[0];
+  return signIn(app, email, inviteCode);
 }
 const upload = (app, cookie, body, filename, type = 'application/pdf') => app.inject({ method: 'PUT', url: '/documents/resume', headers: { cookie, 'content-type': type, 'x-filename': encodeURIComponent(filename) }, payload: body });
 

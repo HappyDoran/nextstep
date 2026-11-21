@@ -11,3 +11,19 @@ export function isServiceNavigation(target: string, service: URL): boolean {
 export function isExternalUrl(target: string): boolean {
   try { const url = new URL(target); return url.protocol === 'https:' && !url.username && !url.password; } catch { return false; }
 }
+// 구글 로그인 시작 주소: 구글은 앱 안 창의 로그인을 막으므로 기본 브라우저로 연다(client=desktop을 붙여 끝나면 앱 주소로 돌아옴).
+export function googleLoginUrl(target: string, service: URL): string | undefined {
+  if (!isServiceNavigation(target, service)) return undefined;
+  const url = new URL(target);
+  if (url.pathname !== '/api/auth/google/start') return undefined;
+  url.searchParams.set('client', 'desktop');
+  return url.href;
+}
+// 기본 브라우저 로그인이 끝나면 nextstep://auth?code=… 로 앱을 연다. 형식이 맞는 코드만 창의 첫 화면(?desktop_code=)으로 넘긴다.
+export function desktopLoginPath(link: string): string | undefined {
+  try {
+    const url = new URL(link);
+    const code = url.searchParams.get('code') ?? '';
+    return url.protocol === 'nextstep:' && url.hostname === 'auth' && /^[\w-]{43}$/.test(code) ? `/?desktop_code=${code}` : undefined;
+  } catch { return undefined; }
+}

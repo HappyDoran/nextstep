@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createApp } from '../dist/app.js';
 import { openDatabase } from '../dist/database.js';
 import { createInvite } from '../dist/auth.js';
+import { signIn } from './fake-google.mjs';
 import { runNext, claim, recoverExpired } from '../dist/recommend/jobs.js';
 import { createHandler, isNotHiring, parsePostingLink } from '../dist/recommend/pipeline.js';
 
@@ -34,7 +35,7 @@ async function setup() {
   const app = createApp(path);
   const signup = async email => {
     const db = openDatabase(path); const inviteCode = createInvite(db); db.close();
-    const cookie = (await app.inject({ method: 'POST', url: '/auth/signup', payload: { inviteCode, email, password: 'correct horse battery' } })).headers['set-cookie'].split(';')[0];
+    const cookie = (await signIn(app, email, inviteCode));
     await app.inject({ method: 'PUT', url: '/documents/resume', headers: { cookie, 'content-type': 'application/pdf', 'x-filename': 'r.pdf' }, payload: readFileSync(new URL('./fixtures/resume-text.pdf', import.meta.url)) });
     await app.inject({ method: 'PUT', url: '/profile', headers: { cookie }, payload: { jobFamilies: ['프론트엔드'], experiences: [{ jobFamily: '프론트엔드', years: 3 }], regions: ['서울'], remoteOk: true, employmentTypes: ['정규직'], skills: ['React'], summary: '' } });
     return cookie;
@@ -165,7 +166,7 @@ test('프로필·이력서가 없으면 작업이 실패로 끝나고, 실행 �
   const s = await setup();
   try {
     const db0 = openDatabase(s.path); const inviteCode = createInvite(db0); db0.close();
-    const c = (await s.app.inject({ method: 'POST', url: '/auth/signup', payload: { inviteCode, email: 'c@example.com', password: 'correct horse battery' } })).headers['set-cookie'].split(';')[0];
+    const c = (await signIn(s.app, 'c@example.com', inviteCode));
     const job = (await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: c } })).json();
     const db = openDatabase(s.path);
     try {

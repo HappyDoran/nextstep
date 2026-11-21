@@ -40,6 +40,14 @@
       "target": "zip",
       "signAndEditExecutable": false
     },
-    "artifactName": "NextStep-${os}-${arch}.${ext}"
+    "artifactName": "NextStep-${os}-${arch}.${ext}",
+    "protocols": [
+      {
+        "name": "NextStep 로그인",
+        "schemes": [
+          "nextstep"
+        ]
+      }
+    ]
   }
 }
