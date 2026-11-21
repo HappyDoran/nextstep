@@ -68,7 +68,7 @@ sh scripts/home-deploy.sh   # 받기·설치·서버/웹 빌드·서비스 재�
 | NEXTSTEP_API_PORT | 서버 | 4100 |
 | NEXTSTEP_DB_PATH | 서버 | 서버 실행 cwd의 `.data/nextstep.sqlite`. 공유하려면 절대 경로 지정 |
 | NEXTSTEP_API_URL | 웹 서버 route | http://127.0.0.1:4100. 브라우저로 전달하지 않음 |
-| NEXTSTEP_WEB_URL | 구글 로그인 리디렉션 주소(`/api/auth/google/callback`)·데스크톱 앱이 여는 주소 | 개발 기본 http://127.0.0.1:3100. 홈서버에서는 사설망 HTTPS 주소로 지정. 데스크톱 앱은 원격이면 HTTPS만 허용하고, 환경 변수가 없으면 앱 사용자 데이터 폴더의 `settings.json`의 `webUrl`을 읽음(macOS 설치 앱은 `~/Library/Application Support/NextStep/`, `pnpm dev:desktop`은 `~/Library/Application Support/@nextstep/desktop/`로 서로 다름. 없으면 개발 기본 주소를 열어 홈서버 사용 시 빈 창이 됨) |
+| NEXTSTEP_WEB_URL | 구글 로그인 리디렉션 주소(`/api/auth/google/callback`)·데스크톱 앱이 여는 주소 | 개발 기본 http://127.0.0.1:3100. 홈서버에서는 사설망 HTTPS 주소로 지정. 데스크톱 앱은 원격이면 HTTPS만 허용하고, 환경 변수가 없으면 앱 사용자 데이터 폴더의 `settings.json`의 `webUrl`을 읽음(macOS 설치 앱은 `~/Library/Application Support/NextStep/`, `pnpm dev:desktop`은 `~/Library/Application Support/@nextstep/desktop/`로 서로 다름. 둘 다 없으면 설치 앱은 홈서버 주소 `https://doran-server.tail70f0b3.ts.net`, 개발 실행은 개발 기본 주소를 엶. 연결하지 못하면 Tailscale 연결 확인 안내 창을 띄움) |
 | NEXTSTEP_GOOGLE_CLIENT_ID·NEXTSTEP_GOOGLE_CLIENT_SECRET | 서버 | 구글 OAuth 웹 클라이언트 ID·비밀값(없으면 로그인 불가 안내). 승인된 리디렉션 URI는 `NEXTSTEP_WEB_URL/api/auth/google/callback`. 비밀값은 홈서버 `nextstep.env`(권한 600)에만 둠 |
 | NEXTSTEP_DISCORD_WEBHOOK_URL | 서버 | 미등록 계정의 초대 코드 요청 알림(구글 이메일·그 계정 전용 코드)을 보낼 Discord 웹훅. 없으면 요청을 보내지 못했다고 안내. 홈서버는 `#nextstep` 웹훅을 `nextstep.env`에 둠 |
 | NEXTSTEP_GOOGLE_AUTH_URL·NEXTSTEP_GOOGLE_TOKEN_URL | 서버(테스트용) | 구글 인가·토큰 주소. e2e·서버 테스트만 모의 서버(`apps/server/tests/fake-google.mjs`, Discord 웹훅도 흉내)로 바꿈 |

@@ -8,6 +8,8 @@ import { noticeFor, type LatestRefresh } from './notify.js';
 // 서버의 마지막 공고 갱신 결과를 1분마다 확인해 OS 알림을 보낸다. 서버 작업은 서버가 한다(기술 설계 E절).
 const POLL_MS = 60_000;
 const PARTITION = 'persist:nextstep';
+// 설치 앱의 기본 서비스 주소(홈서버 Tailscale HTTPS). 개발 실행(pnpm dev)은 같은 컴퓨터의 개발 서버가 기본이다.
+const HOME_SERVER = 'https://doran-server.tail70f0b3.ts.net';
 type Settings = { webUrl?: string; lastNotifiedId?: string };
 
 let service: URL;
@@ -43,7 +45,11 @@ function createWindow() {
   contents.on('will-redirect', (event, target) => { if (!isServiceNavigation(target, service)) event.preventDefault(); });
   contents.on('will-attach-webview', event => event.preventDefault());
   contents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => {
-    if (mainFrame && code !== -3) { status = '서비스에 연결하지 못함'; updateTray(); }
+    if (!mainFrame || code === -3) return;
+    status = '서비스에 연결하지 못함';
+    updateTray();
+    // 빈 창만 남지 않게 이유를 알린다(초대 사용자는 Tailscale 연결이 먼저다).
+    if (window?.isVisible() || !app.getLoginItemSettings().wasOpenedAtLogin) void dialog.showMessageBox({ type: 'warning', message: '서비스에 연결하지 못했습니다.', detail: `${service.host}에 연결되지 않습니다. Tailscale 연결을 확인한 뒤 보기 > 새로고침을 누르세요.` });
   });
   // 창 닫기는 숨기기다. 종료는 아이콘 메뉴의 '종료'로만 한다.
   window.on('close', event => { if (!quitting) { event.preventDefault(); window?.hide(); app.dock?.hide(); } });
@@ -128,7 +134,7 @@ else {
   // Windows는 이미 실행 중인 앱에 두 번째 실행의 인자로 주소가 온다.
   app.on('second-instance', (_event, argv) => { const link = argv.find(arg => arg.startsWith('nextstep://')); if (link) openLoginLink(link); else showWindow(); });
   void app.whenReady().then(() => {
-    try { service = serviceUrl(process.env.NEXTSTEP_WEB_URL ?? readSettings()?.webUrl); } catch {
+    try { service = serviceUrl(process.env.NEXTSTEP_WEB_URL ?? readSettings()?.webUrl ?? (app.isPackaged ? HOME_SERVER : undefined)); } catch {
       dialog.showErrorBox('NextStep을 시작하지 못했습니다.', '서비스 주소를 확인하세요. 원격 주소는 HTTPS여야 합니다.');
       app.quit();
       return;
