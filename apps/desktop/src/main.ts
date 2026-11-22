@@ -51,8 +51,6 @@ function createWindow() {
   contents.on('will-redirect', (event, target) => { if (!isServiceNavigation(target, service)) event.preventDefault(); });
   contents.on('will-attach-webview', event => event.preventDefault());
   contents.on('did-finish-load', () => { if (loadFailed) return; void poll(); });
-  // 로그인·로그아웃은 페이지를 다시 불러오지 않으므로, 창을 떠나 아이콘 메뉴로 갈 때 상태를 바로 다시 읽는다.
-  window.on('blur', () => { if (!loadFailed) void poll(); });
   contents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => {
     if (!mainFrame || code === -3) return;
     loadFailed = true;
@@ -175,6 +173,12 @@ else {
     const partition = session.fromPartition(PARTITION);
     partition.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     partition.setPermissionCheckHandler(() => false);
+    // 로그인·로그아웃·계정 삭제는 페이지를 다시 불러오지 않는 화면 안 전환이다. 그 요청이 끝나면 아이콘 메뉴 상태를 바로 다시 읽는다
+    // (macOS에서 아이콘을 눌러도 창이 포커스를 잃지 않아 창 이벤트로는 알 수 없다). 포트는 패턴에서 생략하면 모두 맞는다.
+    const api = `${service.protocol}//${service.hostname}/api`;
+    partition.webRequest.onCompleted({ urls: [`${api}/auth/*`, `${api}/account`] }, details => {
+      if (details.method !== 'GET' && !loadFailed) void poll();
+    });
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       { label: 'NextStep', submenu: [{ label: '창 닫기', role: 'close' }, { label: 'NextStep 종료', click: () => { quitting = true; app.quit(); } }] },
       { label: '편집', submenu: [{ role: 'undo', label: '실행 취소' }, { role: 'redo', label: '다시 실행' }, { type: 'separator' }, { role: 'cut', label: '잘라내기' }, { role: 'copy', label: '복사' }, { role: 'paste', label: '붙여넣기' }, { role: 'selectAll', label: '전체 선택' }] },
