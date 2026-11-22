@@ -54,7 +54,6 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
     onSuccess: started => { client.setQueryData(noticeKey(me), null); client.setQueryData(draftKey(me), started); },
   });
   const discard = useMutation({ mutationFn: () => call('profile/draft', { method: 'DELETE' }), onSuccess: clearDraft });
-  const fill = (p: Profile) => { setFilledId(job?.id ?? null); setForm({ ...form, jobFamilies: p.jobFamilies, experiences: p.experiences, skills: p.skills, summary: p.summary }); setSkills(p.skills.join(', ')); };
   // 이 구역에서 끝난 초안을 보고 있으면 다른 화면 알림은 필요 없다.
   const finished = job?.finishedAt ? job.id : null;
   useEffect(() => { if (finished) client.setQueryData(noticeKey(me), null); }, [client, finished, me]);
@@ -73,7 +72,7 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
       {draftError && <Button variant="quiet" disabled={discard.isPending} onClick={() => discard.mutate()}>실패 안내 지우기</Button>}
     </div>
     {ready && applied && <DraftReview now={current()} next={applied} otherEdits={JSON.stringify({ ...current(), jobFamilies: 0, experiences: 0, skills: 0, summary: 0 }) !== JSON.stringify({ ...initial, jobFamilies: 0, experiences: 0, skills: 0, summary: 0 })} busy={save.isPending || discard.isPending}
-      onSave={() => save.mutate({ profile: applied, consume: true })} onFill={() => fill(ready)} onDiscard={() => discard.mutate()} />}
+      onSave={() => save.mutate({ profile: applied, consume: true })} onFill={() => { setFilledId(job?.id ?? null); setForm(applied); setSkills(ready.skills.join(', ')); }} onDiscard={() => discard.mutate()} />}
     <fieldset className="flex flex-col gap-3"><legend className="mb-2 text-body-sm font-semibold">희망 직무 (복수 선택)</legend>
       {FAMILIES.map(family => <div key={family} className="flex flex-wrap items-center gap-3">
         <label className="inline-flex h-control-sm cursor-pointer items-center gap-2 rounded-full border border-border-strong bg-card px-3 text-body-sm text-muted-foreground has-[:checked]:border-primary has-[:checked]:bg-secondary has-[:checked]:font-semibold has-[:checked]:text-secondary-foreground has-[:focus-visible]:outline has-[:focus-visible]:outline-focus has-[:focus-visible]:outline-ring min-w-32"><input type="checkbox" checked={form.jobFamilies.includes(family)} onChange={() => setForm({ ...form, jobFamilies: toggle(form.jobFamilies, family) })} className="size-icon-sm accent-primary" />{family}</label>

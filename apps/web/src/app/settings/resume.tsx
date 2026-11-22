@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, LoaderCircle, Trash2, Upload } from 'lucide-react';
 import { Button, Segmented, Tag, Textarea } from '@nextstep/design-system';
 import { documentVersionSchema, resumeSchema, resumeFailureSchema, DOCUMENT_VERSION_MAX, type DocumentKind, type Me, type Resume } from '@nextstep/contracts';
-import { call, optional, RequestError, useWhen } from '../api-client';
+import { call, optional, RequestError, SLOW, useWhen } from '../api-client';
 
 const FAILURES: Record<string, string> = {
   unsupported_type: 'PDF·MD·Notion ZIP 파일만 등록할 수 있습니다.',
@@ -28,7 +28,7 @@ async function upload(kind: DocumentKind, file: File) {
     headers: { 'content-type': name.endsWith('.pdf') ? 'application/pdf' : name.match(/\.(md|markdown)$/) ? 'text/markdown' : name.endsWith('.zip') ? 'application/zip' : 'application/octet-stream', 'x-filename': encodeURIComponent(file.name) },
     body: file,
     // 이미지 쪽 글자 인식(OCR)이 있으면 오래 걸린다.
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(SLOW),
   });
   const keep = `기존 ${DOCUMENT_NAMES[kind]}는 유지됩니다.`;
   if (response.status === 422 || response.status === 415) {
@@ -54,7 +54,6 @@ function DocumentPanel({ me, kind }: { me: Me; kind: DocumentKind }) {
   const label = DOCUMENT_NAMES[kind];
   const client = useQueryClient();
   const key = ['documents', kind, me.id];
-  const versionsKey = ['documents', kind, 'versions', me.id];
   const query = useQuery({
     queryKey: key, retry: false,
     queryFn: async () => {
@@ -62,7 +61,7 @@ function DocumentPanel({ me, kind }: { me: Me; kind: DocumentKind }) {
       return doc === null ? null : resumeSchema.parse(doc);
     },
   });
-  const versions = useQuery({ queryKey: versionsKey, retry: false, queryFn: async () => documentVersionSchema.array().parse(await call(`documents/${kind}/versions`)) });
+  const versions = useQuery({ queryKey: ['documents', kind, 'versions', me.id], retry: false, queryFn: async () => documentVersionSchema.array().parse(await call(`documents/${kind}/versions`)) });
   const refresh = () => client.invalidateQueries({ queryKey: ['documents', kind] });
   const doc = query.data;
   const save = useMutation({ mutationFn: (f: File) => upload(kind, f), onSuccess: refresh });

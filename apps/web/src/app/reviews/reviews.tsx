@@ -20,7 +20,7 @@ export function Reviews() {
 
 const RANK: Record<string, number> = { 미지원: 0, '지원 완료': 1, '전형 진행중': 2, 합격: 3, 불합격: 3 };
 // 메일 상태가 지원 건 상태보다 앞 단계이거나 같으면 연결해도 상태가 바뀌지 않는다. 최종 결과끼리 다르면 충돌이라 제외한다.
-const keepsStatus = (r: Review, app?: Application) => !!app && r.classification !== '모호'
+const keepsStatus = (r: Review, app?: Application) => !!app
   && (r.classification === app.status || RANK[r.classification]! < RANK[app.status]! || (r.classification === '열람'));
 
 // 사용자 행동이 필요한 메일만 남긴다. 처리하지 않아도 재촉하지 않고 목록에 그대로 둔다.

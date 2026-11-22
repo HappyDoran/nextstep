@@ -2,7 +2,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { Button, buttonClass, Field, GoogleMark, Input } from '@nextstep/design-system';
-import { pendingSchema, type Me, type Pending } from '@nextstep/contracts';
+import { pendingSchema, type Pending } from '@nextstep/contracts';
 import { call, ME_KEY, optional, useMe } from './api-client';
 import { clearViews } from './prefs';
 
@@ -18,16 +18,18 @@ const takeParam = (name: string) => typeof window === 'undefined' ? null : new U
 // 사용자가 바뀌면 이전 사용자의 캐시를 모두 버린다. 계정 조회·대기 조회는 'auth' 아래 두어 지우지 않고 값만 바꾼다
 // (화면 여러 곳이 구독하는 쿼리를 지우면 옛 값을 계속 보여 준다).
 const dropUserData = (client: QueryClient) => client.removeQueries({ predicate: query => query.queryKey[0] !== ME_KEY[0] });
-function resetSession(client: QueryClient, next: Me | null) {
+/** 로그아웃·계정 삭제 뒤: 이전 사용자의 캐시·보기 조건을 버리고 로그인 전 상태로 둔다. */
+function resetSession(client: QueryClient) {
+  clearViews();
   dropUserData(client);
-  client.setQueryData(ME_KEY, next);
+  client.setQueryData(ME_KEY, null);
   client.setQueryData(PENDING_KEY, null);
 }
 
 /** 로그아웃: 서버 세션을 끝내고 이전 사용자의 캐시·보기 조건을 버린다(계정 화면·계정 메뉴 공용). */
 export function useSignOut() {
   const client = useQueryClient();
-  return useMutation({ mutationFn: () => call('auth/logout', { method: 'POST' }), onSuccess: () => { clearViews(); resetSession(client, null); } });
+  return useMutation({ mutationFn: () => call('auth/logout', { method: 'POST' }), onSuccess: () => resetSession(client) });
 }
 
 const fetchPending = async (): Promise<Pending | null> => { const data = await optional('auth/pending', 401); return data === null ? null : pendingSchema.parse(data); };
@@ -61,7 +63,7 @@ export function Account() {
     onSuccess: reload,
   });
   const logout = useSignOut();
-  const remove = useMutation({ mutationFn: () => call('account', { method: 'DELETE' }), onSuccess: () => { clearViews(); resetSession(client, null); } });
+  const remove = useMutation({ mutationFn: () => call('account', { method: 'DELETE' }), onSuccess: () => resetSession(client) });
 
   if (me.isPending || (me.data === null && pending.isPending)) return <p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p>;
   if (me.isError) return <p role="status" className="text-muted-foreground">계정 상태를 확인하지 못했습니다. 서버 연결을 확인하세요.</p>;

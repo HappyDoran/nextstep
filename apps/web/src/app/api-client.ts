@@ -98,7 +98,6 @@ export function useMe() {
   return useQuery({ queryKey: ME_KEY, queryFn: fetchMe, retry: false, refetchOnWindowFocus: false });
 }
 
-
 /** 이 기기 화면 설정(prefs.ts). 바꾸면 이 창과 다른 창이 함께 다시 그린다. */
 export const usePrefs = () => useSyncExternalStore(prefsStore.subscribe, prefsStore.get, prefsStore.server);
 /** 설정 일반 구역의 시간 표기(상대·절대)를 따르는 시각 문구. */
