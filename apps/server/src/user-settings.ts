@@ -23,8 +23,8 @@ export function registerUserSettings(app: FastifyInstance, db: DatabaseSync) {
     const job = db.prepare("SELECT status, result, finished_at FROM jobs WHERE user_id = ? AND kind = 'refresh' AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1").get(user.id) as { status: string; result: string | null; finished_at: string } | undefined;
     const parsed = JSON.parse(job?.result ?? '{}') as { sourceFailures?: string[]; sourceCollected?: Record<string, number> };
     const failures = parsed.sourceFailures ?? [];
-    // 작업 전체가 실패(서류 없음 등)면 출처를 확인하지 못한 것이다.
-    const ran = job && job.status !== '실패';
+    // 출처를 시도하지 않은 실패(서류 없음 등)만 확인 전이다. 모든 출처가 실패한 갱신(collect_failed)은 출처별 수집 기록이 있다.
+    const ran = job && (job.status !== '실패' || parsed.sourceCollected !== undefined);
     return connectionStatusSchema.parse({
       checkedAt: new Date().toISOString(),
       ai: { model: ollamaModel(), status: await ollamaStatus() },

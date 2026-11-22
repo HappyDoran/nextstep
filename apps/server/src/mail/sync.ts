@@ -73,7 +73,8 @@ export function createMailHandler(db: DatabaseSync, secretKey: Buffer, source: M
     let rangeIncomplete = false;
     let more = false;
     for (const batch of batches) {
-      if (batch.oldestDate && batch.oldestDate > since.toISOString()) rangeIncomplete = true;
+      // IMAP 동기화 제한은 받은편지함 기준으로 본다(새로 만든 개인 편지함은 원래 오래된 메일이 없다).
+      if (batch.mailbox === 'INBOX' && batch.oldestDate && batch.oldestDate > since.toISOString()) rangeIncomplete = true;
       if (!batch.complete) more = true;
       if (!storeBatch(db, job.userId, batch, counts, bodies)) return { status: '실패', errorCode: 'disconnected', result: counts };
       // 메일 처리를 모두 저장한 뒤 위치를 전진시킨다. 받은 메일이 없으면 위치를 바꾸지 않는다

@@ -97,6 +97,13 @@ test('갱신 작업: 세 출처를 수집하고 원문 없이 조건·판정을 
     assert.equal(conn.sources.find(x => x.source === 'jobkorea').status, '정상');
     assert.deepEqual((await s.app.inject({ url: '/settings/connections', headers: { cookie: other } })).json().sources.map(x => x.status), ['확인 전', '확인 전', '확인 전', '확인 전', '확인 전']);
     assert.equal((await s.app.inject({ url: '/settings/connections' })).statusCode, 401);
+    // 모든 출처가 막혀 갱신이 실패(collect_failed)해도 출처별 실패로 보인다(확인 전이 아니다).
+    const blockedDb = new DatabaseSync(s.path);
+    const otherId = blockedDb.prepare('SELECT id FROM users WHERE email = ?').get('latest-other@example.com').id;
+    blockedDb.prepare("INSERT INTO jobs (id, user_id, kind, status, error_code, result, created_at, finished_at) VALUES ('blocked-all', ?, 'refresh', '실패', 'collect_failed', ?, ?, ?)")
+      .run(otherId, JSON.stringify({ sourceFailures: ['saramin:blocked'], sourceCollected: { saramin: 0 } }), new Date().toISOString(), new Date().toISOString());
+    blockedDb.close();
+    assert.equal((await s.app.inject({ url: '/settings/connections', headers: { cookie: other } })).json().sources.find(x => x.source === 'saramin').status, '실패');
     const raw = new DatabaseSync(s.path);
     assert.equal(JSON.stringify(raw.prepare('SELECT * FROM postings').all()).includes('필수: React 3년'), false);
     raw.close();
