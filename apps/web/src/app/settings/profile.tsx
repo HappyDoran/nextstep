@@ -47,8 +47,8 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
   const job = useProfileDraft(me).data ?? null;
   const running = job !== null && ACTIVE_JOB.includes(job.status);
   const ready = job?.status === '성공' ? profileSchema.safeParse(job.result?.profile).data ?? null : null;
-  // 초안은 이력서 사실(직무·경력·기술·요약)만 바꾸고 사용자가 고른 선호는 그대로 둔다.
-  const applied = ready && { ...current(), jobFamilies: ready.jobFamilies, experiences: ready.experiences, skills: ready.skills, summary: ready.summary };
+  // 초안은 서류 사실(직무·경력·기술)만 바꾸고 사용자가 고른 선호는 그대로 둔다. 요약이 비어 있으면 지금 요약을 유지한다.
+  const applied = ready && { ...current(), jobFamilies: ready.jobFamilies, experiences: ready.experiences, skills: ready.skills, summary: ready.summary || current().summary };
   const suggest = useMutation({
     mutationFn: async () => jobSchema.parse(await call('profile/suggest', { method: 'POST', messages: { 409: '이력서를 먼저 등록하세요.' } })),
     onSuccess: started => { client.setQueryData(noticeKey(me), null); client.setQueryData(draftKey(me), started); },
@@ -63,12 +63,12 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
   const setYears = (family: JobFamily, value: string) => setForm({ ...form, experiences: [...form.experiences.filter(e => e.jobFamily !== family), ...(value === '' ? [] : [{ jobFamily: family, years: Number(value) }])] });
 
   return <form className="flex flex-col gap-5" onSubmit={e => { e.preventDefault(); save.mutate({ profile: current(), consume: ready !== null && filledId === job?.id }); }}>
-    <p className="text-body-sm text-muted-foreground">사용 중인 이력서로 직무·경력·기술·요약 초안을 만들 수 있어요. 다른 화면으로 가도 계속 만들고, 다 되면 알려 드려요.</p>
+    <p className="text-body-sm text-muted-foreground">사용 중인 서류(이력서·경력기술서·포트폴리오)로 직무·경력·기술 초안을 만들 수 있어요. 다른 화면으로 가도 계속 만들고, 다 되면 알려 드려요.</p>
     <div className="flex flex-wrap items-center gap-3">
       <Button variant="secondary" disabled={running || suggest.isPending} onClick={() => suggest.mutate()}>
         {running ? <><LoaderCircle className={`${buttonIcon} animate-spin motion-reduce:animate-none`} aria-hidden="true" focusable="false" />초안 만드는 중</> : ready ? '초안 다시 만들기' : '이력서로 초안 만들기'}
       </Button>
-      {running && <p role="status" className="text-body-sm text-muted-foreground">보통 1~2분 걸려요.</p>}
+      {running && <p role="status" className="text-body-sm text-muted-foreground">서류 분량에 따라 몇 분 걸릴 수 있어요. 공고 갱신이 같은 서류를 이미 읽었으면 바로 끝나요.</p>}
       {draftError && <Button variant="quiet" disabled={discard.isPending} onClick={() => discard.mutate()}>실패 안내 지우기</Button>}
     </div>
     {ready && applied && <DraftReview now={current()} next={applied} otherEdits={JSON.stringify({ ...current(), jobFamilies: 0, experiences: 0, skills: 0, summary: 0 }) !== JSON.stringify({ ...initial, jobFamilies: 0, experiences: 0, skills: 0, summary: 0 })} busy={save.isPending || discard.isPending}

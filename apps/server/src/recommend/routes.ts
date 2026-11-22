@@ -4,7 +4,7 @@ import { linkRequestSchema, profileDraftSchema, profileSchema, recommendationFee
 import { requireUser } from '../auth.js';
 import { suggestProfile } from '../prompts/profile.js';
 import { enqueue, getJob, latestJob, runNext, type ClaimedJob, type JobOutcome } from './jobs.js';
-import { parsePostingLink, rowFacts } from './pipeline.js';
+import { documentsText, parsePostingLink, rowFacts } from './pipeline.js';
 import { passesFilter } from '../sources/filter.js';
 
 type Row = {
@@ -26,9 +26,9 @@ function postingStatus(row: Row, now: string) {
 /** 프로필 초안 작업: 실행 시점의 사용 중 이력서로 초안을 만들어 작업 결과에 둔다(저장은 사용자가 한다). */
 export function createSuggestHandler(db: DatabaseSync) {
   return async (job: ClaimedJob): Promise<JobOutcome> => {
-    const resume = db.prepare("SELECT text FROM documents WHERE user_id = ? AND kind = 'resume' AND active = 1").get(job.userId) as { text: string } | undefined;
-    if (!resume) return { status: '실패', errorCode: 'no_resume', result: {} };
-    return { status: '성공', result: { profile: await suggestProfile(resume.text) } };
+    const docs = documentsText(db, job.userId);
+    if (!docs) return { status: '실패', errorCode: 'no_resume', result: {} };
+    return { status: '성공', result: { profile: await suggestProfile(docs.text) } };
   };
 }
 

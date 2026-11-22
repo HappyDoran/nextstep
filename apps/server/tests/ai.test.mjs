@@ -109,3 +109,17 @@ test('응답 캐시는 같은 입력이면 다시 요청하지 않고 소유자�
     assert.equal(statSync(join(dir, file)).mode & 0o777, 0o600);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('프로필 초안은 지원자 추출의 직무별 실무 개월을 합쳐 직무·경력 연수를 만들고 요약은 비운다', async () => {
+  const { profileFromCandidate } = await import('../dist/prompts/profile.js');
+  const p = profileFromCandidate({
+    careers: [{ family: '프론트엔드', months: 12, stack: ['React'] }, { family: '앱개발', months: 18, stack: ['Swift'] }, { family: '프론트엔드', months: 6, stack: [] }, { family: 'PO', months: 24, stack: [] }],
+    skills: ['React', ' React ', 'Swift'],
+  });
+  assert.deepEqual(p.jobFamilies, ['프론트엔드', '앱 개발']);
+  assert.deepEqual(p.experiences, [{ jobFamily: '프론트엔드', years: 1.5 }, { jobFamily: '앱 개발', years: 1.5 }]);
+  assert.deepEqual(p.skills, ['React', 'Swift']);
+  assert.equal(p.summary, '');
+  // 목록 밖 직무만 있으면 기본 직무 하나로 둔다(프로필은 직무가 하나 이상이어야 함).
+  assert.deepEqual(profileFromCandidate({ careers: [], skills: [] }).jobFamilies, ['프론트엔드']);
+});
