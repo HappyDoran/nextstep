@@ -10,7 +10,7 @@ last_verified: 2026-11-22
 
 ## 0. 지금 쓰는 방식 (2026-11-20)
 
-홈서버에서 상시 실행 중이다(`https://doran-server.tail70f0b3.ts.net`, README 설치와 실행). 코드를 바꾸면 push 후 `sh scripts/home-deploy.sh`. Mac의 launchd 서비스는 지웠으므로 Mac에서는 개발 서버(`pnpm dev`)를 자유롭게 쓴다. 개발 DB는 Mac의 `apps/server/.data`(이전 전 사본)이며 운영 자료와 별개다.
+홈서버에서 상시 실행 중이다(`https://doran-server.tail70f0b3.ts.net`, docs/DEVELOPMENT.md 설치와 실행). 코드를 바꾸면 push 후 `sh scripts/home-deploy.sh`. Mac의 launchd 서비스는 지웠으므로 Mac에서는 개발 서버(`pnpm dev`)를 자유롭게 쓴다. 개발 DB는 Mac의 `apps/server/.data`(이전 전 사본)이며 운영 자료와 별개다.
 
 ## 남은 일 (2026-11-22 정리)
 

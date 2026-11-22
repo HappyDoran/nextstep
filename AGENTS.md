@@ -1,7 +1,7 @@
 ---
 title: NextStep 에이전트 작업 규칙
 kind: rule
-last_verified: 2026-11-18
+last_verified: 2026-11-22
 ---
 
 # NextStep 에이전트 작업 규칙
@@ -29,7 +29,8 @@ last_verified: 2026-11-18
 | 구현 순서(P1 단계)·현재 상태·미결 결정 | [백로그](docs/spec/백로그.md) | 단계 착수·완료, 결정 확정 |
 | 검증 결과·출처 조사 기록 | [검증 기록](docs/spec/검증기록.md) | 출처·모델·실제 흐름 검증 실행, 출처 조사 |
 | 기술 선택·workspace 책임·의존 경계 | [TECH_RULES.md](TECH_RULES.md) | 의존성 추가·교체, workspace 추가, 금지 패턴 |
-| 실행·검증·환경 변수·현재 구현 범위 | [README.md](README.md) | script·명령·환경 변수·구현 범위 변경 |
+| 서비스 소개(사람이 먼저 읽는 개요·주요 기능·기술 스택) | [README.md](README.md) | 사용자에게 보이는 기능·기술 스택 변경 |
+| 실행·검증·환경 변수·현재 구현 범위 | [개발 가이드](docs/DEVELOPMENT.md) | script·명령·환경 변수·구현 범위 변경 |
 | 다음 세션에 이어서 할 순서(상태는 백로그 소유) | [NEXT_SESSION.md](NEXT_SESSION.md) | 세션 종료 시 다음 할 일 변경 |
 | 디자인 기초의 토큰·타입·아이콘 사용법 | [디자인 기초](packages/design-system/README.md) | 토큰·타입·아이콘·Storybook 변경 |
 | 작업 지원 체계·역할 소유 범위·검사 한계 | [AI_AGENT_HARNESS.md](docs/AI_AGENT_HARNESS.md) | 진입점·skill·역할·검사 흐름 변경 |
@@ -69,5 +70,5 @@ last_verified: 2026-11-18
 1. 작업 범위와 완료 조건을 확인한다. 기능 작업은 docs/spec/백로그.md의 가장 앞선 미완료 단계에서 시작하고 끝나면 상태를 갱신한다.
 2. 변경 범위의 소유 문서만 읽고 실제 코드·스키마·테스트로 현재 상태를 확인한다. 기획과 다르면 구현 차이로 보고한다.
 3. 코드와 소유 문서를 함께 바꾸고 frontmatter의 `last_verified`를 갱신한다.
-4. README.md의 검증을 실행하고 `nextstep-review`를 적용한다.
+4. docs/DEVELOPMENT.md의 검증을 실행하고 `nextstep-review`를 적용한다.
 5. 완료 보고와 커밋 본문에 실행한 검증과 실행하지 못한 검증을 구분해 적는다.

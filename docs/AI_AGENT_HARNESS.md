@@ -1,7 +1,7 @@
 ---
 title: AI Agent 작업 지원 체계
 kind: design
-last_verified: 2026-11-07
+last_verified: 2026-11-22
 ---
 
 # AI Agent 작업 지원 체계
@@ -11,7 +11,7 @@ Agent가 과거 대화 없이 작업을 시작해 사실을 찾고, 변경을 �
 ```
 AGENTS.md (= CLAUDE.md)  →  작업 범위·완료 조건 확인(백로그)  →  소유 문서 선택
   →  실제 코드·설정 확인  →  작업 유형별 skill 적용  →  코드·소유 문서 변경
-  →  README.md 검증  →  review  →  커밋 본문에 이유·검증 보존  →  다음 세션
+  →  docs/DEVELOPMENT.md 검증  →  review  →  커밋 본문에 이유·검증 보존  →  다음 세션
 ```
 
 ## 진입점과 skill
@@ -52,4 +52,4 @@ AI 처리 제공자는 미결정이므로 프롬프트 역할은 제공자 결�
 
 pnpm install의 prepare가 clone별 core.hooksPath를 .githooks로 설정한다. pre-commit은 구조와 harness 테스트, commit-msg는 변경 이유·검증을 담을 본문 존재 여부를 검사한다. 본문의 진실성·테스트 적절성은 리뷰 대상이다. hooks는 우회 가능하므로 CI도 전체 검증을 실행한다. CI는 push와 PR에서 실행하지만 저장소의 required check 설정까지 구성한 것은 아니다.
 
-PR template은 역할·변경·이유·검증·인계·문서 동기화를 안내한다. 실제 명령과 현재 검증 범위는 README.md가 소유한다. 브라우저 검증은 로컬 웹과 API 경로를 확인하며 실제 공고 수집·네이버 조회·운영 예약이나 서명된 macOS 배포를 입증하지 않는다.
+PR template은 역할·변경·이유·검증·인계·문서 동기화를 안내한다. 실제 명령과 현재 검증 범위는 docs/DEVELOPMENT.md가 소유한다. 브라우저 검증은 로컬 웹과 API 경로를 확인하며 실제 공고 수집·네이버 조회·운영 예약이나 서명된 macOS 배포를 입증하지 않는다.
