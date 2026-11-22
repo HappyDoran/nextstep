@@ -51,6 +51,8 @@ function createWindow() {
   contents.on('will-redirect', (event, target) => { if (!isServiceNavigation(target, service)) event.preventDefault(); });
   contents.on('will-attach-webview', event => event.preventDefault());
   contents.on('did-finish-load', () => { if (loadFailed) return; void poll(); });
+  // 로그인·로그아웃은 페이지를 다시 불러오지 않으므로, 창을 떠나 아이콘 메뉴로 갈 때 상태를 바로 다시 읽는다.
+  window.on('blur', () => { if (!loadFailed) void poll(); });
   contents.on('did-fail-load', (_event, code, _description, _url, mainFrame) => {
     if (!mainFrame || code === -3) return;
     loadFailed = true;
