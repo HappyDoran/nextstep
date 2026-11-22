@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LoaderCircle } from 'lucide-react';
-import { Button, Field, Input, Textarea } from '@nextstep/design-system';
+import { Button, Field, Input, Loading, Textarea } from '@nextstep/design-system';
 import { jobFamilySchema, jobSchema, profileSchema, type JobFamily, type Me, type Profile } from '@nextstep/contracts';
 import { ACTIVE_JOB, AI_CAUSES, buttonIcon, call, draftKey, noticeKey, optional, RequestError, useProfileDraft, useWhen } from '../api-client';
 
@@ -19,7 +19,7 @@ export function ProfileSetting({ me }: { me: Me }) {
     queryKey: key, retry: false,
     queryFn: async () => (await optional('profile')) as { profile: Profile; updatedAt: string } | null,
   });
-  if (query.isPending) return <p role="status" className="text-muted-foreground">프로필을 불러오고 있습니다.</p>;
+  if (query.isPending) return <Loading label="프로필을 불러오고 있습니다." lines={8} />;
   if (query.isError) return <p role="alert" className="text-destructive">{query.error.message}</p>;
   // 저장할 때마다 key가 바뀌어 폼이 저장값으로 다시 시작한다.
   return <ProfileForm key={query.data?.updatedAt ?? 'new'} me={me} initial={query.data?.profile ?? EMPTY} updatedAt={query.data?.updatedAt ?? null} />;

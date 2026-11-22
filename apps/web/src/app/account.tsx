@@ -1,10 +1,10 @@
 'use client';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { Button, buttonClass, Field, GoogleMark, Input } from '@nextstep/design-system';
+import { Button, buttonClass, Field, GoogleMark, Input, Skeleton } from '@nextstep/design-system';
 import { pendingSchema, type Pending } from '@nextstep/contracts';
 import { call, ME_KEY, optional, useMe } from './api-client';
-import { clearViews } from './prefs';
+import { clearViews, markSignedIn } from './prefs';
 
 const PENDING_KEY = ['auth', 'pending'];
 const START = '/api/auth/google/start';
@@ -21,6 +21,7 @@ const dropUserData = (client: QueryClient) => client.removeQueries({ predicate: 
 /** 로그아웃·계정 삭제 뒤: 이전 사용자의 캐시·보기 조건을 버리고 로그인 전 상태로 둔다. */
 function resetSession(client: QueryClient) {
   clearViews();
+  markSignedIn(false);
   dropUserData(client);
   client.setQueryData(ME_KEY, null);
   client.setQueryData(PENDING_KEY, null);
@@ -65,7 +66,8 @@ export function Account() {
   const logout = useSignOut();
   const remove = useMutation({ mutationFn: () => call('account', { method: 'DELETE' }), onSuccess: () => resetSession(client) });
 
-  if (me.isPending || (me.data === null && pending.isPending)) return <p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p>;
+  // 확인하는 동안 로그인 버튼 자리를 같은 크기로 잡아 두어 버튼이 나타날 때 화면이 밀리지 않게 한다.
+  if (me.isPending || (me.data === null && pending.isPending)) return <div className="grid gap-4"><p role="status" className="sr-only">계정 상태를 확인하고 있습니다.</p><Skeleton className="h-control w-full rounded-control" /><Skeleton className="h-3 w-48 justify-self-center" /></div>;
   if (me.isError) return <p role="status" className="text-muted-foreground">계정 상태를 확인하지 못했습니다. 서버 연결을 확인하세요.</p>;
 
   if (me.data) {

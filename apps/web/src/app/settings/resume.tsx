@@ -2,7 +2,7 @@
 import { useId, useState, type DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, LoaderCircle, Trash2, Upload } from 'lucide-react';
-import { Button, Segmented, Tag, Textarea } from '@nextstep/design-system';
+import { Button, Loading, Segmented, Tag, Textarea } from '@nextstep/design-system';
 import { documentVersionSchema, resumeSchema, resumeFailureSchema, DOCUMENT_VERSION_MAX, type DocumentKind, type Me, type Resume } from '@nextstep/contracts';
 import { call, optional, RequestError, SLOW, useWhen } from '../api-client';
 
@@ -75,7 +75,7 @@ function DocumentPanel({ me, kind }: { me: Me; kind: DocumentKind }) {
   return <div className="grid gap-5">
     <Dropzone label={label} uploading={save.isPending} replacing={Boolean(doc)} onFile={file => save.mutate(file)} />
     {error && <p role="alert" className="text-body-sm text-destructive">{error.message}</p>}
-    {query.isPending ? <p role="status" className="text-body-sm text-muted-foreground">{label}를 불러오고 있어요.</p>
+    {query.isPending ? <Loading label={`${label}를 불러오고 있어요.`} lines={4} className="rounded-surface border border-border bg-card p-5" />
       : query.isError ? <p role="alert" className="text-body-sm text-destructive">{label}를 불러오지 못했어요.</p>
         : doc && <section aria-labelledby={`current-${kind}`} className="grid gap-3 rounded-surface border border-border bg-card p-5">
           <div className="flex items-start gap-3">

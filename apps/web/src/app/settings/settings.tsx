@@ -10,7 +10,7 @@ import { GeneralSetting } from './general';
 import { ProfileSetting } from './profile';
 import { MailSetting } from './mail';
 import { ConnectionPanel } from './connections';
-import { AuthLayout } from '../frame';
+import { AuthLayout, LoadingScreen } from '../frame';
 
 // 설정은 어느 화면에서든 여는 창이다(2026-11-19 결정). 한 번에 한 구역만 보여 준다(기획서 4절).
 // 주소 #settings-<구역>으로 바로 연다(상태바 '연결 확인' → #settings-status).
@@ -44,7 +44,8 @@ export function Settings() {
     const old = decode(window.location.hash.slice(1));
     window.location.replace(`/#settings${isSection(old) ? `-${old}` : ''}`);
   }, [me.data]);
-  if (me.data) return <p role="status" className="p-6 text-muted-foreground">설정을 여는 중입니다.</p>;
+  // 확인 중이거나 로그인했으면(지원 현황 위 설정 창으로 옮기는 중) 같은 로딩 화면을 보인다.
+  if (me.isPending || me.data) return <LoadingScreen />;
   return <AuthLayout>
     <h1 className="text-title-lg">설정</h1>
     <Account />

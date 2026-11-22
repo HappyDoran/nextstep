@@ -65,6 +65,13 @@ export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden="true" className={join('h-3 animate-shimmer rounded-full bg-gradient-to-r from-muted via-border to-muted bg-[length:280%_100%] motion-reduce:animate-none', className)} />;
 }
 
+/** 글 덩어리 자리를 잡는 스켈레톤 줄들. 화면 낭독기에는 label을 읽어 준다(줄 자체는 aria-hidden). */
+export function Loading({ label, lines = 3, className }: { label?: string; lines?: number; className?: string }) {
+  return <div className={join('grid gap-2.5', className)}>
+    {label ? <p role="status" className="sr-only">{label}</p> : null}
+    {Array.from({ length: lines }, (_, i) => <Skeleton key={i} className={i === lines - 1 ? 'w-2/3' : 'w-full'} />)}
+  </div>;
+}
 /** 알림 자리(아래 가운데). 화면 낭독기가 새 알림을 읽도록 늘 그려 두고 안에 Toast를 넣거나 뺀다. */
 export function ToastRegion({ className, children }: PropsWithChildren<{ className?: string }>) {
   return <div role="status" className={join('pointer-events-none fixed inset-x-0 z-10 flex justify-center', className ?? 'bottom-12')}>{children}</div>;

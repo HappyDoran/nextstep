@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, BriefcaseBusiness, Check, Inbox, LoaderCircle, LogOut, Mail, Settings, Star, WifiOff } from 'lucide-react';
-import { AppShell, Button, Logo, LogoMark, NavItem, PageHeader, Rail, StatusBar, Toast, ToastRegion, toastAction } from '@nextstep/design-system';
+import { AppShell, Button, Logo, LogoMark, NavItem, PageHeader, Rail, RowList, Row, Skeleton, StatusBar, Toast, ToastRegion, toastAction } from '@nextstep/design-system';
 import { latestRefreshSchema, reviewSchema, type Me } from '@nextstep/contracts';
 import { ACTIVE_JOB, call, noticeKey, useDraftNotice, useMailConnection, useProfileDraft, useWhen } from './api-client';
 import { LAST_PATH_KEY } from './prefs';
@@ -35,6 +35,30 @@ export function AuthLayout({ children }: { children: ReactNode }) {
     </aside>
     <main className="flex items-center justify-center px-6 py-12"><div className="grid w-full max-w-md gap-8">{children}</div></main>
   </div>;
+}
+
+/**
+ * 로그인 확인을 기다리는 화면. 지난번에 로그인해 있었으면(첫 그리기 전 data-ns-signed-in) 앱 틀 모양, 아니면 로그인 양식 모양의 스켈레톤을 보인다.
+ * 서버 렌더링과 같은 마크업을 두고 CSS로만 고르므로 hydration이 어긋나지 않는다.
+ */
+export function LoadingScreen() {
+  const bar = (w: string) => <Skeleton className={`h-3 ${w}`} />;
+  return <>
+    <p role="status" className="sr-only">불러오고 있습니다.</p>
+    <div className="hidden [[data-ns-signed-in]_&]:block">
+      <AppShell
+        rail={<Rail brand={<LogoMark />}>{[0, 1, 2, 3].map(i => <div key={i} className="grid w-16 justify-items-center gap-1.5 pb-1.5 pt-2"><Skeleton className="size-5 rounded-md" />{bar('w-9')}</div>)}</Rail>}
+        status={<StatusBar start={bar('w-40')} end={bar('w-56')} />}>
+        <PageHeader title={<Skeleton className="h-5 w-24" />} />
+        <div className="mx-auto w-full max-w-content px-7 py-6">
+          <RowList>{[0, 1, 2, 3, 4].map(i => <Row key={i} className="grid-cols-[1fr_10rem]"><div className="grid gap-2">{bar('w-1/3')}{bar('w-1/2')}</div>{bar('w-full')}</Row>)}</RowList>
+        </div>
+      </AppShell>
+    </div>
+    <div className="[[data-ns-signed-in]_&]:hidden">
+      <AuthLayout><div className="grid gap-3">{bar('h-7 w-48')}{bar('w-full')}</div><Skeleton className="h-control w-full rounded-control" /></AuthLayout>
+    </div>
+  </>;
 }
 
 /** 로그인 후 앱 틀: 왼쪽 아이콘 메뉴 · 화면 머리 · 하단 상태바(메일 확인과 공고 갱신 결과). */

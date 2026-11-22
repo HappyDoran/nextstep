@@ -40,6 +40,8 @@ spring 설계값과 애니메이션 라이브러리는 제스처 동작을 구�
 
 진입은 ease-out, 위치 전환은 ease-in-out, hover는 ease를 기본으로 한다. ease-in으로 진입을 늦추지 않는다. 반복 키보드 작업은 진입 애니메이션을 생략한다. 이동은 transform·opacity로 처리하고 레이아웃 크기를 애니메이션하지 않는다. 동작 감소 설정에서는 이동·spring·회전을 없애고, 필요한 시각 전환만 base 길이의 opacity로 처리한다. 움직임(2026-11-22)은 라이브러리 없이 preset의 keyframes·animation만 쓴다: `animate-shimmer`(Skeleton 빛 지나감 1.5초), `animate-fade-up`(Toast·StatePanel 8px 올라오며 나타남), `animate-pop`(Sheet·팝오버 0.96배에서 커지며 나타남, 바탕은 `animate-fade`), `animate-rise`(화면 본문 4px, 투명도 변화 없음 — 깜빡임 방지), `animate-sweep`+`animate-fade-late`(맨 위 진행 막대, 160ms 안에 끝나는 조회에는 보이지 않음), 버튼 누름 `scale(0.97)`. 닫힘 애니메이션은 두지 않는다(네이티브 dialog·popover가 바로 닫힘). 동작 감소에서는 이동을 끄고 나타남만 `animate-fade`로 바꾼다. 드래그·목록 순서 바뀜·숫자 올라감은 해당 화면이 생길 때 이 기준으로 추가한다.
 
+로딩(2026-11-22): 글자만 있는 "불러오고 있습니다" 대신 완성 화면과 같은 자리·크기의 스켈레톤을 둔다. 목록은 `Row`+`Skeleton`, 글 덩어리는 `Loading`(줄 수·화면 낭독용 label), 로그인 확인 중 화면은 웹의 `LoadingScreen`이 지난 로그인 힌트(`data-ns-signed-in`, 첫 그리기 전 스크립트)로 앱 틀 모양 또는 로그인 양식 모양을 CSS로 고른다(hydration 일치). 아직 모르는 숫자는 0 대신 –로 둔다.
+
 ## 공통 컴포넌트
 
 `@nextstep/design-system`에서 가져온다. 상태·API·분류 판정은 넣지 않고 화면이 값을 넘긴다. Storybook `공통/버튼`, `공통/화면 부품`에서 기본·비활성·오류·빈 상태·Light/Dark를 확인한다.

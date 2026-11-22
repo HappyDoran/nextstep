@@ -81,6 +81,12 @@ export function formatWhen(iso: string, format: Prefs['timeFormat'], now = Date.
 const THEME = "(()=>{const d=document.documentElement,m=matchMedia('(prefers-color-scheme: dark)');const s=()=>{d.dataset.nsTheme=m.matches?'dark':'light'};s();m.addEventListener('change',s);if(/Electron/.test(navigator.userAgent)&&/Mac/.test(navigator.platform))d.dataset.nsDesktop='mac'})()";
 // 창 세션의 첫 문서는 경로와 상관없이 표시하고, 그 첫 문서가 '/'이고 앱 밖에서 들어왔을 때만 옮긴다
 // (나중에 '/'를 새로 고치거나 앱 안 링크를 새 탭으로 열 때는 옮기지 않음).
-const PREFS_SCRIPT = `try{var d=document.documentElement,p=JSON.parse(localStorage.getItem(${JSON.stringify(PREFS_KEY)})||'{}')||{},f=${JSON.stringify(FONT_SCALES)}[p.fontScale];if(f)d.style.fontSize=f;if(!sessionStorage.getItem('nextstep:started')){sessionStorage.setItem('nextstep:started','1');var inner=document.referrer&&new URL(document.referrer).origin===location.origin;var t=inner||location.pathname!=='/'||location.search||location.hash?null:p.startScreen==='recommendations'?'/recommendations':p.startScreen==='last'?localStorage.getItem(${JSON.stringify(LAST_PATH_KEY)}):null;if(t&&t!=='/'&&t.charAt(0)==='/')location.replace(t)}}catch(e){}`;
+const PREFS_SCRIPT = `try{var d=document.documentElement;if(localStorage.getItem(${JSON.stringify('nextstep:signed-in')}))d.setAttribute('data-ns-signed-in','');var p=JSON.parse(localStorage.getItem(${JSON.stringify(PREFS_KEY)})||'{}')||{},f=${JSON.stringify(FONT_SCALES)}[p.fontScale];if(f)d.style.fontSize=f;if(!sessionStorage.getItem('nextstep:started')){sessionStorage.setItem('nextstep:started','1');var inner=document.referrer&&new URL(document.referrer).origin===location.origin;var t=inner||location.pathname!=='/'||location.search||location.hash?null:p.startScreen==='recommendations'?'/recommendations':p.startScreen==='last'?localStorage.getItem(${JSON.stringify(LAST_PATH_KEY)}):null;if(t&&t!=='/'&&t.charAt(0)==='/')location.replace(t)}}catch(e){}`;
+/** 로그인 상태 힌트: 다음 첫 그리기에서 로그인 확인을 기다리는 동안 앱 틀 모양(로그인 됨) 또는 로그인 양식 모양 중 맞는 스켈레톤을 보이려고 쓴다. 인증 수단이 아니다. */
+export const SIGNED_IN_KEY = 'nextstep:signed-in';
+export function markSignedIn(on: boolean) {
+  try { if (on) localStorage.setItem(SIGNED_IN_KEY, '1'); else localStorage.removeItem(SIGNED_IN_KEY); } catch { /* 힌트만 못 남김 */ }
+  if (typeof document !== 'undefined') document.documentElement.toggleAttribute('data-ns-signed-in', on);
+}
 /** layout과 global-error가 첫 그리기 전에 넣는 스크립트. */
 export const BOOT_SCRIPT = `${THEME};${PREFS_SCRIPT}`;

@@ -2,7 +2,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { mailConnectionSchema, meSchema, profileDraftSchema, type Job, type Me } from '@nextstep/contracts';
-import { formatWhen, prefsStore } from './prefs';
+import { formatWhen, markSignedIn, prefsStore } from './prefs';
 
 export const ME_KEY = ['auth', 'me'];
 const MESSAGES: Record<number, string> = {
@@ -37,7 +37,7 @@ export async function call(path: string, init?: RequestInit & { messages?: Recor
 export async function optional(path: string, missing = 404) {
   try { return await call(path); } catch (error) { if (error instanceof RequestError && error.status === missing) return null; throw error; }
 }
-const fetchMe = async () => { const data = await optional('auth/me', 401); return data === null ? null : meSchema.parse(data); };
+const fetchMe = async () => { const data = await optional('auth/me', 401); const me = data === null ? null : meSchema.parse(data); markSignedIn(me !== null); return me; };
 
 /** 작업 결과의 분석 실패 원인 코드 → 사용자 문구(추천·메일 결과 공용). 모델·처리 방식은 사용자에게 보이지 않는다. */
 export const AI_CAUSES: Record<string, string> = { ai_network: '분석 연결 실패', ai_timeout: '분석 시간 초과', ai_model_unavailable: '분석 준비 안 됨', ai_http: '분석 오류', ai_invalid_output: '분석 결과 형식 오류' };

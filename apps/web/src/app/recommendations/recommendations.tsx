@@ -6,7 +6,7 @@ import { Button, buttonClass, ClassLabel, classTag, DueDate, Field, Input, Lane,
 import { applicationSchema, jobSchema, profileSchema, resumeSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
 import { ACTIVE_JOB, AI_CAUSES, buttonIcon as icon, call, monthDay, optional, SOURCE_NAMES, useMailConnection, useMe, useStored, useWhen } from '../api-client';
 import { Account } from '../account';
-import { Frame, AuthLayout, progressText, useLatestRefresh } from '../frame';
+import { Frame, AuthLayout, LoadingScreen, progressText, useLatestRefresh } from '../frame';
 import { formatWhen } from '../prefs';
 
 const CLASSES = recommendationClassSchema.options;
@@ -42,7 +42,7 @@ function JobStatus({ job }: { job: Job | null }) {
 
 export function Recommendations() {
   const me = useMe();
-  if (me.isPending) return <AuthLayout><p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p></AuthLayout>;
+  if (me.isPending) return <LoadingScreen />;
   if (!me.data) return <AuthLayout><div className="flex flex-col gap-4"><h1 className="text-title-lg">추천</h1><p>로그인 후 이용하세요.</p><Account /></div></AuthLayout>;
   return <RecommendationList me={me.data} />;
 }
@@ -127,10 +127,10 @@ function RecommendationList({ me }: { me: Me }) {
     {refresh.isError && <p role="alert" className="mb-4 text-body-sm text-destructive">{refresh.error.message}</p>}
 
     <div className="mb-4 flex flex-wrap items-center gap-1.5 text-body-sm text-muted-foreground" role="group" aria-label="분류 필터">
-      <span className="mr-1">판정 <b className="text-foreground tabular-nums">{visible.length}</b>건 중</span>
+      <span className="mr-1">판정 <b className="text-foreground tabular-nums">{list.data ? visible.length : '–'}</b>건 중</span>
       {GROUPS.filter(g => g !== '복구' || counts[g] > 0).map(g => <button key={g} type="button" aria-pressed={filter === g} onClick={() => { setFilter(filter === g ? null : g); setLimit(PAGE); }}
         className={`inline-flex h-control-sm cursor-pointer items-center gap-1.5 rounded-full border px-3 focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring ${filter === g ? 'border-border-strong bg-card font-semibold text-foreground' : 'border-transparent hover:bg-muted'}`}>
-        {g === '복구' ? g : <ClassLabel classification={g} />} <b className="tabular-nums text-foreground">{counts[g]}</b>
+        {g === '복구' ? g : <ClassLabel classification={g} />} <b className="tabular-nums text-foreground">{list.data ? counts[g] : '–'}</b>
       </button>)}
       {filter && <button type="button" onClick={() => setFilter(null)} className="ml-1 cursor-pointer font-semibold text-primary">전체 보기</button>}
     </div>

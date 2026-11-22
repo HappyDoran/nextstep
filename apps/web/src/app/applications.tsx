@@ -2,7 +2,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ExternalLink, Plus, Upload } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, buttonClass, Field, Input, Lane, Row, RowList, RowTrigger, Segmented, Select, Sheet, Skeleton, StatePanel, Tag, Toast, ToastRegion, toastAction, Toggle } from '@nextstep/design-system';
+import { Button, buttonClass, Field, Input, Lane, Row, RowList, RowTrigger, Loading, Segmented, Select, Sheet, Skeleton, StatePanel, Tag, Toast, ToastRegion, toastAction, Toggle } from '@nextstep/design-system';
 import {
   applicationDetailSchema, applicationImportResultSchema, applicationSchema, applicationStatusSchema, readStatusSchema,
   type Application, type ApplicationStatus, type Me,
@@ -179,7 +179,7 @@ function ApplicationDetail({ id, userKey, onClose }: { id: string; userKey: stri
         <Button type="submit" form="application-form" disabled={update.isPending}>저장</Button>
       </div>
     </> : null}>
-    {detail.isPending ? <p role="status" className="text-body-sm text-muted-foreground">상세를 불러오고 있습니다.</p>
+    {detail.isPending ? <Loading label="상세를 불러오고 있습니다." lines={6} />
       : detail.isError ? <p role="alert" className="text-body-sm text-destructive">{detail.error.message}</p>
         : d && <>
           <form id="application-form" onSubmit={submit} className="grid gap-4 md:grid-cols-2">

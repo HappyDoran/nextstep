@@ -2,18 +2,18 @@
 import { useState } from 'react';
 import { Check, Mail } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Field, Input, Segmented, Select, StatePanel, Tag } from '@nextstep/design-system';
+import { Button, Field, Input, Loading, Segmented, Select, StatePanel, Tag } from '@nextstep/design-system';
 import { applicationSchema, mailStatusSchema, reviewBodySchema, reviewSchema, type Application, type Me, type Review } from '@nextstep/contracts';
 import { buttonIcon as icon, call, SLOW, useMe, useWhen } from '../api-client';
 import { Account } from '../account';
-import { Frame, AuthLayout } from '../frame';
+import { Frame, AuthLayout, LoadingScreen } from '../frame';
 
 const STATUSES = mailStatusSchema.exclude(['모호']).options;
 const NO_COMPANY = '회사 미확인';
 
 export function Reviews() {
   const me = useMe();
-  if (me.isPending) return <AuthLayout><p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p></AuthLayout>;
+  if (me.isPending) return <LoadingScreen />;
   if (!me.data) return <AuthLayout><div className="flex flex-col gap-4"><h1 className="text-title-lg">확인 목록</h1><Account /></div></AuthLayout>;
   return <ReviewList me={me.data} />;
 }
@@ -43,7 +43,7 @@ function ReviewList({ me }: { me: Me }) {
 
   return <Frame me={me} title="확인 목록" description="메일에서 애매하게 읽힌 것만 모았어요"
     actions={reviews.data ? <span className="text-body-sm text-muted-foreground">대기 <b className="tabular-nums text-foreground">{waiting}</b> · 보류 <b className="tabular-nums text-foreground">{list.length - waiting}</b></span> : null}>
-    {reviews.isPending ? <p role="status" className="text-muted-foreground">불러오고 있습니다.</p>
+    {reviews.isPending ? <div className="grid min-h-[36rem] grid-cols-[22rem_minmax(0,1fr)] gap-8 rounded-surface border border-border bg-card p-6"><Loading label="확인 목록을 불러오고 있습니다." lines={6} /><Loading lines={8} /></div>
       : reviews.isError ? <StatePanel tone="error" title="확인 목록을 불러오지 못했어요" description={reviews.error.message} actions={<Button variant="secondary" onClick={() => { void reviews.refetch(); }}>다시 시도</Button>} />
         : !current ? <StatePanel title="확인할 메일이 없어요" description="확인할 항목이 없습니다. 메일에서 읽은 내용이 애매하면 여기에 모여요." />
           : <div className="grid min-h-[36rem] grid-cols-[22rem_minmax(0,1fr)] overflow-hidden rounded-surface border border-border bg-card">
@@ -51,7 +51,7 @@ function ReviewList({ me }: { me: Me }) {
               {groups.map(([company, items]) => <QueueGroup key={company} company={company} items={items} apps={apps.data ?? []} currentId={current.id} onSelect={setSelected} onDone={refresh} />)}
             </nav>
             {/* 반영할 상태 기본값은 지원 건 상태로 정하므로 지원 건을 읽은 뒤에 그린다(읽지 못했으면 빈 목록으로). */}
-            {apps.isPending ? <p role="status" className="px-8 py-7 text-muted-foreground">지원 건을 불러오고 있습니다.</p>
+            {apps.isPending ? <Loading label="지원 건을 불러오고 있습니다." lines={8} className="px-8 py-7" />
               : <ReviewDetail key={current.id} review={current} apps={apps.data ?? []} onDone={() => { advance(current.id); refresh(); }} />}
           </div>}
   </Frame>;
@@ -119,7 +119,7 @@ function ReviewDetail({ review, apps, onDone }: { review: Review; apps: Applicat
           <button type="button" onClick={() => setFullOpen(!fullOpen)} className="ml-auto inline-flex cursor-pointer items-center gap-1 font-bold text-primary"><Mail className="size-icon-sm shrink-0 stroke-icon" aria-hidden="true" focusable="false" />{fullOpen ? '접기' : '메일 전체 보기'}</button>
         </div>
         {!fullOpen ? <p className="text-muted-foreground">{review.evidence ? `근거: ${review.evidence}` : '저장된 근거 구절이 없습니다.'}</p>
-          : full.isPending ? <p role="status" className="text-muted-foreground">메일함에서 읽고 있습니다.</p>
+          : full.isPending ? <Loading label="메일함에서 읽고 있습니다." lines={5} />
             : full.isError ? <p role="alert" className="text-destructive">{full.error.message}</p>
               : <p className="max-h-72 overflow-auto whitespace-pre-wrap leading-relaxed">{full.data.text || '본문이 비어 있습니다.'}</p>}
       </div>

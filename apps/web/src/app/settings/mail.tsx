@@ -1,7 +1,7 @@
 'use client';
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Field, Input, Select } from '@nextstep/design-system';
+import { Button, Field, Input, Loading, Select } from '@nextstep/design-system';
 import { jobSchema, type Me } from '@nextstep/contracts';
 import { ACTIVE_JOB, AI_CAUSES, call, SLOW, useMailConnection, useWhen } from '../api-client';
 
@@ -35,7 +35,7 @@ export function MailSetting({ me }: { me: Me }) {
   const [keep, setKeep] = useState(true);
   const disconnect = useMutation({ mutationFn: () => call(`mail/connection?keepApplications=${keep}`, { method: 'DELETE' }), onSuccess: () => { client.setQueryData(key, null); void client.invalidateQueries({ queryKey: ['applications', me.id] }); } });
 
-  if (query.isPending) return <p role="status" className="text-muted-foreground">메일 연결을 확인하고 있습니다.</p>;
+  if (query.isPending) return <Loading label="메일 연결을 확인하고 있습니다." lines={4} />;
   if (query.isError) return <p role="alert" className="text-destructive">{query.error.message}</p>;
   const conn = query.data;
   if (!conn || reconnect) {
