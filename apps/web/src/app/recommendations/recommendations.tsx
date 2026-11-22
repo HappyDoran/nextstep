@@ -66,9 +66,10 @@ function RecommendationList({ me }: { me: Me }) {
       if (!ACTIVE_JOB.includes(j.status)) { void client.invalidateQueries({ queryKey: key }); void client.invalidateQueries({ queryKey: ['jobs', 'latest', me.id] }); }
       return j;
     },
-    refetchInterval: q => (q.state.data && !ACTIVE_JOB.includes(q.state.data.status) ? false : 3000),
+    // 작업 조회가 실패하면(서버 중단·404) 화면을 잠그지 않고 30초마다만 다시 본다.
+    refetchInterval: q => (q.state.data && !ACTIVE_JOB.includes(q.state.data.status) ? false : q.state.status === 'error' ? 30_000 : 3000),
   });
-  const running = Boolean(jobId) && (!job.data || ACTIVE_JOB.includes(job.data.status));
+  const running = Boolean(jobId) && !job.isError && (!job.data || ACTIVE_JOB.includes(job.data.status));
   // 다른 화면·트레이·자동 갱신이 시작한 갱신도 따라간다: 상태바가 읽는 마지막 갱신이 처리 중이면 그 작업을 조회 대상으로 삼는다.
   const latest = useLatestRefresh(me).data?.job;
   if (latest && ACTIVE_JOB.includes(latest.status) && latest.id !== jobId && !running) setJobId(latest.id);

@@ -84,10 +84,11 @@ function DraftNotice({ me, hidden, onOpen }: { me: Me; hidden: boolean; onOpen: 
   const client = useQueryClient();
   const draft = useProfileDraft(me).data;
   const notice = useDraftNotice(me).data;
-  if (hidden || !notice || draft?.id !== notice) return null;
+  // 알림 영역(role=status)은 늘 두고 안의 내용만 바꿔야 화면 낭독기가 새 알림을 읽는다.
+  if (hidden || !notice || draft?.id !== notice) return <div role="status" className="sr-only" />;
   const close = () => client.setQueryData(noticeKey(me), null);
   const action = '!text-background hover:enabled:bg-transparent hover:enabled:underline';
-  return <div className="pointer-events-none fixed inset-x-0 bottom-12 z-10 flex justify-center">
+  return <div role="status" className="pointer-events-none fixed inset-x-0 bottom-12 z-10 flex justify-center">
     <Toast action={<span className="flex">
       <Button size="sm" variant="quiet" className={action} onClick={() => { close(); onOpen(); }}>{draft.status === '성공' ? '확인하고 저장' : '확인하기'}</Button>
       <Button size="sm" variant="quiet" className={`${action} opacity-70`} aria-label="알림 닫기" onClick={close}>닫기</Button>
@@ -97,7 +98,7 @@ function DraftNotice({ me, hidden, onOpen }: { me: Me; hidden: boolean; onOpen: 
 
 // 처음 불러오는 자료가 있으면 화면 맨 위에 가는 진행 막대를 보인다. 주기 조회·다시 읽기(이미 값이 있음)에는 보이지 않는다.
 function LoadBar() {
-  const loading = useIsFetching({ predicate: query => query.state.data === undefined }) > 0;
+  const loading = useIsFetching({ predicate: query => query.state.status === 'pending' }) > 0;
   if (!loading) return null;
   return <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 z-[60] h-0.5 animate-fade-late overflow-hidden">
     <div className="h-full w-2/5 animate-sweep bg-primary motion-reduce:w-full motion-reduce:animate-none motion-reduce:opacity-40" />
