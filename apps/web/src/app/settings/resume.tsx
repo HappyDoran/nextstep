@@ -2,7 +2,7 @@
 import { useId, useState, type DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, LoaderCircle, Trash2, Upload } from 'lucide-react';
-import { Button, Segmented, Tag } from '@nextstep/design-system';
+import { Button, Segmented, Tag, Textarea } from '@nextstep/design-system';
 import { documentVersionSchema, resumeSchema, resumeFailureSchema, DOCUMENT_VERSION_MAX, type DocumentKind, type Me, type Resume } from '@nextstep/contracts';
 import { call, optional, RequestError, useWhen } from '../api-client';
 
@@ -15,7 +15,7 @@ const FAILURES: Record<string, string> = {
   timeout: '처리 시간이 초과되었습니다. 더 작은 파일로 다시 시도하세요.',
 };
 const DOCUMENT_NAMES: Record<DocumentKind, string> = { resume: '이력서', portfolio: '포트폴리오', career: '경력기술서' };
-const KINDS = (['resume', 'career', 'portfolio'] as const).map(value => ({ value, label: DOCUMENT_NAMES[value] }));
+const KINDS = (['resume', 'career', 'portfolio'] as const).map(value => ({ value, label: value === 'resume' ? '이력서 (필수)' : DOCUMENT_NAMES[value] }));
 const ACCEPT = '.pdf,.md,.markdown,.zip,application/pdf,text/markdown,application/zip';
 const icon = 'size-icon-base shrink-0 stroke-icon';
 const kb = (size: number) => size < 1024 * 1024 ? `${Math.ceil(size / 1024)}KB` : `${(size / 1024 / 1024).toFixed(1)}MB`;
@@ -44,7 +44,7 @@ async function upload(kind: DocumentKind, file: File) {
 export function DocumentsSetting({ me }: { me: Me }) {
   const [kind, setKind] = useState<DocumentKind>('resume');
   return <div className="grid gap-5">
-    <Segmented label="서류 종류" value={kind} onChange={setKind} options={KINDS.map(k => ({ value: k.value, label: k.value === 'resume' ? `${k.label} (필수)` : k.label }))} />
+    <Segmented label="서류 종류" value={kind} onChange={setKind} options={KINDS} />
     <DocumentPanel key={kind} me={me} kind={kind} />
   </div>;
 }
@@ -125,7 +125,7 @@ function TextEditor({ doc, saving, onSave }: { doc: Resume; saving: boolean; onS
   const [draft, setDraft] = useState(doc.text);
   return <details>
     <summary className="cursor-pointer text-body-sm font-semibold text-primary">읽어 들인 내용 확인·고치기</summary>
-    <textarea aria-label="읽어 들인 내용" value={draft} onChange={e => setDraft(e.target.value)} rows={14} className="mt-3 w-full rounded-control border border-border-strong bg-background p-3 font-mono text-caption focus:border-primary focus:outline-none" />
+    <Textarea aria-label="읽어 들인 내용" value={draft} onChange={e => setDraft(e.target.value)} rows={14} className="mt-3 font-mono text-caption" />
     <Button className="mt-3" size="sm" disabled={saving || draft.trim() === doc.text.trim() || !draft.trim()} onClick={() => onSave(draft)}>내용 저장</Button>
   </details>;
 }

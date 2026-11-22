@@ -2,7 +2,7 @@
 // 인가는 API가 세션으로 판단한다. 여기서는 허용 경로와 교차 출처 변경 요청만 거른다.
 export const dynamic = 'force-dynamic';
 const ALLOWED = /^(auth\/(google\/(start|callback)|desktop\/exchange|pending|invite|logout|me)|account|applications(\/[\w-]+)?|settings\/(automation|connections)|documents\/(resume|portfolio|career)(\/text|\/versions(\/[\w-]+(\/active)?)?)?|profile(\/suggest|\/draft)?|postings\/(refresh|link)|recommendations(\/[\w-]+(\/(hide|feedback))?)?|jobs\/[\w-]+|mail\/(connection|sync|backfill)|reviews(\/[\w-]+(\/body)?)?)$/;
-const origin = () => process.env.NEXTSTEP_API_URL ?? 'http://127.0.0.1:4100';
+const ORIGIN = process.env.NEXTSTEP_API_URL ?? 'http://127.0.0.1:4100';
 
 async function forward(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const path = (await params).path.join('/');
@@ -18,7 +18,7 @@ async function forward(request: Request, { params }: { params: Promise<{ path: s
   }
   try {
     // 쿼리 문자열(예: 연결 해제 시 지원 건 유지 여부)도 함께 전달한다.
-    const response = await fetch(new URL(`/${path}${new URL(request.url).search}`, origin()), {
+    const response = await fetch(new URL(`/${path}${new URL(request.url).search}`, ORIGIN), {
       method: request.method,
       headers,
       // 이력서 파일처럼 이진 본문도 그대로 전달한다.

@@ -15,7 +15,7 @@ import { AuthLayout } from '../frame';
 // 설정은 어느 화면에서든 여는 창이다(2026-11-19 결정). 한 번에 한 구역만 보여 준다(기획서 4절).
 // 주소 #settings-<구역>으로 바로 연다(상태바 '연결 확인' → #settings-status).
 // 순서: 일반(이 기기 화면 설정) → 추천에 바로 쓰는 것(프로필·서류) → 연결·자동화 → 점검 → 계정(로그아웃·삭제는 맨 아래).
-export const SECTIONS = [
+const SECTIONS = [
   { value: 'general', label: '일반' },
   { value: 'profile', label: '프로필·필터' },
   { value: 'documents', label: '서류' },
@@ -27,7 +27,7 @@ export const SECTIONS = [
 export type Section = (typeof SECTIONS)[number]['value'];
 // 잘못 인코딩된 해시(예: #%E0)는 설정이 아닌 것으로 본다.
 const decode = (s: string) => { try { return decodeURIComponent(s); } catch { return ''; } };
-export const isSection = (v: string): v is Section => SECTIONS.some(s => s.value === v);
+const isSection = (v: string): v is Section => SECTIONS.some(s => s.value === v);
 /** 주소의 해시에서 열 구역을 읽는다. #settings는 첫 구역(일반), #settings-mail은 메일. 설정이 아니면 null. */
 export function sectionFromHash(hash: string): Section | null {
   const h = decode(hash.replace(/^#/, ''));

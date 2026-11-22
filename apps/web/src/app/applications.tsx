@@ -12,7 +12,6 @@ import { Frame } from './frame';
 
 const STATUSES = applicationStatusSchema.options;
 const READ_STATUSES = readStatusSchema.options;
-const listKey = (userId: string) => ['applications', userId];
 const PAGE = 30;
 
 // 폼 값 중 빈 공고 URL은 보내지 않는다(등록) 또는 null로 지운다(수정).
@@ -27,7 +26,7 @@ function formBody(form: FormData, forUpdate: boolean) {
 
 export function Applications({ me }: { me: Me }) {
   const client = useQueryClient();
-  const key = listKey(me.id);
+  const key = ['applications', me.id];
   const list = useQuery({ queryKey: key, queryFn: async () => applicationSchema.array().parse(await call('applications')), retry: false, refetchOnWindowFocus: false });
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<ApplicationStatus | '전체'>('전체');

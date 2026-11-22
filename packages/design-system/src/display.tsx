@@ -87,8 +87,8 @@ export function LogoMark({ className = 'size-9', label, inverse = false }: { cla
   </svg>;
 }
 /** 마크 + 글자. 로그인 전 소개 면처럼 이름을 함께 보여 줄 때 쓴다. */
-export function Logo({ className, inverse = false }: { className?: string; inverse?: boolean }) {
-  return <span className={join('inline-flex items-center gap-2.5 text-title font-extrabold tracking-tight', className)}><LogoMark className="size-8" inverse={inverse} />NextStep</span>;
+export function Logo({ inverse = false }: { inverse?: boolean }) {
+  return <span className="inline-flex items-center gap-2.5 text-title font-extrabold tracking-tight"><LogoMark className="size-8" inverse={inverse} />NextStep</span>;
 }
 /** 구글 로그인 버튼용 G 마크. 브랜드 4색 리터럴이며 테마 토큰을 쓰지 않는다. */
 export function GoogleMark({ className = 'size-[18px]' }: { className?: string }) {

@@ -1,7 +1,7 @@
 'use client';
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Button, Input, Select } from '@nextstep/design-system';
+import { Button, Field, Input, Select } from '@nextstep/design-system';
 import { jobSchema, type Me } from '@nextstep/contracts';
 import { ACTIVE_JOB, AI_CAUSES, call, SLOW, useMailConnection, useWhen } from '../api-client';
 
@@ -48,11 +48,9 @@ export function MailSetting({ me }: { me: Me }) {
           <li>2단계 인증 관리 &gt; 애플리케이션 비밀번호 관리에서 새 비밀번호를 만들어 아래에 붙여 넣습니다. 네이버 로그인 비밀번호는 넣지 마세요.</li>
         </ol>
       </section>
-      <label className="flex flex-col gap-1.5 text-body-sm font-semibold">네이버 메일 주소<Input name="account" type="email" required autoComplete="off" /></label>
-      <label className="flex flex-col gap-1.5 text-body-sm font-semibold">애플리케이션 비밀번호<Input name="appPassword" type="password" required autoComplete="off" /></label>
-      <label className="flex flex-col gap-1.5 text-body-sm font-semibold">처음 조회할 기간
-        <Select name="days" defaultValue="90">{PERIODS.map(([d, t]) => <option key={d} value={d}>{t}</option>)}</Select>
-      </label>
+      <Field label="네이버 메일 주소"><Input name="account" type="email" required autoComplete="off" /></Field>
+      <Field label="애플리케이션 비밀번호"><Input name="appPassword" type="password" required autoComplete="off" /></Field>
+      <Field label="처음 조회할 기간"><Select name="days" defaultValue="90">{PERIODS.map(([d, t]) => <option key={d} value={d}>{t}</option>)}</Select></Field>
       <label className="flex items-start gap-2 text-body-sm"><input name="consent" type="checkbox" required className="mt-1 size-icon-md accent-primary" />고른 기간의 받은 메일(보낸·임시·휴지통·스팸 제외)을 읽기 전용으로 조회하고, 이후 새 메일을 1시간마다 확인하는 데 동의합니다.</label>
       <div><Button type="submit" disabled={connect.isPending}>연결 검사 후 연결</Button></div>
       {connect.isError && <p role="alert" className="text-body-sm text-destructive">{connect.error.message}</p>}
@@ -61,21 +59,20 @@ export function MailSetting({ me }: { me: Me }) {
   const job = conn.lastJob;
   const result = job?.result as { stored?: number; applied?: number; created?: number; review?: number; more?: boolean; aiFailures?: number; aiFailureCodes?: Record<string, number> } | null | undefined;
   const aiCause = Object.keys(result?.aiFailureCodes ?? {}).map(c => AI_CAUSES[c] ?? c).join(', ');
+  const active = Boolean(job && ACTIVE_JOB.includes(job.status));
   return <div className="flex flex-col gap-4">
     <p role="status" className="text-body-sm font-semibold">
       {conn.account} · {conn.status}{conn.lastSuccessAt ? ` · 최근 성공 ${when(conn.lastSuccessAt)}` : ''}
-      {job ? ` · ${ACTIVE_JOB.includes(job.status) ? '메일을 확인하고 있습니다' : `${job.status}${job.errorCode ? `(${ERRORS[job.errorCode] ?? job.errorCode})` : ''}: 채용 메일 ${result?.stored ?? 0}건, 반영 ${(result?.applied ?? 0) + (result?.created ?? 0)}건, 확인 필요 ${result?.review ?? 0}건${result?.aiFailures ? `, 자동 해석 실패(${aiCause}) — 다시 확인하면 이어서 해석` : ''}${result?.more ? ', 남은 메일은 다음 조회에서 이어서 처리' : ''}`}` : ''}
+      {job ? ` · ${active ? '메일을 확인하고 있습니다' : `${job.status}${job.errorCode ? `(${ERRORS[job.errorCode] ?? job.errorCode})` : ''}: 채용 메일 ${result?.stored ?? 0}건, 반영 ${(result?.applied ?? 0) + (result?.created ?? 0)}건, 확인 필요 ${result?.review ?? 0}건${result?.aiFailures ? `, 자동 해석 실패(${aiCause}) — 다시 확인하면 이어서 해석` : ''}${result?.more ? ', 남은 메일은 다음 조회에서 이어서 처리' : ''}`}` : ''}
     </p>
     {conn.coveredSince && <p className="text-body-sm text-muted-foreground">조회 범위: {new Date(conn.coveredSince).toLocaleDateString('ko-KR')} 이후 받은 메일{conn.backfillSince ? ` · ${new Date(conn.backfillSince).toLocaleDateString('ko-KR')}까지 과거 범위를 넓히는 중(메일 확인 때마다 이어서 가져옴)` : ''}. 자동 갱신을 켜 두면 1시간마다 새 메일을 확인합니다.</p>}
     {conn.rangeIncomplete && <p className="text-body-sm text-destructive">네이버가 IMAP으로 보여 주는 메일이 고른 조회 기간보다 짧습니다. 네이버 메일 환경설정 &gt; POP3/IMAP 설정 &gt; IMAP/SMTP 설정의 &lsquo;IMAP 동기화 메일 제한&rsquo;(기본 1,000통, 최대 5,000통)을 늘린 뒤 다시 연결하면 더 오래된 메일까지 확인합니다.</p>}
     <div className="flex flex-wrap gap-3">
-      <Button disabled={sync.isPending || Boolean(job && ACTIVE_JOB.includes(job.status))} onClick={() => sync.mutate()}>지금 메일 확인</Button>
+      <Button disabled={sync.isPending || active} onClick={() => sync.mutate()}>지금 메일 확인</Button>
     </div>
     {!conn.backfillSince && <div className="flex flex-wrap items-end gap-3">
-      <label className="flex flex-col gap-1.5 text-body-sm font-semibold">과거 범위 넓히기
-        <Select value={pastDays} onChange={e => setPastDays(Number(e.target.value))}>{PAST.map(([d, t]) => <option key={d} value={d}>{t}</option>)}</Select>
-      </label>
-      <Button variant="secondary" disabled={backfill.isPending || Boolean(job && ACTIVE_JOB.includes(job.status))} onClick={() => backfill.mutate()}>더 오래된 메일 가져오기</Button>
+      <Field label="과거 범위 넓히기"><Select value={pastDays} onChange={e => setPastDays(Number(e.target.value))}>{PAST.map(([d, t]) => <option key={d} value={d}>{t}</option>)}</Select></Field>
+      <Button variant="secondary" disabled={backfill.isPending || active} onClick={() => backfill.mutate()}>더 오래된 메일 가져오기</Button>
     </div>}
     <fieldset className="flex flex-col gap-1.5 text-body-sm font-semibold"><legend className="mb-1">연결 해제 시 메일로 만든 지원 건</legend>
       <label className="flex items-center gap-2"><input type="radio" checked={keep} onChange={() => setKeep(true)} className="accent-primary" />유지</label>

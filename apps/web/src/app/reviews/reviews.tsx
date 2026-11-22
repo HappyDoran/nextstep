@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Check, Mail } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Field, Input, Segmented, Select, StatePanel, Tag } from '@nextstep/design-system';
-import { applicationSchema, mailStatusSchema, reviewBodySchema, reviewSchema, type Me, type Review } from '@nextstep/contracts';
+import { applicationSchema, mailStatusSchema, reviewBodySchema, reviewSchema, type Application, type Me, type Review } from '@nextstep/contracts';
 import { buttonIcon as icon, call, SLOW, useMe, useWhen } from '../api-client';
 import { Account } from '../account';
 import { Frame, AuthLayout } from '../frame';
@@ -18,10 +18,9 @@ export function Reviews() {
   return <ReviewList me={me.data} />;
 }
 
-type AppOption = { id: string; company: string; roleTitle: string; status: string };
 const RANK: Record<string, number> = { 미지원: 0, '지원 완료': 1, '전형 진행중': 2, 합격: 3, 불합격: 3 };
 // 메일 상태가 지원 건 상태보다 앞 단계이거나 같으면 연결해도 상태가 바뀌지 않는다. 최종 결과끼리 다르면 충돌이라 제외한다.
-const keepsStatus = (r: Review, app?: AppOption) => !!app && r.classification !== '모호'
+const keepsStatus = (r: Review, app?: Application) => !!app && r.classification !== '모호'
   && (r.classification === app.status || RANK[r.classification]! < RANK[app.status]! || (r.classification === '열람'));
 
 // 사용자 행동이 필요한 메일만 남긴다. 처리하지 않아도 재촉하지 않고 목록에 그대로 둔다.
@@ -58,7 +57,7 @@ function ReviewList({ me }: { me: Me }) {
   </Frame>;
 }
 
-function QueueGroup({ company, items, apps, currentId, onSelect, onDone }: { company: string; items: Review[]; apps: AppOption[]; currentId: string; onSelect: (id: string) => void; onDone: () => void }) {
+function QueueGroup({ company, items, apps, currentId, onSelect, onDone }: { company: string; items: Review[]; apps: Application[]; currentId: string; onSelect: (id: string) => void; onDone: () => void }) {
   // 묶음 연결은 지원 건 상태가 바뀌지 않는 메일(더 앞 단계이거나 같은 결과, 열람)만 대상으로 하고 현재 상태를 그대로 보낸다.
   // 확인 목록 확정은 고른 상태로 덮어쓰므로, 메일 상태를 보내면 불합격이 지원 완료로 되돌아갈 수 있다.
   // 열람 메일은 '열람'을 보내 열람 표시만 남긴다(지원 상태는 그대로). 미지원 지원 건은 열람 메일만 대상이 된다(다른 메일 상태는 모두 더 뒤 단계).
@@ -90,7 +89,7 @@ function QueueGroup({ company, items, apps, currentId, onSelect, onDone }: { com
   </section>;
 }
 
-function ReviewDetail({ review, apps, onDone }: { review: Review; apps: AppOption[]; onDone: () => void }) {
+function ReviewDetail({ review, apps, onDone }: { review: Review; apps: Application[]; onDone: () => void }) {
   const when = useWhen();
   const [mode, setMode] = useState<'link' | 'create'>('link');
   // 제안된 지원 건이 이미 더 뒤 단계면 그 상태를 기본값으로 둬 오래된 메일로 되돌리지 않게 한다.

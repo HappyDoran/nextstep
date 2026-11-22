@@ -3,7 +3,7 @@ import { LoaderCircle, RefreshCw } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Tag } from '@nextstep/design-system';
 import { connectionStatusSchema, healthSchema, type Me } from '@nextstep/contracts';
-import { call, SOURCE_NAMES, useWhen } from '../api-client';
+import { buttonIcon, call, SOURCE_NAMES, useWhen } from '../api-client';
 
 const CODES: Record<string, string> = { network: '연결 실패', blocked: '접속 차단', http_error: '응답 오류', parse_failed: '페이지 형식 바뀜', not_found: '공고 없음', body_missing: '본문 없음' };
 const tone = (ok: boolean | null | 'partial') => (ok === 'partial' ? '도전' : ok === null ? '미확인' : ok ? '기본' : '제외') as '미확인' | '기본' | '도전' | '제외';
@@ -39,7 +39,7 @@ export function ConnectionPanel({ me }: { me: Me }) {
     </ul>
     {conn.isError && <p role="alert" className="text-body-sm text-destructive">{conn.error.message}</p>}
     <div className="flex flex-wrap items-center gap-3">
-      <Button variant="secondary" disabled={loading} onClick={() => { void health.refetch(); void conn.refetch(); }}>{loading ? <LoaderCircle className="size-icon-base shrink-0 animate-spin stroke-emphasis motion-reduce:animate-none" aria-hidden="true" focusable="false" /> : <RefreshCw className="size-icon-base shrink-0 stroke-emphasis" aria-hidden="true" focusable="false" />}다시 확인</Button>
+      <Button variant="secondary" disabled={loading} onClick={() => { void health.refetch(); void conn.refetch(); }}>{loading ? <LoaderCircle className={`${buttonIcon} animate-spin motion-reduce:animate-none`} aria-hidden="true" focusable="false" /> : <RefreshCw className={buttonIcon} aria-hidden="true" focusable="false" />}다시 확인</Button>
       {conn.data && <span className="text-caption text-muted-foreground">확인 {when(conn.data.checkedAt)} · 메일·공고 출처는 마지막 실행 결과예요</span>}
     </div>
   </div>;
