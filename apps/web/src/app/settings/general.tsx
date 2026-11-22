@@ -32,7 +32,7 @@ export function GeneralSetting() {
     <Row title="시간 표기" desc="상대는 '3시간 전'처럼, 절대는 '11. 21. 오후 9:05'처럼 보여요.">
       <Segmented label="시간 표기" value={prefs.timeFormat} onChange={set('timeFormat')} options={[{ value: 'absolute', label: '절대' }, { value: 'relative', label: '상대' }]} />
     </Row>
-    <Row title="갱신 알림" desc={<>공고 가져오기가 끝나면 컴퓨터 알림으로 알려요.{desktopOnly}</>}>
+    <Row title="갱신 알림" desc={<>공고 가져오기가 끝나면 컴퓨터 알림으로 알려요. 알림이 오지 않으면 메뉴 막대(Windows는 알림 영역)의 NextStep 아이콘에서 「테스트 알림 보내기」로 확인하고 「알림 설정 열기」에서 허용하세요.{desktopOnly}</>}>
       <fieldset disabled={!desktop} className="contents"><Segmented label="갱신 알림" value={prefs.notify} onChange={set('notify')} options={[{ value: 'all', label: '모두' }, { value: 'basic', label: '기본 추천 있을 때' }, { value: 'failures', label: '실패만' }, { value: 'off', label: '끄기' }]} /></fieldset>
     </Row>
     <Row title="알림 소리" desc={<>갱신 알림에 소리를 함께 내요.{desktopOnly}</>}>

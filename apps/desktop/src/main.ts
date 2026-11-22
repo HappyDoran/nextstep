@@ -130,6 +130,11 @@ async function poll() {
   } catch { if (seq === pollSeq) status = '서비스에 연결하지 못함'; } finally { updateTray(); }
 }
 
+function testNotice() {
+  notice = new Notification({ title: 'NextStep 알림 확인', body: '이 알림이 보이면 갱신 알림을 받을 수 있어요.' });
+  notice.show();
+}
+
 function updateTray() {
   if (!tray) return;
   tray.setToolTip(`NextStep · ${status}`);
@@ -141,6 +146,10 @@ function updateTray() {
       { label: '지금 공고 가져오기', enabled: status !== '가져오는 중', click: () => void refreshNow() },
       { label: status, enabled: false },
     ]),
+    { type: 'separator' },
+    // OS 알림 권한은 앱이 읽을 수 없어, 직접 보내 보고 꺼져 있으면 시스템 설정의 이 앱 알림 화면으로 바로 간다.
+    { label: '테스트 알림 보내기', click: testNotice },
+    { label: '알림 설정 열기', click: () => void shell.openExternal(mac ? 'x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=com.nextstep.desktop' : 'ms-settings:notifications') },
     { type: 'separator' },
     { label: '로그인 시 자동 실행', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: item => { app.setLoginItemSettings({ openAtLogin: item.checked }); updateTray(); } },
     { label: 'NextStep 종료', role: 'quit' },
