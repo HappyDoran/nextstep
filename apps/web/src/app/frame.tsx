@@ -2,11 +2,11 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useIsFetching, useQuery } from '@tanstack/react-query';
+import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, BriefcaseBusiness, Check, Inbox, LoaderCircle, LogOut, Mail, Settings, Star, WifiOff } from 'lucide-react';
-import { AppShell, Logo, LogoMark, NavItem, PageHeader, Rail, StatusBar } from '@nextstep/design-system';
+import { AppShell, Button, Logo, LogoMark, NavItem, PageHeader, Rail, StatusBar, Toast } from '@nextstep/design-system';
 import { latestRefreshSchema, reviewSchema, type Me } from '@nextstep/contracts';
-import { ACTIVE_JOB, call, useMailConnection, useWhen } from './api-client';
+import { ACTIVE_JOB, call, noticeKey, useDraftNotice, useMailConnection, useProfileDraft, useWhen } from './api-client';
 import { LAST_PATH_KEY } from './prefs';
 import { SettingsDialog, sectionFromHash, type Section } from './settings/settings';
 import { useSignOut } from './account';
@@ -74,8 +74,25 @@ export function Frame({ me, title, description, actions, children }: { me: Me; t
     {!online && <p role="status" className="flex items-center gap-2 bg-warning-muted px-7 py-2 text-body-sm font-semibold text-warning"><WifiOff className={small} aria-hidden="true" focusable="false" />인터넷 연결이 끊겼어요. 다시 연결되면 자동으로 이어서 불러와요.</p>}
     <PageHeader title={title} description={description} actions={actions} />
     {settings && <SettingsDialog me={me} section={settings} onSection={showSettings} onClose={() => showSettings(null)} />}
+    <DraftNotice me={me} hidden={settings === 'profile'} onOpen={() => showSettings('profile')} />
     <div className="min-h-0 flex-1 overflow-auto"><div className="mx-auto max-w-content animate-rise px-7 py-6 motion-reduce:animate-none">{children}</div></div>
   </AppShell>;
+}
+
+// 프로필 초안이 끝나면 어느 화면에서든 아래에 알린다. 프로필 구역을 보고 있으면 거기서 바로 보이므로 띄우지 않는다.
+function DraftNotice({ me, hidden, onOpen }: { me: Me; hidden: boolean; onOpen: () => void }) {
+  const client = useQueryClient();
+  const draft = useProfileDraft(me).data;
+  const notice = useDraftNotice(me).data;
+  if (hidden || !notice || draft?.id !== notice) return null;
+  const close = () => client.setQueryData(noticeKey(me), null);
+  const action = '!text-background hover:enabled:bg-transparent hover:enabled:underline';
+  return <div className="pointer-events-none fixed inset-x-0 bottom-12 z-10 flex justify-center">
+    <Toast action={<span className="flex">
+      <Button size="sm" variant="quiet" className={action} onClick={() => { close(); onOpen(); }}>{draft.status === '성공' ? '확인하고 저장' : '확인하기'}</Button>
+      <Button size="sm" variant="quiet" className={`${action} opacity-70`} aria-label="알림 닫기" onClick={close}>닫기</Button>
+    </span>}>{draft.status === '성공' ? '프로필 초안이 준비됐어요' : '프로필 초안을 만들지 못했어요'}</Toast>
+  </div>;
 }
 
 // 처음 불러오는 자료가 있으면 화면 맨 위에 가는 진행 막대를 보인다. 주기 조회·다시 읽기(이미 값이 있음)에는 보이지 않는다.

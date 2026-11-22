@@ -105,13 +105,16 @@ export type Profile = z.infer<typeof profileSchema>;
 export const jobStatusSchema = z.enum(['대기', '실행중', '성공', '일부 실패', '실패']);
 export const jobSchema = z.object({
   id: z.string(),
-  kind: z.enum(['refresh', 'link', 'mail']),
+  kind: z.enum(['refresh', 'link', 'mail', 'suggest']),
   status: jobStatusSchema,
   errorCode: z.string().nullable(),
   result: z.record(z.string(), z.unknown()).nullable(),
   createdAt: z.string(),
   finishedAt: z.string().nullable(),
 });
+/** 프로필 초안 작업(결과 result.profile). 저장했거나 버렸으면 null. */
+export const profileDraftSchema = z.object({ job: jobSchema.nullable() });
+export type ProfileDraft = z.infer<typeof profileDraftSchema>;
 export type Job = z.infer<typeof jobSchema>;
 export const linkRequestSchema = z.object({ url: z.url({ protocol: /^https$/ }).max(2000) }).strict();
 

@@ -186,3 +186,36 @@ test('DB 버전 19는 기존 서류를 활성 버전으로 남긴다', async () 
     } finally { db.close(); }
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('프로필 초안은 요청을 떠나도 서버가 만들어 두고, 저장하거나 버리면 사라지며 다른 사용자에게 보이지 않는다', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nextstep-draft-'));
+  const path = join(dir, 'db.sqlite');
+  const app = createApp(path);
+  process.env.NEXTSTEP_AI_FAKE = '1';
+  const draft = cookie => app.inject({ url: '/profile/draft', headers: { cookie } }).then(r => r.json().job);
+  const settled = async cookie => { for (let i = 0; i < 50; i++) { const job = await draft(cookie); if (job && job.finishedAt) return job; await new Promise(r => setTimeout(r, 20)); } throw new Error('초안이 끝나지 않음'); };
+  try {
+    const a = await signup(app, path, 'a@example.com');
+    const b = await signup(app, path, 'b@example.com');
+    assert.equal((await app.inject({ method: 'POST', url: '/profile/suggest', headers: { cookie: a } })).statusCode, 409);
+    assert.equal(await draft(a), null);
+    await upload(app, a, fixture('resume-text.pdf'), 'a.pdf');
+    const started = await app.inject({ method: 'POST', url: '/profile/suggest', headers: { cookie: a } });
+    assert.equal(started.statusCode, 202);
+    const done = await settled(a);
+    assert.equal(done.status, '성공');
+    assert.equal(done.kind, 'suggest');
+    assert.ok(Array.isArray(done.result.profile.jobFamilies));
+    assert.equal(done.id, started.json().id);
+    assert.equal(await draft(b), null);
+    // 버리면 사라진다.
+    assert.equal((await app.inject({ method: 'DELETE', url: '/profile/draft', headers: { cookie: a } })).statusCode, 204);
+    assert.equal(await draft(a), null);
+    // 다시 만든 뒤 프로필을 저장하면 그 초안은 끝난 것으로 본다.
+    await app.inject({ method: 'POST', url: '/profile/suggest', headers: { cookie: a } });
+    const next = await settled(a);
+    await new Promise(r => setTimeout(r, 5));
+    assert.equal((await app.inject({ method: 'PUT', url: '/profile', headers: { cookie: a }, payload: { ...next.result.profile } })).statusCode, 200);
+    assert.equal(await draft(a), null);
+  } finally { delete process.env.NEXTSTEP_AI_FAKE; await app.close(); rmSync(dir, { recursive: true, force: true }); }
+});

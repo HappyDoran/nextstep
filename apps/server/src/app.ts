@@ -7,7 +7,7 @@ import { registerUserSettings } from './user-settings.js';
 import { registerProfile } from './profile.js';
 import { registerDocuments, removeUserFiles } from './documents/routes.js';
 import { dirname, join } from 'node:path';
-import { registerRecommendations } from './recommend/routes.js';
+import { createSuggestHandler, registerRecommendations } from './recommend/routes.js';
 import { createHandler, type PipelineDeps } from './recommend/pipeline.js';
 import { startWorker, type ClaimedJob } from './recommend/jobs.js';
 import { startScheduler } from './schedule.js';
@@ -42,7 +42,9 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
   if (options.worker) {
     const recommend = createHandler(db, options.deps);
     const mail = createMailHandler(db, secretKey, mailSource, { interpret: interpretMail, bodies: options.mailBodies ?? naverBodies }, options.mailBackfill ?? naverBackfill);
-    const stop = startWorker(db, (job: ClaimedJob) => (job.kind === 'mail' ? mail(job) : recommend(job)));
+    // 초안 작업은 요청이 바로 돌리고, 작업자는 서버 재시작으로 다시 대기가 된 것만 맡는다.
+    const suggest = createSuggestHandler(db);
+    const stop = startWorker(db, (job: ClaimedJob) => (job.kind === 'mail' ? mail(job) : job.kind === 'suggest' ? suggest(job) : recommend(job)));
     // 예약 실행은 작업자와 같은 서버 프로세스에서 돈다. 브라우저를 닫아도 계속된다.
     const stopSchedule = startScheduler(db, options.scheduleHour ?? 21);
     app.addHook('onClose', async () => { stop(); stopSchedule(); });

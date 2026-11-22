@@ -1,10 +1,9 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
-import { linkRequestSchema, profileSchema, recommendationFeedbackSchema, recommendationListSchema, recommendationSchema, latestRefreshSchema } from '@nextstep/contracts';
+import { linkRequestSchema, profileDraftSchema, profileSchema, recommendationFeedbackSchema, recommendationListSchema, recommendationSchema, latestRefreshSchema } from '@nextstep/contracts';
 import { requireUser } from '../auth.js';
 import { suggestProfile } from '../prompts/profile.js';
-import { AiError } from '../ai/llm.js';
-import { enqueue, getJob, latestJob } from './jobs.js';
+import { enqueue, getJob, latestJob, runNext, type ClaimedJob, type JobOutcome } from './jobs.js';
 import { parsePostingLink, rowFacts } from './pipeline.js';
 import { passesFilter } from '../sources/filter.js';
 
@@ -24,11 +23,14 @@ function postingStatus(row: Row, now: string) {
   return at < Date.parse(now) ? '마감' : '모집중';
 }
 
-const AI_MESSAGES: Record<string, string> = {
-  ai_network: '로컬 AI(Ollama)에 연결하지 못했습니다. 서버의 Ollama가 켜져 있는지 확인하세요.',
-  ai_model_unavailable: '로컬 AI 모델이 설치되지 않았습니다. 서버에서 ollama pull로 모델을 받으세요.',
-  ai_timeout: '로컬 AI 응답 시간이 초과되었습니다. 잠시 후 다시 시도하세요.',
-};
+/** 프로필 초안 작업: 실행 시점의 사용 중 이력서로 초안을 만들어 작업 결과에 둔다(저장은 사용자가 한다). */
+export function createSuggestHandler(db: DatabaseSync) {
+  return async (job: ClaimedJob): Promise<JobOutcome> => {
+    const resume = db.prepare("SELECT text FROM documents WHERE user_id = ? AND kind = 'resume' AND active = 1").get(job.userId) as { text: string } | undefined;
+    if (!resume) return { status: '실패', errorCode: 'no_resume', result: {} };
+    return { status: '성공', result: { profile: await suggestProfile(resume.text) } };
+  };
+}
 
 export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) {
   app.post('/postings/refresh', async (request, reply) => {
@@ -116,17 +118,31 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     return { feedback, restored: restored === 1, hidden: hidden === 1 };
   });
 
-  // 이력서에서 프로필 초안을 만든다. 저장하지 않고 사용자가 확인한 뒤 PUT /profile로 저장한다.
+  // 이력서에서 프로필 초안을 만든다. 화면을 떠나도 서버가 끝까지 만들고, 결과는 GET /profile/draft로 읽는다.
+  // 작업자 순서(공고 갱신 등 긴 작업)를 기다리지 않고 바로 돌린다. 같은 사용자의 초안 작업은 하나만 둔다.
+  const suggest = createSuggestHandler(db);
   app.post('/profile/suggest', async (request, reply) => {
     const user = requireUser(db, request, reply);
     if (!user) return reply;
-    const resume = db.prepare("SELECT text FROM documents WHERE user_id = ? AND kind = 'resume' AND active = 1").get(user.id) as { text: string } | undefined;
-    if (!resume) return reply.status(409).send({ message: '이력서를 먼저 등록하세요.' });
-    try {
-      return { profile: await suggestProfile(resume.text) };
-    } catch (error) {
-      if (error instanceof AiError) return reply.status(502).send({ message: AI_MESSAGES[error.code] ?? 'AI 처리에 실패했습니다. 잠시 후 다시 시도하세요.', code: error.code });
-      throw error;
-    }
+    if (!db.prepare("SELECT 1 FROM documents WHERE user_id = ? AND kind = 'resume' AND active = 1").get(user.id)) return reply.status(409).send({ message: '이력서를 먼저 등록하세요.' });
+    const job = enqueue(db, user.id, 'suggest');
+    void runNext(db, suggest, job.id).catch(() => {});
+    return reply.status(202).send(job);
+  });
+
+  // 마지막 초안 작업. 그 뒤에 프로필을 저장했거나 사용자가 버렸으면 없음(null)으로 본다.
+  app.get('/profile/draft', async (request, reply) => {
+    const user = requireUser(db, request, reply);
+    if (!user) return reply;
+    const job = latestJob(db, user.id, 'suggest');
+    const saved = db.prepare('SELECT updated_at FROM profiles WHERE user_id = ?').get(user.id) as { updated_at: string } | undefined;
+    return profileDraftSchema.parse({ job: job && !(job.finishedAt && saved && job.finishedAt <= saved.updated_at) ? job : null });
+  });
+
+  app.delete('/profile/draft', async (request, reply) => {
+    const user = requireUser(db, request, reply);
+    if (!user) return reply;
+    db.prepare("DELETE FROM jobs WHERE user_id = ? AND kind = 'suggest' AND status NOT IN ('대기', '실행중')").run(user.id);
+    return reply.status(204).send();
   });
 }

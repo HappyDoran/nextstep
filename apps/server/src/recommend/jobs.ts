@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { jobSchema, type Job } from '@nextstep/contracts';
 
-export type JobKind = 'refresh' | 'link' | 'mail';
+export type JobKind = 'refresh' | 'link' | 'mail' | 'suggest';
 type Row = { id: string; user_id: string; kind: JobKind; payload: string | null; status: string; attempts: number; error_code: string | null; result: string | null; created_at: string; finished_at: string | null };
 export type ClaimedJob = { id: string; userId: string; kind: JobKind; payload: unknown; attempts: number };
 export type JobOutcome = { status: '성공' | '일부 실패' | '실패'; errorCode?: string; result: Record<string, unknown> };
@@ -40,10 +40,10 @@ export function recoverExpired(db: DatabaseSync, all = false) {
   db.prepare("UPDATE jobs SET status = '대기' WHERE status = '실행중' AND lease_until < ?").run(cutoff);
 }
 
-// 가장 오래된 대기 작업 하나를 원자적으로 선점한다.
-export function claim(db: DatabaseSync): ClaimedJob | undefined {
+// 가장 오래된 대기 작업 하나(id를 주면 그 작업)를 원자적으로 선점한다.
+export function claim(db: DatabaseSync, id?: string): ClaimedJob | undefined {
   const row = db.prepare(`UPDATE jobs SET status = '실행중', started_at = ?, lease_until = ?, attempts = attempts + 1
-    WHERE id = (SELECT id FROM jobs WHERE status = '대기' ORDER BY created_at LIMIT 1) RETURNING *`).get(now(), new Date(Date.now() + LEASE_MS).toISOString()) as Row | undefined;
+    WHERE id = (SELECT id FROM jobs WHERE status = '대기' ${id ? 'AND id = ?' : ''} ORDER BY created_at LIMIT 1) RETURNING *`).get(now(), new Date(Date.now() + LEASE_MS).toISOString(), ...(id ? [id] : [])) as Row | undefined;
   return row ? { id: row.id, userId: row.user_id, kind: row.kind, payload: row.payload ? JSON.parse(row.payload) : undefined, attempts: row.attempts } : undefined;
 }
 
@@ -58,8 +58,9 @@ export function finish(db: DatabaseSync, id: string, outcome: JobOutcome) {
     .run(outcome.status, outcome.errorCode ?? null, JSON.stringify(outcome.result), now(), id);
 }
 
-export async function runNext(db: DatabaseSync, handler: (job: ClaimedJob) => Promise<JobOutcome>) {
-  const job = claim(db);
+// id를 주면 그 작업만 바로 돌린다(작업자 순서를 기다리지 않는 짧은 작업. 작업자가 먼저 잡았으면 아무것도 하지 않는다).
+export async function runNext(db: DatabaseSync, handler: (job: ClaimedJob) => Promise<JobOutcome>, id?: string) {
+  const job = claim(db, id);
   if (!job) return false;
   let outcome: JobOutcome;
   try {

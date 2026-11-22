@@ -84,7 +84,7 @@ export function Applications({ me }: { me: Me }) {
     <NewApplication open={dialog === 'new'} userKey={key} onClose={() => setDialog(null)} onCreated={a => { setDialog(null); setCreated(a); }} />
     <ImportCsv open={dialog === 'csv'} userKey={key} onClose={() => setDialog(null)} />
     {created && <div className="pointer-events-none fixed inset-x-0 bottom-12 z-10 flex justify-center">
-      <Toast action={<Button size="sm" variant="quiet" className="text-background hover:enabled:bg-transparent" disabled={undo.isPending} onClick={() => undo.mutate(created.id)}>되돌리기</Button>}>{created.company} · {created.roleTitle}를 등록했어요</Toast>
+      <Toast action={<Button size="sm" variant="quiet" className="!text-background hover:enabled:bg-transparent hover:enabled:underline" disabled={undo.isPending} onClick={() => undo.mutate(created.id)}>되돌리기</Button>}>{created.company} · {created.roleTitle}를 등록했어요</Toast>
     </div>}
   </Frame>;
 }

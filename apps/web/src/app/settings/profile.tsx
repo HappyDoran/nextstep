@@ -1,9 +1,10 @@
 'use client';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { LoaderCircle } from 'lucide-react';
 import { Button, Input, Textarea } from '@nextstep/design-system';
-import { jobFamilySchema, profileSchema, type JobFamily, type Me, type Profile } from '@nextstep/contracts';
-import { call, optional, RequestError, SLOW, useWhen } from '../api-client';
+import { jobFamilySchema, jobSchema, profileSchema, type JobFamily, type Me, type Profile } from '@nextstep/contracts';
+import { ACTIVE_JOB, buttonIcon, call, draftKey, noticeKey, optional, RequestError, useProfileDraft, useWhen } from '../api-client';
 
 const FAMILIES = jobFamilySchema.options;
 const EMPLOYMENT = ['정규직', '계약직', '인턴', '프리랜서'] as const;
@@ -11,7 +12,7 @@ const EMPLOYMENT = ['정규직', '계약직', '인턴', '프리랜서'] as const
 const EMPTY: Profile = { jobFamilies: ['프론트엔드'], experiences: [], regions: [], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '' };
 const list = (text: string) => text.split(',').map(s => s.trim()).filter(Boolean);
 
-// 저장한 값만 추천 기준이 된다. AI 초안은 화면에만 채우고 사용자가 확인해 저장한다.
+// 저장한 값만 추천 기준이 된다. 초안은 서버가 만들어 두고(화면을 떠나도 계속), 사용자가 바뀌는 항목을 보고 저장한다.
 export function ProfileSetting({ me }: { me: Me }) {
   const key = ['profile', me.id];
   const query = useQuery({
@@ -33,24 +34,39 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
   const [form, setForm] = useState<Profile>(initial);
   const [regions, setRegions] = useState(initial.regions.join(', '));
   const [skills, setSkills] = useState(initial.skills.join(', '));
-  // AI 초안은 이력서 사실(직무·경력·기술·요약)만 채우고 사용자가 고른 선호는 건드리지 않는다.
-  const load = (p: Profile) => { setForm({ ...form, jobFamilies: p.jobFamilies, experiences: p.experiences, skills: p.skills, summary: p.summary }); setSkills(p.skills.join(', ')); };
+  const current = (): Profile => ({ ...form, regions: list(regions), skills: list(skills) });
+  const clearDraft = () => { client.setQueryData(draftKey(me), null); client.setQueryData(noticeKey(me), null); };
   const save = useMutation({
-    mutationFn: async () => (await call('profile', { method: 'PUT', body: JSON.stringify(profileSchema.parse({ ...form, regions: list(regions), skills: list(skills) })) })) as { profile: Profile; updatedAt: string },
-    // 추천 목록의 필터 적용 결과도 바뀌므로 다시 읽는다.
-    onSuccess: data => { client.setQueryData(key, data); void client.invalidateQueries({ queryKey: ['recommendations', me.id] }); },
+    mutationFn: async (profile: Profile) => (await call('profile', { method: 'PUT', body: JSON.stringify(profileSchema.parse(profile)) })) as { profile: Profile; updatedAt: string },
+    // 추천 목록의 필터 적용 결과도 바뀌므로 다시 읽는다. 저장하면 서버도 그 전 초안을 끝난 것으로 본다.
+    onSuccess: data => { clearDraft(); client.setQueryData(key, data); void client.invalidateQueries({ queryKey: ['recommendations', me.id] }); },
   });
+  const job = useProfileDraft(me).data ?? null;
+  const running = job !== null && ACTIVE_JOB.includes(job.status);
+  const ready = job?.status === '성공' ? profileSchema.safeParse(job.result?.profile).data ?? null : null;
+  // 초안은 이력서 사실(직무·경력·기술·요약)만 바꾸고 사용자가 고른 선호는 그대로 둔다.
+  const applied = ready && { ...current(), jobFamilies: ready.jobFamilies, experiences: ready.experiences, skills: ready.skills, summary: ready.summary };
   const suggest = useMutation({
-    mutationFn: async () => profileSchema.parse(((await call('profile/suggest', { method: 'POST', timeout: SLOW, messages: { 409: '이력서를 먼저 등록하세요.', 502: '초안을 만들지 못했습니다. 잠시 후 다시 시도하세요.' } })) as { profile: unknown }).profile),
-    onSuccess: load,
+    mutationFn: async () => jobSchema.parse(await call('profile/suggest', { method: 'POST', messages: { 409: '이력서를 먼저 등록하세요.' } })),
+    onSuccess: started => { client.setQueryData(noticeKey(me), null); client.setQueryData(draftKey(me), started); },
   });
+  const discard = useMutation({ mutationFn: () => call('profile/draft', { method: 'DELETE' }), onSuccess: clearDraft });
+  const fill = (p: Profile) => { setForm({ ...form, jobFamilies: p.jobFamilies, experiences: p.experiences, skills: p.skills, summary: p.summary }); setSkills(p.skills.join(', ')); };
+  const draftError = job?.status === '실패' ? (job.errorCode === 'no_resume' ? '이력서를 먼저 등록하세요.' : '초안을 만들지 못했습니다. 잠시 후 다시 시도하세요.') : null;
   const toggle = <T,>(items: T[], item: T) => items.includes(item) ? items.filter(i => i !== item) : [...items, item];
   const years = (family: JobFamily) => form.experiences.find(e => e.jobFamily === family)?.years ?? '';
   const setYears = (family: JobFamily, value: string) => setForm({ ...form, experiences: [...form.experiences.filter(e => e.jobFamily !== family), ...(value === '' ? [] : [{ jobFamily: family, years: Number(value) }])] });
 
-  return <form className="flex flex-col gap-5" onSubmit={e => { e.preventDefault(); save.mutate(); }}>
-    <p className="text-body-sm text-muted-foreground">등록한 이력서로 직무·경력·기술을 채울 수 있어요. 저장하기 전까지는 반영되지 않아요.</p>
-    <div><Button variant="secondary" disabled={suggest.isPending} onClick={() => suggest.mutate()}>이력서로 초안 만들기</Button></div>
+  return <form className="flex flex-col gap-5" onSubmit={e => { e.preventDefault(); save.mutate(current()); }}>
+    <p className="text-body-sm text-muted-foreground">사용 중인 이력서로 직무·경력·기술·요약 초안을 만들 수 있어요. 다른 화면으로 가도 계속 만들고, 다 되면 알려 드려요.</p>
+    <div className="flex flex-wrap items-center gap-3">
+      <Button variant="secondary" disabled={running || suggest.isPending} onClick={() => suggest.mutate()}>
+        {running ? <><LoaderCircle className={`${buttonIcon} animate-spin motion-reduce:animate-none`} aria-hidden="true" focusable="false" />초안 만드는 중</> : ready ? '초안 다시 만들기' : '이력서로 초안 만들기'}
+      </Button>
+      {running && <p role="status" className="text-body-sm text-muted-foreground">보통 1~2분 걸려요.</p>}
+    </div>
+    {ready && applied && <DraftReview now={current()} next={applied} busy={save.isPending || discard.isPending}
+      onSave={() => save.mutate(applied)} onFill={() => fill(ready)} onDiscard={() => discard.mutate()} />}
     <fieldset className="flex flex-col gap-3"><legend className="mb-2 text-body-sm font-semibold">희망 직무 (복수 선택)</legend>
       {FAMILIES.map(family => <div key={family} className="flex flex-wrap items-center gap-3">
         <label className="inline-flex h-control-sm cursor-pointer items-center gap-2 rounded-full border border-border-strong bg-card px-3 text-body-sm text-muted-foreground has-[:checked]:border-primary has-[:checked]:bg-secondary has-[:checked]:font-semibold has-[:checked]:text-secondary-foreground has-[:focus-visible]:outline has-[:focus-visible]:outline-focus has-[:focus-visible]:outline-ring min-w-32"><input type="checkbox" checked={form.jobFamilies.includes(family)} onChange={() => setForm({ ...form, jobFamilies: toggle(form.jobFamilies, family) })} className="size-icon-sm accent-primary" />{family}</label>
@@ -69,7 +85,31 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
     <label className="flex flex-col gap-1.5 text-body-sm font-semibold">업무·도구·기술 (쉼표로 구분)<Input value={skills} onChange={e => setSkills(e.target.value)} /></label>
     <label className="flex flex-col gap-1.5 text-body-sm font-semibold">경력 요약<Textarea value={form.summary} maxLength={2000} rows={3} onChange={e => setForm({ ...form, summary: e.target.value })} /></label>
     <div><Button type="submit" disabled={save.isPending || form.jobFamilies.length === 0}>프로필 저장</Button></div>
-    <p role="status" className="text-body-sm text-muted-foreground">{updatedAt ? `마지막 저장: ${when(updatedAt)}` : '아직 저장한 프로필이 없습니다.'}{suggest.isSuccess && !save.isSuccess ? ' · 초안을 채웠습니다. 확인 후 저장하세요.' : ''}</p>
-    {(save.isError || suggest.isError) && <p role="alert" className="text-body-sm text-destructive">{save.isError && save.error instanceof Error && !(save.error instanceof RequestError) ? '입력값을 확인하세요(희망 직무 1개 이상, 경력 0~50년, 요구 경력 상한 0~30년).' : (save.error ?? suggest.error)?.message}</p>}
+    <p role="status" className="text-body-sm text-muted-foreground">{updatedAt ? `마지막 저장: ${when(updatedAt)}` : '아직 저장한 프로필이 없습니다.'}</p>
+    {(save.isError || suggest.isError || discard.isError || draftError) && <p role="alert" className="text-body-sm text-destructive">{save.isError && save.error instanceof Error && !(save.error instanceof RequestError) ? '입력값을 확인하세요(희망 직무 1개 이상, 경력 0~50년, 요구 경력 상한 0~30년).' : (save.error ?? suggest.error ?? discard.error)?.message ?? draftError}</p>}
   </form>;
+}
+
+const families = (p: Profile) => p.jobFamilies.map(f => { const y = p.experiences.find(e => e.jobFamily === f)?.years; return y === undefined ? f : `${f} ${y}년`; }).join(', ');
+const FIELDS: [string, (p: Profile) => string][] = [['희망 직무·경력', families], ['업무·도구·기술', p => p.skills.join(', ')], ['경력 요약', p => p.summary]];
+
+/** 다 만든 초안: 지금 값에서 바뀌는 항목만 보여 주고 한 번에 저장한다. */
+function DraftReview({ now, next, busy, onSave, onFill, onDiscard }: { now: Profile; next: Profile; busy: boolean; onSave: () => void; onFill: () => void; onDiscard: () => void }) {
+  const changes = FIELDS.map(([label, show]) => [label, show(now), show(next)] as const).filter(([, a, b]) => a !== b);
+  return <section aria-labelledby="draft-title" className="grid animate-fade-up gap-3 rounded-surface border border-primary bg-card p-5 motion-reduce:animate-fade">
+    <div><h4 id="draft-title" className="text-body font-extrabold">이력서로 만든 초안이 준비됐어요</h4>
+      <p className="mt-1 text-body-sm text-muted-foreground">{changes.length ? '바뀌는 항목만 보여 드려요. 근무 지역·고용 형태 같은 공고 필터는 그대로예요.' : '지금 입력한 프로필과 같아요.'}</p></div>
+    {changes.length > 0 && <dl className="grid gap-2.5 text-body-sm">
+      {changes.map(([label, a, b]) => <div key={label} className="grid gap-0.5">
+        <dt className="font-semibold">{label}</dt>
+        <dd className="text-muted-foreground"><span className="mr-2 font-semibold">지금</span>{a || '없음'}</dd>
+        <dd className="text-foreground"><span className="mr-2 font-semibold text-primary">초안</span>{b || '없음'}</dd>
+      </div>)}
+    </dl>}
+    <div className="flex flex-wrap gap-2">
+      <Button disabled={busy || next.jobFamilies.length === 0} onClick={onSave}>초안으로 저장</Button>
+      <Button variant="secondary" disabled={busy} onClick={onFill}>입력칸에 채워 고치기</Button>
+      <Button variant="quiet" disabled={busy} onClick={onDiscard}>버리기</Button>
+    </div>
+  </section>;
 }

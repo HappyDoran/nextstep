@@ -3,7 +3,7 @@ import { alert, deleteAccount, signup } from './helpers';
 
 const fixture = (name: string) => `apps/server/tests/fixtures/${name}`;
 
-test('이력서 등록·버전 되돌리기·실패 시 유지·프로필 저장과 초안 실패 안내', async ({ page }) => {
+test('이력서 등록·버전 되돌리기·실패 시 유지·프로필 저장과 초안 실패 알림', async ({ page }) => {
   await signup(page, `e2e-rec-${Date.now()}@example.com`);
   try {
     // 추천이 없는 첫 화면은 시작 단계를 보여 주고, 이력서·프로필 전에는 가져오기를 막는다.
@@ -39,8 +39,13 @@ test('이력서 등록·버전 되돌리기·실패 시 유지·프로필 저장
 
     await page.getByRole('button', { name: '프로필·필터', exact: true }).click();
     await page.getByRole('button', { name: '이력서로 초안 만들기' }).click();
-    // e2e 서버는 닿지 않는 Ollama 주소를 써서 실패 안내만 확인한다(실제 AI 호출 없음). 모델·처리 방식은 화면에 적지 않는다.
+    // 초안은 서버 작업이라 설정 창을 닫아도 계속되고, 끝나면 다른 화면에서도 알린다.
+    // e2e 서버는 닿지 않는 Ollama 주소를 써서 실패 흐름만 확인한다(실제 AI 호출 없음). 모델·처리 방식은 화면에 적지 않는다.
+    await page.keyboard.press('Escape');
+    await expect(page.getByText('프로필 초안을 만들지 못했어요')).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: '확인하기' }).click();
     await expect(alert(page)).toContainText('초안을 만들지 못했습니다');
+    await expect(page.getByText('프로필 초안을 만들지 못했어요')).toHaveCount(0);
     await expect(page.getByText(/Ollama|qwen|로컬 AI/)).toHaveCount(0);
     await page.getByRole('checkbox', { name: '앱 개발' }).check();
     await page.getByLabel('업무·도구·기술 (쉼표로 구분)').fill('React, Swift');

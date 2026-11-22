@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { mailConnectionSchema, meSchema, type Me } from '@nextstep/contracts';
+import { mailConnectionSchema, meSchema, profileDraftSchema, type Job, type Me } from '@nextstep/contracts';
 import { formatWhen, prefsStore } from './prefs';
 
 export const ME_KEY = ['auth', 'me'];
@@ -69,6 +69,28 @@ export function useMailConnection(me: Me, poll = false) {
     refetchInterval: q => (poll && q.state.data?.lastJob && ACTIVE_JOB.includes(q.state.data.lastJob.status) ? 3000 : 60_000),
   });
 }
+
+/**
+ * 프로필 초안 작업(없으면 null). 앱 틀이 구독해 화면을 옮겨도 만드는 동안 3초마다 읽고,
+ * 이 창에서 지켜보던 작업이 끝나면 알림 키(DRAFT_NOTICE)에 작업 id를 적어 어느 화면에서든 알린다.
+ */
+export const draftKey = (me: Me) => ['profile', 'draft', me.id];
+export const noticeKey = (me: Me) => ['profile', 'draft-notice', me.id];
+export function useProfileDraft(me: Me) {
+  const client = useQueryClient();
+  return useQuery({
+    queryKey: draftKey(me), retry: false, refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const job = profileDraftSchema.parse(await call('profile/draft')).job;
+      const before = client.getQueryData<Job | null>(draftKey(me));
+      if (before && ACTIVE_JOB.includes(before.status) && job?.id === before.id && job.finishedAt) client.setQueryData(noticeKey(me), job.id);
+      return job;
+    },
+    refetchInterval: q => (q.state.data && ACTIVE_JOB.includes(q.state.data.status) ? 3000 : false),
+  });
+}
+/** 초안 완료 알림(작업 id, 없으면 null). 서버에서 읽지 않는 화면 안 값이다. */
+export const useDraftNotice = (me: Me) => useQuery({ queryKey: noticeKey(me), queryFn: () => null as string | null, staleTime: Infinity, gcTime: Infinity });
 
 /** 처리 중인 작업 상태. */
 export const ACTIVE_JOB: string[] = ['대기', '실행중'];
