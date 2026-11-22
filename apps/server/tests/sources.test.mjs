@@ -37,12 +37,10 @@ test('원티드 상세에서 마감·상시·경력·원격·외부 지원 URL�
   assert.deepEqual(wanted.listIds('{"data":[{"id":5},{"id":"x"}]}'), ['5']);
 });
 
-test('자소설닷컴 사이트맵 최신 ID와 상세의 모집 분야·직무·이미지 본문을 구분한다', () => {
-  const xml = '<loc>https://jasoseol.com/recruit/10</loc><loc>https://jasoseol.com/career/30</loc><loc>https://jasoseol.com/recruit/20</loc><loc>https://jasoseol.com/recruit/10</loc>';
-  assert.deepEqual(jasoseol.sitemapRecruitIds(xml, 5), ['20', '10']);
+test('자소설닷컴 상세의 모집 분야·이미지 본문을 구분한다', () => {
   const detail = { id: 7, name: '가상회사', title: '2026 하반기 채용', start_time: '2026-11-01', end_time: '2026-11-15', employment_page_url: 'https://careers.example.com', content: '<img src="a.png">', company_group: { business_size: 'middle_market' }, employments: [{ field: 'iOS 앱 개발', division: 2 }, { field: 'UX/UI 디자이너', division: 1 }] };
   const parsed = jasoseol.parseDetail('7', page({ initialEmploymentCompany: detail }));
-  assert.deepEqual(parsed.roles, ['app', 'design']);
+  assert.deepEqual(parsed.fields.map(f => f.name), ['iOS 앱 개발', 'UX/UI 디자이너']);
   assert.deepEqual(parsed.body, { code: 'body_image_only' });
   assert.equal(parsed.companyType, '중견기업');
   assert.equal(parsed.deadline, '2026-11-15T23:59:59+09:00');

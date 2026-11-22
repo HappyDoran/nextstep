@@ -8,19 +8,19 @@ import { registerProfile } from './profile.js';
 import { registerDocuments, removeUserFiles } from './documents/routes.js';
 import { dirname, join } from 'node:path';
 import { createSuggestHandler, registerRecommendations } from './recommend/routes.js';
-import { createHandler, type PipelineDeps } from './recommend/pipeline.js';
+import { createHandler } from './recommend/pipeline.js';
 import { startWorker, type ClaimedJob } from './recommend/jobs.js';
 import { startScheduler } from './schedule.js';
 import { loadSecretKey } from './secrets.js';
 import { registerMail } from './mail/routes.js';
 import { createMailHandler } from './mail/sync.js';
-import { naverBackfill, naverBodies, naverSource, type BackfillSource, type MailBodySource, type MailSource } from './mail/naver.js';
+import { naverBackfill, naverBodies, naverSource, type MailBodySource, type MailSource } from './mail/naver.js';
 import { interpretMail } from './prompts/mail.js';
 
-export function createApp(databasePath: string, options: { secureCookie?: boolean; filesDir?: string; worker?: boolean; scheduleHour?: number; deps?: PipelineDeps; mailSource?: MailSource; mailBackfill?: BackfillSource; mailBodies?: MailBodySource } = {}) {
+export function createApp(databasePath: string, options: { secureCookie?: boolean; worker?: boolean; scheduleHour?: number; mailSource?: MailSource; mailBodies?: MailBodySource } = {}) {
   const db = openDatabase(databasePath);
   // 원본 파일은 DB 옆 비공개 디렉터리에 둔다(Git 제외 경로).
-  const filesDir = options.filesDir ?? join(dirname(databasePath), 'files');
+  const filesDir = join(dirname(databasePath), 'files');
   // 개인 자료를 로그에 남기지 않는다. 관측 이벤트는 별도 허용 목록으로 추가한다.
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 });
   app.get('/health', async () => {
@@ -37,11 +37,12 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
   registerRecommendations(app, db);
   // AI는 서버의 로컬 LLM 하나로 처리한다. 설정 화면에는 모델 이름만 보여 준다.
   const mailSource = options.mailSource ?? naverSource;
-  registerMail(app, db, secretKey, mailSource, options.mailBodies ?? naverBodies);
+  const mailBodies = options.mailBodies ?? naverBodies;
+  registerMail(app, db, secretKey, mailSource, mailBodies);
   // 수집·추천 작업은 요청 경로 밖의 작업자가 처리한다. 테스트는 worker:false로 끄고 직접 실행한다.
   if (options.worker) {
-    const recommend = createHandler(db, options.deps);
-    const mail = createMailHandler(db, secretKey, mailSource, { interpret: interpretMail, bodies: options.mailBodies ?? naverBodies }, options.mailBackfill ?? naverBackfill);
+    const recommend = createHandler(db);
+    const mail = createMailHandler(db, secretKey, mailSource, { interpret: interpretMail, bodies: mailBodies }, naverBackfill);
     // 초안 작업은 요청이 바로 돌리고, 작업자는 서버 재시작으로 다시 대기가 된 것만 맡는다.
     const suggest = createSuggestHandler(db);
     const stop = startWorker(db, (job: ClaimedJob) => (job.kind === 'mail' ? mail(job) : job.kind === 'suggest' ? suggest(job) : recommend(job)));

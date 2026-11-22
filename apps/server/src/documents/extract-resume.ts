@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { dirname, extname, join } from 'node:path';
-import { getDocument, PasswordException, InvalidPDFException } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { getDocument, PasswordException } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { ocrPdfPages } from './ocr.js';
 import { readZipMarkdown } from './zip.js';
 
@@ -77,7 +77,6 @@ async function extractPdf(bytes: Uint8Array, timeoutMs: number, ocrTimeoutMs: nu
     return { ok: true, kind: 'pdf', text, pages: pages.length, emptyPages: blank.filter(n => !ocrPages.includes(n)), ocrPages };
   } catch (error) {
     if (error instanceof PasswordException) return { ok: false, code: 'encrypted' };
-    if (error instanceof InvalidPDFException) return { ok: false, code: 'damaged' };
     return { ok: false, code: 'damaged' };
   } finally {
     clearTimeout(timer);

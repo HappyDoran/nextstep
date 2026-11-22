@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
@@ -63,7 +63,6 @@ export function registerDocuments(app: FastifyInstance, db: DatabaseSync, filesD
     const key = `${user.id}/${id}.${result.kind}`;
     mkdirSync(join(filesDir, user.id), { recursive: true, mode: 0o700 });
     writeFileSync(pathOf(key), request.body, { mode: 0o600 });
-    chmodSync(pathOf(key), 0o600);
     let pruned: { storage_key: string }[] = [];
     db.exec('BEGIN IMMEDIATE');
     try {

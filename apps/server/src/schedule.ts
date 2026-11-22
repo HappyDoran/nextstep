@@ -43,13 +43,13 @@ export function runSchedule(db: DatabaseSync, at: Date, hour: number) {
   return created;
 }
 
-export function startScheduler(db: DatabaseSync, hour: number, intervalMs = 60_000) {
+export function startScheduler(db: DatabaseSync, hour: number) {
   const tick = () => {
     try { runSchedule(db, new Date(), hour); } catch { /* 다음 검사에서 다시 시도 */ }
     try { purgeExpired(db); } catch { /* 다음 검사에서 다시 시도 */ }
   };
   tick();
-  const timer = setInterval(tick, intervalMs);
+  const timer = setInterval(tick, 60_000);
   return () => clearInterval(timer);
 }
 

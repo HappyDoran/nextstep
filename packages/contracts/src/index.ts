@@ -3,7 +3,6 @@ export const applicationStatusSchema = z.enum(['미지원', '지원 완료', '�
 export const postingStatusSchema = z.enum(['모집중', '마감', '미확인']);
 export const readStatusSchema = z.enum(['열람', '미열람', '정보 없음']);
 export const healthSchema = z.object({ service: z.literal('nextstep'), status: z.literal('ok'), database: z.literal('ready'), schemaVersion: z.number().int().positive() });
-export type Health = z.infer<typeof healthSchema>;
 export type ApplicationStatus = z.infer<typeof applicationStatusSchema>;
 
 export const sourceIdSchema = z.enum(['saramin', 'jobkorea', 'jasoseol', 'wanted', 'jumpit']);
@@ -66,7 +65,6 @@ export const applicationEventSchema = z.object({
   at: z.string(),
 });
 export const applicationDetailSchema = applicationSchema.extend({ events: z.array(applicationEventSchema) });
-export type ApplicationEvent = z.infer<typeof applicationEventSchema>;
 export type ApplicationDetail = z.infer<typeof applicationDetailSchema>;
 export const automationSchema = z.object({ enabled: z.boolean() }).strict();
 export type Application = z.infer<typeof applicationSchema>;
@@ -82,7 +80,6 @@ export type Resume = z.infer<typeof resumeSchema>;
 // 서류 버전: 종류마다 올린 파일을 버전으로 남기고, 사용 중(active)인 하나만 추천에 쓴다. 목록에는 본문을 싣지 않는다.
 export const DOCUMENT_VERSION_MAX = 10;
 export const documentVersionSchema = z.object({ id: z.string(), filename: z.string(), size: z.number().int(), createdAt: z.string(), edited: z.boolean(), active: z.boolean() });
-export type DocumentVersion = z.infer<typeof documentVersionSchema>;
 
 // 프로필·필터: 사용자가 확인한 사실만 저장한다. 직무는 기획서 3절 여섯 직무, 복수 선택은 OR.
 // 선호(지역·원격·고용 형태·요구 경력)는 사용자만 고른다. 빈 목록·null은 제한 없음(전국·전체)이다.
@@ -114,7 +111,6 @@ export const jobSchema = z.object({
 });
 /** 프로필 초안 작업(결과 result.profile). 저장했거나 버렸으면 null. */
 export const profileDraftSchema = z.object({ job: jobSchema.nullable() });
-export type ProfileDraft = z.infer<typeof profileDraftSchema>;
 export type Job = z.infer<typeof jobSchema>;
 export const linkRequestSchema = z.object({ url: z.url({ protocol: /^https$/ }).max(2000) }).strict();
 
@@ -174,7 +170,6 @@ export const mailConnectionSchema = z.object({
   backfillSince: z.string().nullable(),
   lastJob: jobSchema.nullable(),
 });
-export type MailConnection = z.infer<typeof mailConnectionSchema>;
 
 // 확인 목록: 연결 불명·모호·최종 결과 충돌. 처리는 연결·새 지원 건 확정·무시만 제공한다.
 export const mailStatusSchema = z.enum(['지원 완료', '전형 진행중', '합격', '불합격', '열람', '모호']);
@@ -219,4 +214,3 @@ export const connectionStatusSchema = z.object({
   // 일부 실패: 공고는 받았지만 일부 상세를 읽지 못함. 실패: 받은 공고 없이 실패. collected는 기록이 없던 예전 작업이면 null.
   sources: z.array(z.object({ source: sourceIdSchema, status: z.enum(['정상', '일부 실패', '실패', '확인 전']), failures: z.record(z.string(), z.number().int()), collected: z.number().int().nullable(), finishedAt: z.string().nullable() })),
 });
-export type ConnectionStatus = z.infer<typeof connectionStatusSchema>;
