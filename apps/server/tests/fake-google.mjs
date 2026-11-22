@@ -67,9 +67,9 @@ const cookieOf = (response, name) => [response.headers['set-cookie']].flat().map
 
 // 구글 로그인 흐름(시작 → 콜백)을 거친다. 등록 계정이면 세션 쿠키('ns_session=…')를 돌려주고,
 // 미등록 계정이면 inviteCode로 가입까지 한다. inviteCode가 없으면 대기 쿠키를 담은 오류를 던진다.
-export async function googleCallback(app, email, client = '') {
+export async function googleCallback(app, email, client = '', nonce = '') {
   if (!fake) { fake = await startFakeGoogle(); fake.unref(); useFakeGoogle(fake); }
-  const start = await app.inject({ method: 'GET', url: `/auth/google/start${client ? `?client=${client}` : ''}` });
+  const start = await app.inject({ method: 'GET', url: `/auth/google/start${client ? `?client=${client}` : ''}${nonce ? `&desktop_nonce=${nonce}` : ''}` });
   const state = new URL(start.headers.location).searchParams.get('state');
   return app.inject({ method: 'GET', url: `/auth/google/callback?code=${b64(email)}&state=${state}`, headers: { cookie: cookieOf(start, 'ns_oauth') } });
 }

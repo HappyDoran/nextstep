@@ -17,6 +17,9 @@ const GOOGLE_ISSUERS = new Set(['https://accounts.google.com', 'accounts.google.
 const now = () => new Date().toISOString();
 const days = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString();
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
+// 데스크톱 로그인 코드는 앱의 임의 값과 묶어 해시로만 찾는다(값을 직접 비교하지 않아 시간 차로 새지 않는다).
+const LOGIN_NONCE = /^[\w-]{43}$/;
+const loginCodeHash = (code: string, nonce: string) => sha256(`${code}.${nonce}`);
 
 // 초대 코드는 운영자가 서버에서 발급한다. 원문은 한 번만 보여 주고 해시만 저장한다.
 // googleSub가 있으면 그 구글 계정만 쓸 수 있는 코드다(가입 요청). 없으면 누구나 한 번 쓰는 코드(운영자 명령).
@@ -151,11 +154,14 @@ export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { 
   const clearPending = pendingCookie('', 0);
   const pendingMaxAge = INVITE_DAYS * 86_400;
 
-  // 웹: /api/auth/google/start. 데스크톱 앱은 같은 주소를 기본 브라우저로 열며 client=desktop을 붙인다.
+  // 웹: /api/auth/google/start. 데스크톱 앱은 같은 주소를 기본 브라우저로 열며 client=desktop과
+  // 앱이 로그인마다 만든 임의 값(desktop_nonce)을 붙인다. 이 값이 없으면 1회용 코드를 그 앱에 묶을 수 없어 거절한다.
   app.get('/auth/google/start', async (request, reply) => {
     const google = googleConfig();
     if (!google) return reply.redirect('/?login_error=unavailable');
     const query = request.query as Record<string, string | undefined>;
+    const desktop = query.client === 'desktop';
+    if (desktop && !LOGIN_NONCE.test(query.desktop_nonce ?? '')) return reply.redirect('/?login_error=failed');
     const state = randomBytes(32).toString('base64url');
     const verifier = randomBytes(32).toString('base64url');
     const url = new URL(google.authUrl);
@@ -163,7 +169,7 @@ export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { 
       client_id: google.clientId, redirect_uri: google.redirectUri, response_type: 'code', scope: 'openid email',
       state, code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256', prompt: 'select_account',
     }).toString();
-    reply.header('set-cookie', cookie(STATE_COOKIE, [state, verifier, query.client === 'desktop' ? 'd' : 'w'].join('.'), STATE_MAX_AGE, options.secureCookie));
+    reply.header('set-cookie', cookie(STATE_COOKIE, [state, verifier, desktop ? 'd' : 'w', desktop ? query.desktop_nonce : ''].join('.'), STATE_MAX_AGE, options.secureCookie));
     return reply.redirect(url.href);
   });
 
@@ -175,7 +181,7 @@ export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { 
     const google = googleConfig();
     if (!google) return fail('unavailable');
     const query = request.query as Record<string, string | undefined>;
-    const [state, verifier, client] = (parseCookies(request.headers.cookie)[STATE_COOKIE] ?? '').split('.');
+    const [state, verifier, client, nonce] = (parseCookies(request.headers.cookie)[STATE_COOKIE] ?? '').split('.');
     if (!state || !verifier || !query.code || query.state !== state) return fail('failed');
     const identity = await googleIdentity(google, query.code, verifier);
     if (!identity) return fail('failed');
@@ -183,9 +189,11 @@ export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { 
     if (!userId) await requestInvite(db, identity);
     if (client === 'd') {
       // 데스크톱 앱: 세션·대기 토큰 대신 2분짜리 1회용 코드를 앱 주소로 넘기고 앱이 자기 창에서 바꾼다.
+      // 코드는 시작한 앱의 임의 값과 함께 해시해 두어, 다른 기기의 앱에 코드만 열게 해서는 바꿀 수 없다.
+      if (!nonce || !LOGIN_NONCE.test(nonce)) return fail('failed');
       const code = randomBytes(32).toString('base64url');
       db.prepare('INSERT INTO login_codes (code_hash, user_id, google_sub, email, expires_at) VALUES (?, ?, ?, ?, ?)')
-        .run(sha256(code), userId ?? null, userId ? null : identity.sub, userId ? null : identity.email, new Date(Date.now() + LOGIN_CODE_MS).toISOString());
+        .run(loginCodeHash(code, nonce), userId ?? null, userId ? null : identity.sub, userId ? null : identity.email, new Date(Date.now() + LOGIN_CODE_MS).toISOString());
       return reply.redirect(`nextstep://auth?code=${code}`);
     }
     reply.header('set-cookie', userId
@@ -198,7 +206,7 @@ export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { 
   app.post('/auth/desktop/exchange', async (request, reply) => {
     const body = desktopExchangeSchema.safeParse(request.body);
     if (!body.success) return invalid(reply);
-    const row = db.prepare('DELETE FROM login_codes WHERE code_hash = ? RETURNING user_id, google_sub, email, expires_at').get(sha256(body.data.code)) as { user_id: string | null; google_sub: string | null; email: string | null; expires_at: string } | undefined;
+    const row = db.prepare('DELETE FROM login_codes WHERE code_hash = ? RETURNING user_id, google_sub, email, expires_at').get(loginCodeHash(body.data.code, body.data.nonce)) as { user_id: string | null; google_sub: string | null; email: string | null; expires_at: string } | undefined;
     if (!row || row.expires_at <= now()) return reply.status(401).send({ message: '로그인을 다시 시도하세요.' });
     if (!row.user_id) {
       const identity = { sub: row.google_sub!, email: row.email! };

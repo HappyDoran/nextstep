@@ -163,21 +163,27 @@ test('구글 로그인은 state가 맞아야 하고, 기존 비밀번호 계정�
   } finally { await app.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('데스크톱 로그인 코드는 앱 주소로 넘어가 한 번만, 2분 안에만 세션 또는 코드 입력 대기로 바뀐다', async () => {
+test('데스크톱 로그인 코드는 앱 주소로 넘어가 시작한 앱의 임의 값과 함께 한 번만, 2분 안에만 세션 또는 코드 입력 대기로 바뀐다', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'nextstep-desktop-'));
   const path = join(dir, 'db.sqlite');
   const app = createApp(path);
+  const nonce = 'n'.repeat(43);
   try {
     await signIn(app, 'a@example.com', invite(path));
     const desktopCode = async email => {
-      const callback = await googleCallback(app, email, 'desktop');
+      const callback = await googleCallback(app, email, 'desktop', nonce);
       assert.equal(cookieOf(callback, 'ns_session') ?? cookieOf(callback, 'ns_pending'), undefined);
       const url = new URL(callback.headers.location);
       assert.equal(url.protocol, 'nextstep:');
       return url.searchParams.get('code');
     };
-    const exchange = code => app.inject({ method: 'POST', url: '/auth/desktop/exchange', payload: { code } });
+    const exchange = (code, sent = nonce) => app.inject({ method: 'POST', url: '/auth/desktop/exchange', payload: sent === null ? { code } : { code, nonce: sent } });
+    // 임의 값 없이 시작한 데스크톱 로그인은 코드를 만들지 않는다.
+    for (const query of ['', '&desktop_nonce=short']) assert.equal((await app.inject({ url: `/auth/google/start?client=desktop${query}` })).headers.location, '/?login_error=failed');
     const code = await desktopCode('a@example.com');
+    // 다른 앱(임의 값이 다르거나 없음)에서는 바꿀 수 없다.
+    assert.equal((await exchange(code, 'x'.repeat(43))).statusCode, 401);
+    assert.equal((await exchange(code, null)).statusCode, 400);
     const first = await exchange(code);
     assert.equal(first.statusCode, 200);
     assert.equal(first.json().email, 'a@example.com');

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, Menu, nativeImage, nativeTheme, Notification, session, shell, Tray } from 'electron';
+import { randomBytes } from 'node:crypto';
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serviceUrl, isServiceNavigation, isExternalUrl, googleLoginUrl, desktopLoginPath } from './security.js';
@@ -19,6 +20,7 @@ let tray: Tray | undefined;
 let quitting = false;
 let status = '확인 전';
 let notice: Notification | undefined; // 클릭 처리기가 수거되지 않게 붙잡아 둔다.
+let loginNonce: string | undefined; // 진행 중인 구글 로그인의 임의 값(앱을 끄면 사라진다).
 let loadFailed = false; // 마지막 화면 불러오기가 실패해 창이 오류 페이지에 있다(오류 페이지에서도 getURL은 원래 주소라 따로 적는다).
 
 const settingsPath = () => join(app.getPath('userData'), 'settings.json');
@@ -45,8 +47,9 @@ function createWindow() {
   const contents = window.webContents;
   contents.setWindowOpenHandler(({ url }) => { void openExternal(url); return { action: 'deny' }; });
   contents.on('will-navigate', (event, target) => {
-    const google = googleLoginUrl(target, service);
-    if (google) { event.preventDefault(); void shell.openExternal(google); return; }
+    const nonce = randomBytes(32).toString('base64url');
+    const google = googleLoginUrl(target, service, nonce);
+    if (google) { event.preventDefault(); loginNonce = nonce; void shell.openExternal(google); return; }
     if (!isServiceNavigation(target, service)) { event.preventDefault(); void openExternal(target); }
   });
   // 창 안 iframe의 이동도 서비스 출처 밖이면 막는다(will-navigate는 주 화면만 본다).
@@ -154,10 +157,12 @@ function createTray() {
 }
 
 // 기본 브라우저의 구글 로그인이 끝나면 nextstep:// 주소로 앱이 열린다. 준비 전에 오면 준비된 뒤 처리한다.
+// 이 앱이 시작한 로그인의 임의 값(메모리에만, 1회)이 없으면 무시한다: 남이 보낸 코드로 이 앱이 남의 계정에 로그인되지 않게 한다.
 let pendingLogin: string | undefined;
 function openLoginLink(link: string | undefined) {
-  const path = link && desktopLoginPath(link);
+  const path = link && loginNonce && desktopLoginPath(link, loginNonce);
   if (!path) return;
+  loginNonce = undefined;
   if (service) showWindow(path); else pendingLogin = path;
 }
 
