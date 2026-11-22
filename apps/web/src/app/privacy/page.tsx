@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { AuthLayout } from '../frame';
 
 export const metadata: Metadata = { title: '개인정보처리방침 · NextStep' };
@@ -16,6 +18,8 @@ const SECTIONS: { title: string; body: string }[] = [
 export default function PrivacyPage() {
   return <AuthLayout>
     <article className="grid gap-6">
+      {/* 데스크톱 앱에는 브라우저 뒤로 가기가 없으므로 화면 안에 돌아갈 길을 둔다. */}
+      <Link href="/" className="inline-flex items-center gap-1.5 justify-self-start text-body-sm font-semibold"><ArrowLeft className="size-icon-sm" aria-hidden="true" focusable="false" />처음 화면으로</Link>
       <h1 className="text-title-lg">개인정보처리방침</h1>
       {SECTIONS.map(section => <section key={section.title} className="grid gap-1.5">
         <h2 className="text-body font-semibold">{section.title}</h2>

@@ -64,6 +64,9 @@ test('미등록 구글 계정은 코드 입력 화면에서 이어지고, 받은
   // 구글 동의 화면이 연결하는 개인정보처리방침은 로그인 없이 열린다.
   await page.goto('/privacy');
   await expect(page.getByRole('heading', { name: '개인정보처리방침' })).toBeVisible();
+  // 데스크톱 앱에는 뒤로 가기가 없으므로 화면 안 링크로 돌아간다.
+  await page.getByRole('link', { name: '처음 화면으로' }).click();
+  await expect(page).toHaveURL(/\/$/);
 });
 
 test('코드 입력 화면에서 다른 구글 계정으로 바꾸거나 처음으로 돌아가고, 운영자 명령 코드로도 가입한다', async ({ page }) => {
