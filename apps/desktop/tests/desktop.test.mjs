@@ -33,6 +33,8 @@ test('끝난 갱신만 한 번 알리고 건수와 실패를 구분한다', () =
   assert.equal(noticeFor({ job: job('실행중', { finishedAt: null }), counts: null }, undefined), null);
   assert.deepEqual(noticeFor({ job: job('성공'), counts }, undefined), { id: 'j1', title: '공고 가져오기 끝', body: '이번에 판정한 공고 12건 중 기본 2건 · 도전 5건', failed: false, basic: 2 });
   assert.equal(noticeFor({ job: job('성공'), counts }, 'j1'), null);
+  // 건수를 못 읽어도 문장이 끊기지 않는다.
+  assert.equal(noticeFor({ job: job('성공'), counts: null }, undefined).body, '이번에 판정한 공고 12건');
   assert.equal(noticeFor({ job: job('일부 실패'), counts }, 'j0').title, '공고 가져오기 끝(일부 실패)');
   assert.equal(noticeFor({ job: job('실패', { result: {} }), counts: null }, 'j0').title, '공고 가져오기 실패');
   assert.equal(noticeFor({ job: job('성공', { result: { judged: 0 } }), counts: { basic: 0, challenge: 0 } }, 'j0').body, '새로 판정한 공고가 없습니다.');

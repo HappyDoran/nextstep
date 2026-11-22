@@ -14,7 +14,7 @@ export function noticeFor(latest: LatestRefresh, lastNotifiedId: string | undefi
   const counts = latest.counts ? `기본 ${latest.counts.basic}건 · 도전 ${latest.counts.challenge}건` : '';
   const basic = latest.counts?.basic ?? 0;
   if (job.status === '실패') return { id: job.id, title: '공고 가져오기 실패', body: '추천 화면에서 원인을 확인하세요.', failed: true, basic };
-  const body = judged ? `이번에 판정한 공고 ${judged}건 중 ${counts}` : '새로 판정한 공고가 없습니다.';
+  const body = !judged ? '새로 판정한 공고가 없습니다.' : counts ? `이번에 판정한 공고 ${judged}건 중 ${counts}` : `이번에 판정한 공고 ${judged}건`;
   return { id: job.id, title: job.status === '일부 실패' ? '공고 가져오기 끝(일부 실패)' : '공고 가져오기 끝', body, failed: job.status === '일부 실패', basic };
 }
 

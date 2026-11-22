@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, Menu, nativeImage, nativeTheme, Notification, session, shell, Tray } from 'electron';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { serviceUrl, isServiceNavigation, isExternalUrl, googleLoginUrl, desktopLoginPath } from './security.js';
 import { noticeFor, wanted, type LatestRefresh, type NotifyPrefs } from './notify.js';
@@ -24,7 +24,8 @@ const settingsPath = () => join(app.getPath('userData'), 'settings.json');
 function readSettings(): Settings | undefined {
   try { return JSON.parse(readFileSync(settingsPath(), 'utf8')) as Settings; } catch { return undefined; }
 }
-function writeSettings(next: Settings) { writeFileSync(settingsPath(), JSON.stringify(next), { mode: 0o600 }); }
+// 쓰는 중에 앱이 꺼져도 파일이 반쯤 남지 않게 임시 파일에 쓴 뒤 바꿔 넣는다(깨지면 서비스 주소를 잃는다).
+function writeSettings(next: Settings) { const path = settingsPath(); writeFileSync(`${path}.tmp`, JSON.stringify(next), { mode: 0o600 }); renameSync(`${path}.tmp`, path); }
 
 async function openExternal(target: string) {
   if (!isExternalUrl(target)) {
@@ -48,6 +49,8 @@ function createWindow() {
     if (google) { event.preventDefault(); void shell.openExternal(google); return; }
     if (!isServiceNavigation(target, service)) { event.preventDefault(); void openExternal(target); }
   });
+  // 창 안 iframe의 이동도 서비스 출처 밖이면 막는다(will-navigate는 주 화면만 본다).
+  contents.on('will-frame-navigate', details => { if (!details.isMainFrame && !isServiceNavigation(details.url, service)) details.preventDefault(); });
   contents.on('will-redirect', (event, target) => { if (!isServiceNavigation(target, service)) event.preventDefault(); });
   contents.on('will-attach-webview', event => event.preventDefault());
   contents.on('did-finish-load', () => { if (loadFailed) return; void poll(); });
@@ -95,12 +98,16 @@ async function refreshNow() {
 
 // 마지막 갱신 결과는 창의 웹 페이지에서 같은 출처로 읽는다. 화면이 보는 로그인 쿠키(SameSite=Lax)를 그대로 써서
 // 창에서 로그인했는데 아이콘 메뉴만 '로그인 필요'로 남는 일이 없게 한다.
+let pollSeq = 0;
 async function poll() {
   if (!window) createWindow();
+  // 로그아웃 직후 조회와 1분 주기 조회가 겹치면 늦게 끝난 옛 결과가 새 상태를 덮지 않게 마지막 조회만 반영한다.
+  const seq = ++pollSeq;
   if (reloadIfOffService()) { status = '서비스에 연결하지 못함'; updateTray(); return; }
   try {
     // 알림 조건·소리는 웹 설정 일반 구역이 같은 창의 저장소(nextstep:prefs)에 둔다.
     const { code, body, prefs } = await window!.webContents.executeJavaScript("fetch('/api/jobs/latest', { cache: 'no-store' }).then(async r => ({ code: r.status, body: r.ok ? await r.json() : null, prefs: localStorage.getItem('nextstep:prefs') }))") as { code: number; body: LatestRefresh | null; prefs: string | null };
+    if (seq !== pollSeq) return;
     if (code === 401) { status = '로그인 필요'; return; }
     if (!body) { status = '서비스 응답 오류'; return; }
     const latest = body;
@@ -108,7 +115,8 @@ async function poll() {
     status = !job ? '아직 가져온 적 없음' : !job.finishedAt ? '가져오는 중' : `마지막: ${job.status} · ${new Date(job.finishedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
     const settings = readSettings();
     // 처음 설치한 직후에는 지난 결과를 알리지 않고 기준만 잡는다. 그 뒤로는 꺼져 있던 동안 끝난 결과도 한 번 알린다.
-    if (!settings) { writeSettings(job?.finishedAt ? { lastNotifiedId: job.id } : {}); return; }
+    // 기준(lastNotifiedId)이 없으면 처음으로 본다. 결과가 아직 없으면 빈 기준('')을 적어 첫 결과부터 알린다.
+    if (settings?.lastNotifiedId === undefined) { writeSettings({ ...settings, lastNotifiedId: job?.finishedAt ? job.id : '' }); return; }
     const next = noticeFor(latest, settings.lastNotifiedId);
     if (!next) return;
     writeSettings({ ...settings, lastNotifiedId: next.id });
