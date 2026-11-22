@@ -2,7 +2,7 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useIsFetching, useQuery } from '@tanstack/react-query';
 import { AlertCircle, BriefcaseBusiness, Check, Inbox, LoaderCircle, LogOut, Mail, Settings, Star, WifiOff } from 'lucide-react';
 import { AppShell, Logo, LogoMark, NavItem, PageHeader, Rail, StatusBar } from '@nextstep/design-system';
 import { latestRefreshSchema, reviewSchema, type Me } from '@nextstep/contracts';
@@ -70,11 +70,21 @@ export function Frame({ me, title, description, actions, children }: { me: Me; t
       {items.map(item => <NavItem key={item.href} {...(item.href.startsWith('#') ? {} : { link: Link })} href={item.href} icon={item.icon} label={item.label} current={item.href.startsWith('#') ? settings !== null : settings === null && path === item.href} {...(item.count ? { count: item.count } : {})} />)}
     </Rail>}
     status={<StatusBar start={<MailState me={me} />} end={<RefreshState me={me} />} />}>
+    <LoadBar />
     {!online && <p role="status" className="flex items-center gap-2 bg-warning-muted px-7 py-2 text-body-sm font-semibold text-warning"><WifiOff className={small} aria-hidden="true" focusable="false" />인터넷 연결이 끊겼어요. 다시 연결되면 자동으로 이어서 불러와요.</p>}
     <PageHeader title={title} description={description} actions={actions} />
     {settings && <SettingsDialog me={me} section={settings} onSection={showSettings} onClose={() => showSettings(null)} />}
-    <div className="min-h-0 flex-1 overflow-auto"><div className="mx-auto max-w-content px-7 py-6">{children}</div></div>
+    <div className="min-h-0 flex-1 overflow-auto"><div className="mx-auto max-w-content animate-rise px-7 py-6 motion-reduce:animate-none">{children}</div></div>
   </AppShell>;
+}
+
+// 처음 불러오는 자료가 있으면 화면 맨 위에 가는 진행 막대를 보인다. 주기 조회·다시 읽기(이미 값이 있음)에는 보이지 않는다.
+function LoadBar() {
+  const loading = useIsFetching({ predicate: query => query.state.data === undefined }) > 0;
+  if (!loading) return null;
+  return <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 top-0 z-[60] h-0.5 animate-fade-late overflow-hidden">
+    <div className="h-full w-2/5 animate-sweep bg-primary motion-reduce:w-full motion-reduce:animate-none motion-reduce:opacity-40" />
+  </div>;
 }
 
 // 브라우저의 온라인 상태(이벤트로만 바뀐다, 따로 묻지 않음). 서버 렌더링에서는 온라인으로 본다.
@@ -88,7 +98,7 @@ function AccountMenu({ me }: { me: Me }) {
   const item = 'flex h-control w-full cursor-pointer items-center gap-2.5 rounded-control px-3 text-left text-body-sm text-foreground hover:bg-muted focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring';
   return <>
     <button type="button" popoverTarget="account-menu" aria-label={`계정 메뉴 (${me.email})`} className="grid size-9 cursor-pointer place-items-center rounded-full bg-secondary text-body-sm font-bold uppercase text-secondary-foreground focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus">{me.email[0]}</button>
-    <div id="account-menu" popover="auto" className="fixed inset-auto bottom-12 left-[calc(var(--ns-rail-width)+0.5rem)] m-0 w-64 rounded-surface border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+    <div id="account-menu" popover="auto" className="fixed inset-auto bottom-12 left-[calc(var(--ns-rail-width)+0.5rem)] m-0 w-64 origin-bottom-left [&:popover-open]:animate-pop motion-reduce:[&:popover-open]:animate-fade rounded-surface border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
       <p className="truncate px-3 pb-2 pt-1.5 text-caption text-muted-foreground">{me.email}</p>
       <a href="#settings" onClick={hide} className={`${item} no-underline`}><Settings className={small} aria-hidden="true" focusable="false" />설정</a>
       <div className="my-1 border-t border-border" />
