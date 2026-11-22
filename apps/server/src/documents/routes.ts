@@ -150,8 +150,8 @@ export function registerDocuments(app: FastifyInstance, db: DatabaseSync, filesD
     const removed = db.prepare('DELETE FROM documents WHERE user_id = ? AND kind = ? RETURNING storage_key').all(user.id, kind) as { storage_key: string }[];
     if (!removed.length) return reply.status(404).send({ message: `등록한 ${NAMES[kind]}가 없습니다.` });
     for (const row of removed) removeFile(row.storage_key);
-    // 이력서에서 뽑은 프로필 초안도 함께 지운다(최소 보관).
-    if (kind === 'resume') db.prepare("DELETE FROM jobs WHERE user_id = ? AND kind = 'suggest' AND status NOT IN ('대기', '실행중')").run(user.id);
+    // 이력서에서 뽑은 프로필 초안도 함께 지운다(최소 보관). 만드는 중인 작업 행도 지워 늦게 끝난 결과가 저장되지 않게 한다(finish는 남은 실행중 행만 바꾼다).
+    if (kind === 'resume') db.prepare("DELETE FROM jobs WHERE user_id = ? AND kind = 'suggest'").run(user.id);
     return reply.status(204).send();
   });
 }
