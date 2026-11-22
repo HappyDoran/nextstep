@@ -67,9 +67,9 @@ export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden="true" className={join('h-3 animate-shimmer rounded-full bg-gradient-to-r from-muted via-border to-muted bg-[length:280%_100%] motion-reduce:animate-none', className)} />;
 }
 
-/** 아래 가운데에 잠깐 뜨는 알림. 되돌리기처럼 행동 하나를 붙일 수 있다. */
+/** 아래 가운데에 잠깐 뜨는 알림. 되돌리기처럼 행동 하나를 붙일 수 있다. 화면 낭독기가 읽도록 늘 그려 두는 role="status" 영역 안에 넣는다. */
 export function Toast({ children, action }: PropsWithChildren<{ action?: ReactNode }>) {
-  return <div role="status" className="pointer-events-auto flex animate-fade-up items-center gap-3.5 rounded-full bg-foreground py-2.5 motion-reduce:animate-fade pl-5 pr-2.5 text-body-sm text-background shadow-lg">{children}{action}</div>;
+  return <div className="pointer-events-auto flex animate-fade-up items-center gap-3.5 rounded-full bg-foreground py-2.5 motion-reduce:animate-fade pl-5 pr-2.5 text-body-sm text-background shadow-lg">{children}{action}</div>;
 }
 
 /** NextStep 로고 마크: 인디고 면 위에 올라가는 계단과 다음 한 칸(점). 테마 역할 색을 따른다. 장식이면 label을 비운다. */
