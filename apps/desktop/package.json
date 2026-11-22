@@ -20,7 +20,6 @@
   "description": "NextStep 공고 추천·지원 관리 데스크톱 상주 앱",
   "build": {
     "appId": "com.nextstep.desktop",
-    "productName": "NextStep",
     "directories": {
       "output": "release"
     },
@@ -32,12 +31,10 @@
     "mac": {
       "icon": "assets/icon-1024.png",
       "category": "public.app-category.productivity",
-      "target": "dir",
       "identity": null
     },
     "win": {
       "icon": "assets/icon-1024.png",
-      "target": "zip",
       "signAndEditExecutable": false
     },
     "artifactName": "NextStep-${os}-${arch}.${ext}",

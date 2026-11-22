@@ -7,6 +7,7 @@ import { noticeFor, wanted, type LatestRefresh, type NotifyPrefs } from './notif
 // 상주 앱: 창은 홈서버 웹을 그대로 열고, 창을 닫아도 메뉴 막대(macOS)·알림 영역(Windows) 아이콘으로 남아
 // 서버의 마지막 공고 갱신 결과를 1분마다 확인해 OS 알림을 보낸다. 서버 작업은 서버가 한다(기술 설계 E절).
 const POLL_MS = 60_000;
+const mac = process.platform === 'darwin';
 const PARTITION = 'persist:nextstep';
 // 설치 앱의 기본 서비스 주소(홈서버 Tailscale HTTPS). 개발 실행(pnpm dev)은 같은 컴퓨터의 개발 서버가 기본이다.
 const HOME_SERVER = 'https://doran-server.tail70f0b3.ts.net';
@@ -37,7 +38,6 @@ async function openExternal(target: string) {
 
 function createWindow() {
   // macOS는 제목 막대를 숨기고 창 단추를 웹이 비워 둔 맨 위 띠(2rem) 안에 띄운다. 띠를 끌어 창을 옮긴다(globals.css).
-  const mac = process.platform === 'darwin';
   window = new BrowserWindow({ width: 1280, height: 860, minWidth: 720, minHeight: 540, title: 'NextStep', icon: join(app.getAppPath(), 'assets/icon.png'), show: false,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1f1e1b' : '#ffffff', // 웹이 그리기 전 맨 위 띠와 같은 색(card)
     ...(mac ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 14, y: 10 } } : {}),
@@ -110,14 +110,13 @@ async function poll() {
     if (seq !== pollSeq) return;
     if (code === 401) { status = '로그인 필요'; return; }
     if (!body) { status = '서비스 응답 오류'; return; }
-    const latest = body;
-    const job = latest.job;
+    const job = body.job;
     status = !job ? '아직 가져온 적 없음' : !job.finishedAt ? '가져오는 중' : `마지막: ${job.status} · ${new Date(job.finishedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
     const settings = readSettings();
     // 처음 설치한 직후에는 지난 결과를 알리지 않고 기준만 잡는다. 그 뒤로는 꺼져 있던 동안 끝난 결과도 한 번 알린다.
-    // 기준(lastNotifiedId)이 없으면 처음으로 본다. 결과가 아직 없으면 빈 기준('')을 적어 첫 결과부터 알린다.
-    if (settings?.lastNotifiedId === undefined) { writeSettings({ ...settings, lastNotifiedId: job?.finishedAt ? job.id : '' }); return; }
-    const next = noticeFor(latest, settings.lastNotifiedId);
+    // 처음 설치한 직후에는 지난 결과를 알리지 않고 기준만 잡는다. 그 뒤로는 꺼져 있던 동안 끝난 결과도 한 번 알린다.
+    if (!settings) { writeSettings(job?.finishedAt ? { lastNotifiedId: job.id } : {}); return; }
+    const next = noticeFor(body, settings.lastNotifiedId);
     if (!next) return;
     writeSettings({ ...settings, lastNotifiedId: next.id });
     let chosen: NotifyPrefs = {};
@@ -126,7 +125,7 @@ async function poll() {
     notice = new Notification({ title: next.title, body: next.body, silent: chosen.sound === false });
     notice.on('click', () => showWindow('/recommendations'));
     notice.show();
-  } catch { status = '서비스에 연결하지 못함'; } finally { updateTray(); }
+  } catch { if (seq === pollSeq) status = '서비스에 연결하지 못함'; } finally { updateTray(); }
 }
 
 function updateTray() {
@@ -143,12 +142,11 @@ function updateTray() {
     ]),
     { type: 'separator' },
     { label: '로그인 시 자동 실행', type: 'checkbox', checked: autoLaunch, click: item => { app.setLoginItemSettings({ openAtLogin: item.checked }); updateTray(); } },
-    { label: 'NextStep 종료', click: () => { quitting = true; app.quit(); } },
+    { label: 'NextStep 종료', role: 'quit' },
   ]));
 }
 
 function createTray() {
-  const mac = process.platform === 'darwin';
   const image = nativeImage.createFromPath(join(app.getAppPath(), mac ? 'assets/trayTemplate.png' : 'assets/tray.png'));
   if (mac) image.setTemplateImage(true);
   tray = new Tray(image);
@@ -188,7 +186,7 @@ else {
       if (details.method !== 'GET' && !loadFailed) void poll();
     });
     Menu.setApplicationMenu(Menu.buildFromTemplate([
-      { label: 'NextStep', submenu: [{ label: '창 닫기', role: 'close' }, { label: 'NextStep 종료', click: () => { quitting = true; app.quit(); } }] },
+      { label: 'NextStep', submenu: [{ label: '창 닫기', role: 'close' }, { label: 'NextStep 종료', role: 'quit' }] },
       { label: '편집', submenu: [{ role: 'undo', label: '실행 취소' }, { role: 'redo', label: '다시 실행' }, { type: 'separator' }, { role: 'cut', label: '잘라내기' }, { role: 'copy', label: '복사' }, { role: 'paste', label: '붙여넣기' }, { role: 'selectAll', label: '전체 선택' }] },
       { label: '보기', submenu: [{ role: 'reload', label: '새로고침' }] },
     ]));
