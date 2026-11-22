@@ -57,7 +57,7 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     const user = requireUser(db, request, reply);
     if (!user) return reply;
     const job = latestJob(db, user.id, 'refresh');
-    const window = job?.finishedAt ? db.prepare('SELECT started_at FROM jobs WHERE id = ?').get(job.id) as { started_at: string | null } : undefined;
+    const window = job?.finishedAt ? db.prepare('SELECT started_at FROM jobs WHERE id = ? AND user_id = ?').get(job.id, user.id) as { started_at: string | null } : undefined;
     const counts = job?.finishedAt && window?.started_at ? db.prepare(`SELECT COALESCE(SUM(classification = '기본'), 0) AS basic, COALESCE(SUM(classification = '도전'), 0) AS challenge
       FROM recommendations WHERE user_id = ? AND evaluated_at BETWEEN ? AND ?`).get(user.id, window.started_at, job.finishedAt) as { basic: number; challenge: number } : null;
     return latestRefreshSchema.parse({ job, counts: counts ? { basic: Number(counts.basic), challenge: Number(counts.challenge) } : null });

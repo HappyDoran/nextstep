@@ -64,8 +64,11 @@ async function eachMailbox<T>(client: Client, fn: (path: string, uidValidity: st
   try {
     for (const box of await client.list()) {
       if (box.flags.has('\\Noselect') || (box.specialUse && EXCLUDED.has(box.specialUse))) continue;
-      const opened = await client.mailboxOpen(box.path, { readOnly: true });
-      out.push(await fn(box.path, String(opened.uidValidity), opened.exists));
+      // 편지함 하나를 열거나 읽지 못해도 연결이 살아 있으면 그 편지함만 건너뛴다(다른 편지함의 새 메일은 반영).
+      try {
+        const opened = await client.mailboxOpen(box.path, { readOnly: true });
+        out.push(await fn(box.path, String(opened.uidValidity), opened.exists));
+      } catch (error) { if (!client.usable) throw error; }
     }
   } catch (error) {
     await client.logout().catch(() => {});

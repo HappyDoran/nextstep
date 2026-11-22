@@ -31,6 +31,10 @@ test('원티드 상세에서 마감·상시·경력·원격·외부 지원 URL�
   assert.equal(parsed.employeeCount, null);
   const always = wanted.parseDetail('1', page({ initialData: { ...base, due_time: null, out_link: 'javascript:x', career: { is_newbie: true, is_expert: true } } }));
   assert.equal(always.alwaysHire, true);
+  // 닫힌 공고는 마감일이 없어도 상시가 아니라 마감(확인 시각)으로 둔다.
+  const closed = wanted.parseDetail('1', page({ initialData: { ...base, status: 'close', due_time: null } }));
+  assert.equal(closed.alwaysHire, false);
+  assert.ok(Date.parse(closed.deadline) <= Date.now());
   assert.equal(always.externalApplyUrl, null);
   assert.equal(always.careers[0].type, 'ANY');
   assert.deepEqual(wanted.parseDetail('2', page({ initialData: base })), { code: 'parse_failed' });

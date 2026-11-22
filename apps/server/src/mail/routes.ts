@@ -42,13 +42,14 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
     const at = new Date().toISOString();
     // 고른 최초 조회 기간으로 조회 범위를 정한다. 재연결하면 과거 범위 넓히기 진행도 지운다.
     const coveredSince = new Date(Date.now() - body.data.days * 86_400_000).toISOString();
-    const previous = db.prepare('SELECT account, covered_since FROM mail_connections WHERE user_id = ?').get(user.id) as { account: string; covered_since: string | null } | undefined;
+    const previous = db.prepare('SELECT account, covered_since, range_incomplete FROM mail_connections WHERE user_id = ?').get(user.id) as { account: string; covered_since: string | null; range_incomplete: number } | undefined;
     db.prepare(`INSERT INTO mail_connections (user_id, provider, account, secret, status, consent_at, created_at, covered_since) VALUES (?, 'naver', ?, ?, '정상', ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET account = excluded.account, secret = excluded.secret, status = '정상', consent_at = excluded.consent_at, last_error = NULL, range_incomplete = 0, covered_since = excluded.covered_since, backfill_since = NULL`)
       .run(user.id, body.data.account, encrypt(secretKey, body.data.appPassword), at, at, coveredSince);
     db.prepare('DELETE FROM mail_backfill WHERE user_id = ?').run(user.id);
-    // 다른 계정이거나 더 이전부터 보도록 넓혔으면 조회 위치를 지워 새 조회 기간을 처음부터 실제로 조회한다(이미 받은 메일은 메시지 키로 건너뜀).
-    if (!previous || previous.account !== body.data.account || !previous.covered_since || coveredSince < previous.covered_since) db.prepare('DELETE FROM mail_cursors WHERE user_id = ?').run(user.id);
+    // 다른 계정이거나, 더 이전부터 보도록 넓혔거나, 지난 조회가 IMAP 동기화 제한으로 범위를 다 못 읽었으면(제한을 늘리고 다시 연결)
+    // 조회 위치를 지워 새 조회 기간을 처음부터 실제로 조회한다(이미 받은 메일은 메시지 키로 건너뜀).
+    if (!previous || previous.account !== body.data.account || !previous.covered_since || coveredSince < previous.covered_since || previous.range_incomplete === 1) db.prepare('DELETE FROM mail_cursors WHERE user_id = ?').run(user.id);
     return reply.status(202).send(enqueue(db, user.id, 'mail'));
   });
 

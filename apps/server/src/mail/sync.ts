@@ -86,12 +86,14 @@ export function createMailHandler(db: DatabaseSync, secretKey: Buffer, source: M
     }
     // 과거 범위 넓히기: 현재 조회 위치는 그대로 두고 [목표 시작, 조회 범위 시작) 기간을 따로 진행한다.
     let backfillMore = false;
+    let backfillError: string | undefined;
     if (backfill && conn.backfill_since && conn.covered_since) {
       const progress = new Map((db.prepare('SELECT mailbox, uid_validity, below_uid FROM mail_backfill WHERE user_id = ?').all(job.userId) as { mailbox: string; uid_validity: string; below_uid: number }[])
         .map(r => [r.mailbox, { uidValidity: r.uid_validity, belowUid: r.below_uid }]));
-      let past;
+      let past: Awaited<ReturnType<typeof backfill>> = [];
+      // 과거 범위 실패는 새 메일 처리(해석·연결 상태 갱신)를 막지 않고 끝에서 일부 실패로 알린다.
       try { past = await backfill(conn.account, password, progress, new Date(conn.backfill_since), new Date(conn.covered_since)); }
-      catch (error) { return { status: '일부 실패', errorCode: error instanceof MailSourceError ? error.code : 'internal', result: { ...counts, rangeIncomplete, more } }; }
+      catch (error) { backfillError = error instanceof MailSourceError ? error.code : 'internal'; }
       for (const batch of past) {
         if (!storeBatch(db, job.userId, batch, counts, bodies)) return { status: '실패', errorCode: 'disconnected', result: counts };
         if (batch.lowestUid !== null) db.prepare(`INSERT INTO mail_backfill (user_id, mailbox, uid_validity, below_uid) VALUES (?, ?, ?, ?)
@@ -99,7 +101,7 @@ export function createMailHandler(db: DatabaseSync, secretKey: Buffer, source: M
         if (!batch.complete) backfillMore = true;
       }
       // 모든 편지함을 다 가져오면 조회 범위 시작을 목표로 옮기고 진행 위치를 지운다.
-      if (!backfillMore) {
+      if (!backfillMore && !backfillError) {
         db.prepare('UPDATE mail_connections SET covered_since = backfill_since, backfill_since = NULL WHERE user_id = ? AND backfill_since = ?').run(job.userId, conn.backfill_since);
         db.prepare('DELETE FROM mail_backfill WHERE user_id = ?').run(job.userId);
       }
@@ -108,7 +110,9 @@ export function createMailHandler(db: DatabaseSync, secretKey: Buffer, source: M
     if (ai) await interpretUnlinked(db, job.userId, ai, bodies, counts, conn.account, password, aiFailureCodes);
     // 범위 미달은 최초 조회에서만 알 수 있으므로 한 번 기록하면 재연결 전까지 유지한다.
     db.prepare("UPDATE mail_connections SET status = '정상', last_success_at = ?, last_error = NULL, range_incomplete = max(range_incomplete, ?) WHERE user_id = ?").run(new Date().toISOString(), rangeIncomplete ? 1 : 0, job.userId);
-    return { status: counts.aiFailures ? '일부 실패' : '성공', result: { ...counts, aiFailureCodes, rangeIncomplete, more: more || backfillMore } };
+    const result = { ...counts, aiFailureCodes, rangeIncomplete, more: more || backfillMore };
+    if (backfillError) return { status: '일부 실패', errorCode: backfillError, result };
+    return { status: counts.aiFailures ? '일부 실패' : '성공', result };
   };
 }
 

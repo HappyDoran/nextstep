@@ -40,7 +40,7 @@ export function importApplications(db: DatabaseSync, userId: string, csv: string
       seen.add(key); if (url) urls.add(url);
       const id = randomUUID();
       insert.run(id, userId, company, role, url, mapped[0], mapped[1], at, at);
-      log.run(randomUUID(), id, 'status', '미지원', mapped[0], at);
+      if (mapped[0] !== '미지원') log.run(randomUUID(), id, 'status', '미지원', mapped[0], at);
       if (mapped[1] === '열람') log.run(randomUUID(), id, 'readStatus', '정보 없음', '열람', at);
       result.imported++;
     }
@@ -91,7 +91,7 @@ export function registerApplications(app: FastifyInstance, db: DatabaseSync) {
       if ((error as { errcode?: number }).errcode === 787) return reply.status(401).send({ message: '로그인이 필요합니다.' });
       throw error;
     }
-    return reply.status(201).send(toApplication(db.prepare('SELECT * FROM applications WHERE id = ?').get(id) as Row));
+    return reply.status(201).send(toApplication(db.prepare('SELECT * FROM applications WHERE id = ? AND user_id = ?').get(id, user.id) as Row));
   });
 
   app.post('/applications/import', { bodyLimit: 3 * 1024 * 1024 }, async (request, reply) => {

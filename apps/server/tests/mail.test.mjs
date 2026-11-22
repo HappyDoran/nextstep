@@ -525,7 +525,7 @@ test('첫 조회에 받은 메일이 없으면 조회 위치를 저장하지 않
   } finally { await s.done(); }
 });
 
-test('다른 계정으로 다시 연결하거나 조회 기간을 넓히면 조회 위치를 지우고, 같은 계정·같은 기간이면 유지한다', async () => {
+test('다른 계정·더 넓은 기간·범위 미달 연결을 다시 연결하면 조회 위치를 지우고, 같은 계정·같은 기간이면 유지한다', async () => {
   const s = await setup();
   try {
     const a = await s.signup('a@example.com');
@@ -535,6 +535,13 @@ test('다른 계정으로 다시 연결하거나 조회 기간을 넓히면 조�
     await put('tester@naver.com');
     await s.run();
     assert.equal(cursors(), 1);
+    // 가짜 편지함은 조회 기간보다 짧게 보여 범위 미달로 기록된다. 그런 연결을 다시 연결하면(제한을 늘린 뒤) 처음부터 다시 읽는다.
+    const rangeFlag = value => { const raw = new DatabaseSync(s.path); try { raw.prepare('UPDATE mail_connections SET range_incomplete = ?').run(value); } finally { raw.close(); } };
+    rangeFlag(1);
+    await put('tester@naver.com');
+    assert.equal(cursors(), 0);
+    await s.run();
+    rangeFlag(0);
     await put('tester@naver.com');
     assert.equal(cursors(), 1);
     await put('tester@naver.com', 90);

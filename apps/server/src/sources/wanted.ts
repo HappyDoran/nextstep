@@ -65,9 +65,9 @@ export function parseDetail(id: string, html: string): WantedPosting | { code: '
     url: `${ORIGIN}/wd/${id}`,
     title: d.position,
     company: d.company.company_name,
-    deadline: kstDeadline(d.due_time),
-    // 원티드는 마감일 없는 공고를 상시로 표시한다.
-    alwaysHire: !d.due_time,
+    // 원티드는 마감일 없는 공고를 상시로 표시한다. 이미 닫힌 공고는 마감일이 없으면 확인한 시각을 마감으로 둔다(상시·모집중으로 보이지 않게).
+    deadline: kstDeadline(d.due_time) ?? (d.status === 'active' ? null : new Date().toISOString()),
+    alwaysHire: d.status === 'active' && !d.due_time,
     active: d.status === 'active',
     careers,
     location,

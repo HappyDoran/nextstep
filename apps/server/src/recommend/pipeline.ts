@@ -63,6 +63,8 @@ export function parsePostingLink(raw: string): { source: SourceId; id: string } 
 
 const SAME_POSTING: Partial<Record<SourceId, SourceId>> = { saramin: 'jumpit', jumpit: 'saramin' };
 
+// 본문을 못 읽은 이유(출처 코드) → 화면 문구.
+const BODY_FAILURES: Record<string, string> = { closed: '마감된 공고', body_image_only: '본문이 이미지', body_missing: '본문 없음' };
 type PostingRow = { id: string; source: SourceId; title: string; company: string; deadline: string | null; always_hire: number; location: string | null; remote: number | null; careers: string; company_type: string | null; employee_count: number | null; requirements: string | null; body_failure: string | null; acquired_by: 'auto' | 'link'; owner_user_id: string };
 
 // 공고는 갱신을 요청한 사용자의 자료로만 저장한다. 다른 사용자와 공유하지 않는다(사용자 결정 2026-11-10).
@@ -124,7 +126,7 @@ function postingInput(row: PostingRow): PostingInput {
     careers: JSON.parse(row.careers), location: row.location,
     remote: row.remote === null ? (req?.remote ?? null) : row.remote ? '전면' : '없음',
     title: row.title, deadline: row.deadline, alwaysHire: row.always_hire === 1, companyType: row.company_type,
-    bodyNote: req ? null : `본문 조건 미확인(${row.body_failure ?? '추출 전 형식 또는 추출 실패'})`,
+    bodyNote: req ? null : `본문 조건 미확인(${BODY_FAILURES[row.body_failure ?? ''] ?? '본문을 읽지 못함'})`,
   };
 }
 
