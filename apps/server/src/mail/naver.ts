@@ -1,5 +1,5 @@
 import { text } from 'node:stream/consumers';
-import { ImapFlow } from 'imapflow';
+import { ImapFlow, type FetchQueryObject } from 'imapflow';
 
 export type ImapFailure = 'missing_credentials' | 'auth_failed' | 'network' | 'tls' | 'protocol';
 
@@ -79,10 +79,11 @@ export async function eachMailbox<T>(client: Pick<Client, 'list' | 'mailboxOpen'
   return out;
 }
 
-async function fetchMessages(client: Client, path: string, uidValidity: string, uids: number[]) {
-  const messages: FetchedMail[] = [];
+// 열린 편지함에서 메일 정보를 받고 본문 파트를 내려받아 글자·링크로 읽는다. 자르기는 부르는 쪽이 정한다.
+async function readMails(client: Client, uids: number[], query: FetchQueryObject = {}) {
   const metas = [];
-  if (uids.length) for await (const msg of client.fetch(uids, { uid: true, envelope: true, bodyStructure: true, internalDate: true }, { uid: true })) metas.push(msg);
+  if (uids.length) for await (const msg of client.fetch(uids, { uid: true, envelope: true, bodyStructure: true, ...query }, { uid: true })) metas.push(msg);
+  const out = [];
   for (const msg of metas) {
     const part = textPart(msg.bodyStructure as Part);
     let raw = '';
@@ -90,7 +91,14 @@ async function fetchMessages(client: Client, path: string, uidValidity: string, 
       const { content } = await client.download(String(msg.uid), part.part, { uid: true });
       if (content) raw = await streamText(content);
     }
-    const { text, links } = mailText(raw, part?.html ?? false);
+    out.push({ msg, ...mailText(raw, part?.html ?? false) });
+  }
+  return out;
+}
+
+async function fetchMessages(client: Client, path: string, uidValidity: string, uids: number[]) {
+  const messages: FetchedMail[] = [];
+  for (const { msg, text, links } of await readMails(client, uids, { internalDate: true })) {
     const env = msg.envelope;
     messages.push({
       uid: msg.uid,
@@ -160,17 +168,7 @@ export const naverBodies: MailBodySource = async (account, password, refs) => {
       if (!opened) continue;
       const uids = list.filter(r => r.uidValidity === String(opened.uidValidity)).map(r => r.uid);
       if (!uids.length) continue;
-      const metas = [];
-      for await (const msg of client.fetch(uids, { uid: true, envelope: true, bodyStructure: true }, { uid: true })) metas.push(msg);
-      for (const msg of metas) {
-        const part = textPart(msg.bodyStructure as Part);
-        let raw = '';
-        if (part) {
-          const { content } = await client.download(String(msg.uid), part.part, { uid: true });
-          if (content) raw = await streamText(content);
-        }
-        out.set(bodyKey({ mailbox, uid: msg.uid }), { ...mailText(raw, part?.html ?? false), fromAddress: msg.envelope?.from?.[0]?.address ?? '' });
-      }
+      for (const { msg, text, links } of await readMails(client, uids)) out.set(bodyKey({ mailbox, uid: msg.uid }), { text, links, fromAddress: msg.envelope?.from?.[0]?.address ?? '' });
     }
   } finally {
     await client.logout().catch(() => {});

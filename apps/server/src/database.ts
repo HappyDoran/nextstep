@@ -4,6 +4,20 @@ import { dirname } from 'node:path';
 
 export const SCHEMA_VERSION = 19;
 
+// 쓰기 트랜잭션(BEGIN IMMEDIATE)에서 fn을 동기로 실행한다. fn 안에서 await하지 않는다.
+// fn이 직접 ROLLBACK하고 돌아오면 COMMIT하지 않고, 예외면 되돌린 뒤 다시 던진다.
+export function tx<T>(db: DatabaseSync, fn: () => T): T {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = fn();
+    if (db.isTransaction) db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    if (db.isTransaction) db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 export function openDatabase(filename: string) {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(filename);
