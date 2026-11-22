@@ -81,6 +81,15 @@ test('연결 검사·암호화 저장·증분 조회·중복 방지·상태 순�
       mail(3, 'hr@other.example', '서류 전형 결과 안내', '아쉽게도 함께하기 어렵습니다'),
       mail(4, 'friend@example.com', '점심'),
     ];
+    // 메일 확인이 실행 중이면 연결을 바꾸지 않는다(그 작업이 새 조회 범위를 덮어쓰지 않게).
+    const lock = new DatabaseSync(s.path);
+    const uid = lock.prepare('SELECT id FROM users WHERE email = ?').get('a@example.com').id;
+    lock.prepare("INSERT INTO jobs (id, user_id, kind, status, created_at) VALUES ('running-mail', ?, 'mail', '실행중', ?)").run(uid, new Date().toISOString());
+    const blocked = await put(a, 'app-password');
+    assert.equal(blocked.statusCode, 409);
+    assert.equal(blocked.json().code, 'mail_running');
+    lock.prepare("DELETE FROM jobs WHERE id = 'running-mail'").run();
+    lock.close();
     assert.equal((await put(a, 'app-password')).statusCode, 202);
     const raw = new DatabaseSync(s.path);
     assert.equal(JSON.stringify(raw.prepare('SELECT * FROM mail_connections').all()).includes('app-password'), false);

@@ -130,13 +130,11 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     return reply.status(202).send(job);
   });
 
-  // 마지막 초안 작업. 그 뒤에 프로필을 저장했거나 사용자가 버렸으면 없음(null)으로 본다.
+  // 마지막 초안 작업. 받아들였거나(화면이 저장 뒤 지움) 버렸으면 행이 없어 null이다. 필터만 저장해서는 사라지지 않는다.
   app.get('/profile/draft', async (request, reply) => {
     const user = requireUser(db, request, reply);
     if (!user) return reply;
-    const job = latestJob(db, user.id, 'suggest');
-    const saved = db.prepare('SELECT updated_at FROM profiles WHERE user_id = ?').get(user.id) as { updated_at: string } | undefined;
-    return profileDraftSchema.parse({ job: job && !(job.finishedAt && saved && job.finishedAt <= saved.updated_at) ? job : null });
+    return profileDraftSchema.parse({ job: latestJob(db, user.id, 'suggest') });
   });
 
   app.delete('/profile/draft', async (request, reply) => {

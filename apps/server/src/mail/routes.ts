@@ -26,6 +26,10 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
     if (!user) return reply;
     const body = mailConnectRequestSchema.safeParse(request.body);
     if (!body.success) return reply.status(400).send({ message: '요청을 확인하세요.' });
+    // 메일 확인이 도는 중에 연결을 바꾸면 그 작업이 이전 연결 기준 조회 위치를 다시 써 새 조회 범위가 빠진다. 끝난 뒤 다시 하게 한다.
+    const busy = () => db.prepare("SELECT 1 FROM jobs WHERE user_id = ? AND kind = 'mail' AND status = '실행중'").get(user.id) !== undefined;
+    const busyReply = () => reply.status(409).send({ message: '메일을 확인하는 중입니다. 끝난 뒤 다시 연결하세요.', code: 'mail_running' });
+    if (busy()) return busyReply();
     try {
       await source(body.data.account, body.data.appPassword, new Map(), new Date(Date.now() + 86_400_000));
     } catch (error) {
@@ -33,6 +37,8 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
       // 원인별 상태: 인증 422, 네트워크 503, 보안 연결·서버 응답 502. 화면이 원인별 안내를 보여 준다.
       return reply.status(code === 'auth_failed' ? 422 : code === 'network' ? 503 : 502).send({ message: code === 'auth_failed' ? '네이버 계정 또는 애플리케이션 비밀번호를 확인하세요. IMAP 사용 설정이 켜져 있어야 합니다.' : '네이버 메일에 연결하지 못했습니다. 잠시 후 다시 시도하세요.', code });
     }
+    // 로그인 확인을 기다리는 동안 예약 메일 확인이 시작됐을 수 있다(이 확인부터 저장까지는 await가 없어 끼어들 수 없다).
+    if (busy()) return busyReply();
     const at = new Date().toISOString();
     // 고른 최초 조회 기간으로 조회 범위를 정한다. 재연결하면 과거 범위 넓히기 진행도 지운다.
     const coveredSince = new Date(Date.now() - body.data.days * 86_400_000).toISOString();
