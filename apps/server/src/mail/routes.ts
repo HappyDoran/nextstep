@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
 import { mailBackfillRequestSchema, mailConnectRequestSchema, mailConnectionSchema, reviewActionSchema, reviewBodySchema, reviewSchema } from '@nextstep/contracts';
 import { requireUser } from '../auth.js';
+import { tx } from '../database.js';
 import { decrypt, encrypt } from '../secrets.js';
 import { enqueue, latestJob } from '../recommend/jobs.js';
 import { applyToApplication, sameCompany, type StoredMessage } from './apply.js';
@@ -81,8 +82,7 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
     const user = requireUser(db, request, reply);
     if (!user) return reply;
     const keep = request.query.keepApplications !== 'false';
-    db.exec('BEGIN IMMEDIATE');
-    try {
+    tx(db, () => {
       db.prepare('DELETE FROM mail_connections WHERE user_id = ?').run(user.id);
       db.prepare('DELETE FROM mail_cursors WHERE user_id = ?').run(user.id);
       db.prepare('DELETE FROM mail_backfill WHERE user_id = ?').run(user.id);
@@ -94,11 +94,7 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
           SELECT m.user_id, m.message_key, m.application_id, ? FROM mail_messages m JOIN applications a ON a.id = m.application_id WHERE a.user_id = ? AND a.origin = 'mail'`).run(new Date().toISOString(), user.id);
         db.prepare("DELETE FROM applications WHERE user_id = ? AND origin = 'mail'").run(user.id);
       }
-      db.exec('COMMIT');
-    } catch (error) {
-      if (db.isTransaction) db.exec('ROLLBACK');
-      throw error;
-    }
+    });
     return reply.status(204).send();
   });
 
@@ -148,25 +144,26 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
       const r = db.prepare("UPDATE review_requests SET held = ? WHERE id = ? AND user_id = ? AND status = '대기'").run(action.data.held ? 1 : 0, request.params.id, user.id);
       return r.changes ? reply.status(204).send() : reply.status(404).send({ message: '찾을 수 없습니다.' });
     }
-    db.exec('BEGIN IMMEDIATE');
-    try {
+    const data = action.data; // 콜백 안에서도 hold를 뺀 타입으로 쓰려고 받아 둔다.
+    // 거절하면 그 응답을, 처리했으면 undefined를 돌려받는다.
+    return tx(db, () => {
       const row = db.prepare("SELECT r.id, m.id AS message_id, m.message_key, m.subject, m.received_at, m.classification, m.platform FROM review_requests r JOIN mail_messages m ON m.id = r.message_id WHERE r.id = ? AND r.user_id = ? AND m.user_id = ? AND r.status = '대기'")
         .get(request.params.id, user.id, user.id) as { id: string; message_id: string; message_key: string; subject: string; received_at: string | null; classification: string; platform: string | null } | undefined;
       if (!row) { db.exec('ROLLBACK'); return reply.status(404).send({ message: '찾을 수 없습니다.' }); }
-      const status = action.data.action === 'ignore' ? null : (action.data.status ?? row.classification);
+      const status = data.action === 'ignore' ? null : (data.status ?? row.classification);
       const msg: StoredMessage = { id: row.message_id, userId: user.id, messageKey: row.message_key, subject: row.subject, receivedAt: row.received_at, verdict: { status: status as never, evidence: null, platform: row.platform, postingKeys: [] } };
-      if (action.data.action === 'link') {
-        const target = db.prepare('SELECT id, status, read_status, posting_url, locked_fields FROM applications WHERE id = ? AND user_id = ?').get(action.data.applicationId, user.id) as { id: string; status: string; read_status: string; posting_url: string | null; locked_fields: string } | undefined;
+      if (data.action === 'link') {
+        const target = db.prepare('SELECT id, status, read_status, posting_url, locked_fields FROM applications WHERE id = ? AND user_id = ?').get(data.applicationId, user.id) as { id: string; status: string; read_status: string; posting_url: string | null; locked_fields: string } | undefined;
         if (!target || status === '모호') { db.exec('ROLLBACK'); return reply.status(400).send({ message: '연결할 지원 건과 상태를 확인하세요.' }); }
         // 사용자가 확정한 연결은 충돌 확인 없이 반영하되 이력은 남긴다.
         db.prepare("UPDATE review_requests SET status = '처리', resolved_at = ? WHERE id = ? AND user_id = ?").run(new Date().toISOString(), row.id, user.id);
         applyToApplication(db, msg, target, { force: true });
-      } else if (action.data.action === 'create') {
+      } else if (data.action === 'create') {
         if (!status || status === '모호' || status === '열람') { db.exec('ROLLBACK'); return reply.status(400).send({ message: '상태를 선택하세요.' }); }
         const appId = randomUUID();
         const at = new Date().toISOString();
         db.prepare("INSERT INTO applications (id, user_id, company, role_title, status, created_at, updated_at, origin) VALUES (?, ?, ?, ?, ?, ?, ?, 'mail')")
-          .run(appId, user.id, action.data.company, action.data.roleTitle, status, at, at);
+          .run(appId, user.id, data.company, data.roleTitle, status, at, at);
         db.prepare("INSERT INTO application_events (id, application_id, field, from_value, to_value, source, at, message_id) VALUES (?, ?, 'status', '미지원', ?, 'mail', ?, ?)").run(randomUUID(), appId, status, at, row.message_id);
         db.prepare('UPDATE mail_messages SET application_id = ? WHERE id = ? AND user_id = ?').run(appId, row.message_id, user.id);
         db.prepare("UPDATE review_requests SET status = '처리', resolved_at = ? WHERE id = ? AND user_id = ?").run(at, row.id, user.id);
@@ -174,11 +171,6 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
         db.prepare("UPDATE review_requests SET status = '무시', resolved_at = ? WHERE id = ? AND user_id = ?").run(new Date().toISOString(), row.id, user.id);
         db.prepare('INSERT OR IGNORE INTO evidence_suppressions (user_id, message_key, created_at) VALUES (?, ?, ?)').run(user.id, row.message_key, new Date().toISOString());
       }
-      db.exec('COMMIT');
-    } catch (error) {
-      if (db.isTransaction) db.exec('ROLLBACK');
-      throw error;
-    }
-    return reply.status(204).send();
+    }) ?? reply.status(204).send();
   });
 }

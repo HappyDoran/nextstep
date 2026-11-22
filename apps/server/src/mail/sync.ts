@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { decrypt } from '../secrets.js';
+import { tx } from '../database.js';
 import type { ClaimedJob, JobOutcome } from '../recommend/jobs.js';
 import { classifyMail, mainBody, platformOf, subjectHint, type MailStatus } from './classify.js';
 import { applyInterpretation, applyMessage, requestReview, type Outcome } from './apply.js';
@@ -21,13 +22,13 @@ type Counts = Record<Outcome | 'stored' | 'skipped' | 'ignored' | 'interpreted' 
 // 받은 메일을 저장·판정한다. 채용과 무관하거나 이미 처리한 메일은 저장하지 않는다. 연결이 사라졌으면 false.
 function storeBatch(db: DatabaseSync, userId: string, batch: MailboxBatch, counts: Counts, bodies: Map<string, MailBody>) {
   for (const mail of batch.messages) {
-    db.exec('BEGIN IMMEDIATE');
-    try {
+    // 연결이 사라졌으면 false, 건너뛰면 null, 저장했으면 반영 결과.
+    const outcome = tx(db, () => {
       // 연결 해제·계정 삭제가 겹치면 연결 행이 없으므로 더 반영하지 않는다.
       if (!db.prepare('SELECT 1 FROM mail_connections WHERE user_id = ?').get(userId)) { db.exec('ROLLBACK'); return false; }
       const verdict = classifyMail(mail);
       const exists = db.prepare("SELECT 1 FROM mail_messages WHERE user_id = ? AND provider = 'naver' AND message_key = ?").get(userId, mail.messageKey);
-      if (!verdict || exists) { counts.skipped++; db.exec('COMMIT'); continue; }
+      if (!verdict || exists) { counts.skipped++; return null; }
       const id = randomUUID();
       // 최소 근거만 저장한다: 메시지 키·수신 시각·제목 앞부분·짧은 발췌·공고 키. 본문·주소는 저장하지 않는다.
       db.prepare("INSERT INTO mail_messages (id, user_id, provider, message_key, received_at, subject, platform, classification, evidence, posting_key, outcome, processed_at, mailbox, uid_validity, uid) VALUES (?, ?, 'naver', ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)")
@@ -35,12 +36,12 @@ function storeBatch(db: DatabaseSync, userId: string, batch: MailboxBatch, count
       bodies.set(bodyKey({ mailbox: batch.mailbox, uid: mail.uid }), { text: mail.text, links: mail.links, fromAddress: mail.fromAddress });
       const outcome = applyMessage(db, { id, userId, messageKey: mail.messageKey, verdict, subject: mail.subject, receivedAt: mail.receivedAt });
       db.prepare('UPDATE mail_messages SET outcome = ? WHERE id = ? AND user_id = ?').run(outcome, id, userId);
-      db.exec('COMMIT');
+      return outcome;
+    });
+    if (outcome === false) return false;
+    if (outcome) {
       counts.stored++;
       counts[outcome]++;
-    } catch (error) {
-      if (db.isTransaction) db.exec('ROLLBACK');
-      throw error;
     }
   }
   return true;
@@ -124,19 +125,14 @@ export function mergeMailStatus(rule: MailStatus | null, ai: MailStatus): MailSt
 }
 
 function unreadable(db: DatabaseSync, userId: string, row: Unlinked) {
-  db.exec('BEGIN IMMEDIATE');
-  try {
+  tx(db, () => {
     const r = db.prepare(`UPDATE mail_messages SET interpret_attempts = interpret_attempts + 1 WHERE id = ? AND user_id = ? AND outcome = 'unlinked'
       AND EXISTS (SELECT 1 FROM mail_connections c WHERE c.user_id = ?) RETURNING interpret_attempts`).get(row.id, userId, userId) as { interpret_attempts: number } | undefined;
     if (r && r.interpret_attempts >= MAX_INTERPRET_ATTEMPTS) {
       const outcome = requestReview(db, { id: row.id, userId, messageKey: row.message_key, subject: row.subject, receivedAt: row.received_at, verdict: { status: row.classification as MailStatus, evidence: null, platform: row.platform, postingKeys: [] } }, '연결 불명', subjectHint(row.subject) ?? {});
       db.prepare('UPDATE mail_messages SET outcome = ? WHERE id = ? AND user_id = ?').run(outcome, row.id, userId);
     }
-    db.exec('COMMIT');
-  } catch (error) {
-    if (db.isTransaction) db.exec('ROLLBACK');
-    throw error;
-  }
+  });
 }
 
 type Unlinked = { id: string; message_key: string; subject: string; received_at: string | null; classification: string; platform: string | null; mailbox: string | null; uid_validity: string | null; uid: number | null };
@@ -181,19 +177,16 @@ async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpr
       db.prepare('UPDATE mail_messages SET interpret_attempts = interpret_attempts + 1 WHERE id = ? AND user_id = ?').run(row.id, userId);
       continue;
     }
-    db.exec('BEGIN IMMEDIATE');
-    try {
+    const outcome = tx(db, () => {
       // 해석 중 연결 해제·계정 삭제·이미 처리됐으면 반영하지 않는다.
       const still = db.prepare("SELECT 1 FROM mail_messages m JOIN mail_connections c ON c.user_id = m.user_id WHERE m.id = ? AND m.user_id = ? AND m.outcome = 'unlinked'").get(row.id, userId);
-      if (!still) { db.exec('ROLLBACK'); continue; }
+      if (!still) { db.exec('ROLLBACK'); return null; }
       const outcome = applyInterpretation(db, { id: row.id, userId, messageKey: row.message_key, subject: row.subject, receivedAt: row.received_at, verdict: { status: row.classification as never, evidence: null, platform: row.platform ?? platformOf(body.fromAddress), postingKeys: [] } }, interp);
       db.prepare('UPDATE mail_messages SET outcome = ?, classification = ?, interpret_attempts = interpret_attempts + 1 WHERE id = ? AND user_id = ?').run(outcome, interp.status, row.id, userId);
-      db.exec('COMMIT');
-      counts.interpreted++;
-      counts[outcome]++;
-    } catch (error) {
-      if (db.isTransaction) db.exec('ROLLBACK');
-      throw error;
-    }
+      return outcome;
+    });
+    if (!outcome) continue;
+    counts.interpreted++;
+    counts[outcome]++;
   }
 }

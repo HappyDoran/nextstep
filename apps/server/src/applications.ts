@@ -6,6 +6,7 @@ import { parseCsv } from './csv.js';
 import { normalizeName } from './mail/apply.js';
 import { enqueue } from './recommend/jobs.js';
 import { requireUser } from './auth.js';
+import { tx } from './database.js';
 
 type Row = { id: string; company: string; role_title: string; posting_url: string | null; status: string; read_status: string; locked_fields: string; created_at: string; updated_at: string };
 const toApplication = (r: Row) => applicationSchema.parse({ id: r.id, company: r.company, roleTitle: r.role_title, postingUrl: r.posting_url, status: r.status, readStatus: r.read_status, lockedFields: JSON.parse(r.locked_fields), createdAt: r.created_at, updatedAt: r.updated_at });
@@ -23,8 +24,7 @@ const httpsUrl = (value: string | undefined) => { try { return value && new URL(
 export function importApplications(db: DatabaseSync, userId: string, csv: string): ApplicationImportResult {
   const rows = parseCsv(csv);
   const result = { imported: 0, duplicates: 0, invalid: 0, requeued: 0 };
-  db.exec('BEGIN IMMEDIATE');
-  try {
+  tx(db, () => {
     const existing = db.prepare('SELECT company, role_title, posting_url FROM applications WHERE user_id = ?').all(userId) as { company: string; role_title: string; posting_url: string | null }[];
     const seen = new Set(existing.map(a => `${normalizeName(a.company)}|${normalizeName(a.role_title)}`));
     const urls = new Set(existing.map(a => a.posting_url).filter(Boolean));
@@ -51,11 +51,7 @@ export function importApplications(db: DatabaseSync, userId: string, csv: string
       for (const r of pending) requeue.run(r.message_id, userId);
       result.requeued = pending.length;
     }
-    db.exec('COMMIT');
-  } catch (error) {
-    if (db.isTransaction) db.exec('ROLLBACK');
-    throw error;
-  }
+  });
   if (result.requeued) enqueue(db, userId, 'mail');
   return result;
 }
@@ -120,8 +116,8 @@ export function registerApplications(app: FastifyInstance, db: DatabaseSync) {
     const body = applicationUpdateSchema.safeParse(request.body);
     if (!body.success) return reply.status(400).send({ message: '요청을 확인하세요.' });
     const patch = body.data;
-    db.exec('BEGIN IMMEDIATE');
-    try {
+    // 없으면 404 응답을, 반영했으면 undefined를 돌려받는다.
+    return tx(db, () => {
       const current = db.prepare('SELECT * FROM applications WHERE id = ? AND user_id = ?').get(request.params.id, user.id) as Row | undefined;
       if (!current) {
         db.exec('ROLLBACK');
@@ -141,12 +137,7 @@ export function registerApplications(app: FastifyInstance, db: DatabaseSync) {
       const log = db.prepare("INSERT INTO application_events (id, application_id, field, from_value, to_value, source, at) VALUES (?, ?, ?, ?, ?, 'manual', ?)");
       if (next.status !== current.status) log.run(randomUUID(), current.id, 'status', current.status, next.status, at);
       if (next.read_status !== current.read_status) log.run(randomUUID(), current.id, 'readStatus', current.read_status, next.read_status, at);
-      db.exec('COMMIT');
-    } catch (error) {
-      if (db.isTransaction) db.exec('ROLLBACK');
-      throw error;
-    }
-    return toApplication(db.prepare('SELECT * FROM applications WHERE id = ? AND user_id = ?').get(request.params.id, user.id) as Row);
+    }) ?? toApplication(db.prepare('SELECT * FROM applications WHERE id = ? AND user_id = ?').get(request.params.id, user.id) as Row);
   });
 
   app.delete<{ Params: { id: string } }>('/applications/:id', async (request, reply) => {

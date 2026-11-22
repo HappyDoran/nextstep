@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { DOCUMENT_TEXT_MAX, DOCUMENT_VERSION_MAX, documentKindSchema, documentVersionSchema, resumeSchema, type DocumentKind } from '@nextstep/contracts';
 import { requireUser } from '../auth.js';
+import { tx } from '../database.js';
 import { extractResumeText, ZIP_MAX_BYTES } from './extract-resume.js';
 
 type Row = { id: string; kind: DocumentKind; filename: string; size: number; storage_key: string; text: string; empty_pages: string; ocr_pages: string; edited: number; active: number; created_at: string };
@@ -63,26 +64,29 @@ export function registerDocuments(app: FastifyInstance, db: DatabaseSync, filesD
     const key = `${user.id}/${id}.${result.kind}`;
     mkdirSync(join(filesDir, user.id), { recursive: true, mode: 0o700 });
     writeFileSync(pathOf(key), request.body, { mode: 0o600 });
-    let pruned: { storage_key: string }[] = [];
-    db.exec('BEGIN IMMEDIATE');
+    const size = request.body.length;
+    let pruned: { storage_key: string }[] | null;
     try {
-      // 계정이 그 사이 삭제됐으면 사용자 행이 없으므로 새 문서를 만들지 않는다.
-      if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(user.id)) {
-        db.exec('ROLLBACK');
-        removeFile(key);
-        return reply.status(401).send({ message: '로그인이 필요합니다.' });
-      }
-      db.prepare('UPDATE documents SET active = 0 WHERE user_id = ? AND kind = ? AND active = 1').run(user.id, kind);
-      db.prepare('INSERT INTO documents (id, user_id, kind, filename, size, storage_key, text, empty_pages, ocr_pages, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(id, user.id, kind, filename, request.body.length, key, result.text.slice(0, DOCUMENT_TEXT_MAX), JSON.stringify(result.emptyPages ?? []), JSON.stringify(result.ocrPages ?? []), new Date().toISOString());
-      pruned = db.prepare(`DELETE FROM documents WHERE active = 0 AND id IN (
-          SELECT id FROM documents WHERE user_id = ? AND kind = ? ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?)
-        RETURNING storage_key`).all(user.id, kind, DOCUMENT_VERSION_MAX) as { storage_key: string }[];
-      db.exec('COMMIT');
+      pruned = tx(db, () => {
+        // 계정이 그 사이 삭제됐으면 사용자 행이 없으므로 새 문서를 만들지 않는다.
+        if (!db.prepare('SELECT 1 FROM users WHERE id = ?').get(user.id)) {
+          db.exec('ROLLBACK');
+          return null;
+        }
+        db.prepare('UPDATE documents SET active = 0 WHERE user_id = ? AND kind = ? AND active = 1').run(user.id, kind);
+        db.prepare('INSERT INTO documents (id, user_id, kind, filename, size, storage_key, text, empty_pages, ocr_pages, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(id, user.id, kind, filename, size, key, result.text.slice(0, DOCUMENT_TEXT_MAX), JSON.stringify(result.emptyPages ?? []), JSON.stringify(result.ocrPages ?? []), new Date().toISOString());
+        return db.prepare(`DELETE FROM documents WHERE active = 0 AND id IN (
+            SELECT id FROM documents WHERE user_id = ? AND kind = ? ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET ?)
+          RETURNING storage_key`).all(user.id, kind, DOCUMENT_VERSION_MAX) as { storage_key: string }[];
+      });
     } catch (error) {
-      if (db.isTransaction) db.exec('ROLLBACK');
       removeFile(key);
       throw error;
+    }
+    if (!pruned) {
+      removeFile(key);
+      return reply.status(401).send({ message: '로그인이 필요합니다.' });
     }
     for (const old of pruned) removeFile(old.storage_key);
     return toDocument(findVersion(user.id, kind, id)!);
@@ -107,20 +111,14 @@ export function registerDocuments(app: FastifyInstance, db: DatabaseSync, filesD
     const kind = kindOf(request.params);
     const id = versionOf(request.params);
     if (!kind || !id) return reply.status(404).send({ message: '없는 서류 버전입니다.' });
-    db.exec('BEGIN IMMEDIATE');
-    try {
+    return tx(db, () => {
       if (!findVersion(user.id, kind, id)) {
         db.exec('ROLLBACK');
         return reply.status(404).send({ message: '없는 서류 버전입니다.' });
       }
       db.prepare('UPDATE documents SET active = 0 WHERE user_id = ? AND kind = ? AND active = 1 AND id != ?').run(user.id, kind, id);
       db.prepare('UPDATE documents SET active = 1 WHERE id = ? AND user_id = ?').run(id, user.id);
-      db.exec('COMMIT');
-    } catch (error) {
-      if (db.isTransaction) db.exec('ROLLBACK');
-      throw error;
-    }
-    return toDocument(findVersion(user.id, kind, id)!);
+    }) ?? toDocument(findVersion(user.id, kind, id)!);
   });
 
   // 비활성 버전만 지운다. 활성 버전은 다른 버전을 고르거나 서류 전체를 지워야 한다.

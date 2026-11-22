@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { enqueue } from './recommend/jobs.js';
 import { purgeExpired } from './retention.js';
+import { tx } from './database.js';
 
 // 서버 예약 실행: 브라우저가 꺼져 있어도 서버 프로세스가 공고 갱신은 하루 한 번(지정 시각 이후), 메일 조회는 매시간 작업을 만든다(기획서 6절).
 // 조건: 자동화 권한(1차는 초대 테스트 권한) AND 자동 ON AND 필요한 연결 정상. 수동 요청과 같은 작업 경로를 쓴다.
@@ -24,8 +25,7 @@ export function runSchedule(db: DatabaseSync, at: Date, hour: number) {
     // 실행 키: 공고 갱신은 날짜(지정 시각 이후 하루 한 번), 메일은 날짜+시(매시간 한 번).
     const runs = [...(user.has_basis && current >= hour ? [{ kind: 'refresh' as const, key: date }] : []), ...(user.mail_ok ? [{ kind: 'mail' as const, key: `${date}T${String(current).padStart(2, '0')}` }] : [])];
     for (const { kind, key } of runs) {
-      db.exec('BEGIN IMMEDIATE');
-      try {
+      tx(db, () => {
         // 같은 날 같은 종류는 한 번만 만든다(서버 재시작·여러 번 검사해도 중복 없음).
         const claimed = db.prepare('INSERT OR IGNORE INTO schedule_runs (user_id, run_date, kind, created_at) VALUES (?, ?, ?, ?)').run(user.id, key, kind, at.toISOString());
         if (claimed.changes === 1) {
@@ -33,11 +33,7 @@ export function runSchedule(db: DatabaseSync, at: Date, hour: number) {
           db.prepare('UPDATE schedule_runs SET job_id = ? WHERE user_id = ? AND run_date = ? AND kind = ?').run(job.id, user.id, key, kind);
           created++;
         }
-        db.exec('COMMIT');
-      } catch (error) {
-        if (db.isTransaction) db.exec('ROLLBACK');
-        throw error;
-      }
+      });
     }
   }
   return created;
