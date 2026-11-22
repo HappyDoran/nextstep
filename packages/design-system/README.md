@@ -38,7 +38,7 @@ Light/Dark 모두 background·foreground, card·popover, primary·secondary·mut
 
 spring 설계값과 애니메이션 라이브러리는 제스처 동작을 구현할 때 추가하며 단위·질량·초기 속도·중단/역전·최종 정지 상태를 함께 검증한다. CSS 일반 전환과 spring은 같은 실행 방식이 아니다.
 
-진입은 ease-out, 위치 전환은 ease-in-out, hover는 ease를 기본으로 한다. ease-in으로 진입을 늦추지 않는다. 반복 키보드 작업은 진입 애니메이션을 생략한다. 이동은 transform·opacity로 처리하고 레이아웃 크기를 애니메이션하지 않는다. 동작 감소 설정에서는 이동·spring·회전을 없애고, 필요한 시각 전환만 base 길이의 opacity로 처리한다. 실제로 존재하는 버튼·로더에는 현재 가능한 범위의 포커스·전환·동작 감소 처리를 적용했다. 팝오버·모달·드래그 등은 실제 구현 시 이 기준으로 검증한다.
+진입은 ease-out, 위치 전환은 ease-in-out, hover는 ease를 기본으로 한다. ease-in으로 진입을 늦추지 않는다. 반복 키보드 작업은 진입 애니메이션을 생략한다. 이동은 transform·opacity로 처리하고 레이아웃 크기를 애니메이션하지 않는다. 동작 감소 설정에서는 이동·spring·회전을 없애고, 필요한 시각 전환만 base 길이의 opacity로 처리한다. 움직임(2026-11-22)은 라이브러리 없이 preset의 keyframes·animation만 쓴다: `animate-shimmer`(Skeleton 빛 지나감 1.5초), `animate-fade-up`(Toast·StatePanel 8px 올라오며 나타남), `animate-pop`(Sheet·팝오버 0.96배에서 커지며 나타남, 바탕은 `animate-fade`), `animate-rise`(화면 본문 4px, 투명도 변화 없음 — 깜빡임 방지), `animate-sweep`+`animate-fade-late`(맨 위 진행 막대, 160ms 안에 끝나는 조회에는 보이지 않음), 버튼 누름 `scale(0.97)`. 닫힘 애니메이션은 두지 않는다(네이티브 dialog·popover가 바로 닫힘). 동작 감소에서는 이동을 끄고 나타남만 `animate-fade`로 바꾼다. 드래그·목록 순서 바뀜·숫자 올라감은 해당 화면이 생길 때 이 기준으로 추가한다.
 
 ## 공통 컴포넌트
 

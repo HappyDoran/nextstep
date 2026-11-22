@@ -57,19 +57,19 @@ export function DueDate({ days, date }: { days: number | null; date?: string }) 
 
 /** 빈 상태와 오류. 오류는 다시 시도 같은 행동을 함께 준다. */
 export function StatePanel({ tone = 'empty', title, description, actions }: { tone?: 'empty' | 'error'; title: ReactNode; description: ReactNode; actions?: ReactNode }) {
-  return <div role={tone === 'error' ? 'alert' : undefined} className={join('max-w-2xl rounded-surface px-11 py-10', tone === 'error' ? 'bg-destructive-muted' : 'border-2 border-dashed border-border-strong bg-card')}>
+  return <div role={tone === 'error' ? 'alert' : undefined} className={join('max-w-2xl animate-fade-up rounded-surface px-11 py-10 motion-reduce:animate-fade', tone === 'error' ? 'bg-destructive-muted' : 'border-2 border-dashed border-border-strong bg-card')}>
     <h2 className={join('text-body-lg font-extrabold', tone === 'error' ? 'text-destructive' : 'text-foreground')}>{title}</h2>
     <p className="mt-1.5 text-body-sm text-muted-foreground">{description}</p>
     {actions ? <div className="mt-5 flex flex-wrap gap-2">{actions}</div> : null}
   </div>;
 }
 export function Skeleton({ className }: { className?: string }) {
-  return <div aria-hidden="true" className={join('h-3 rounded-full bg-muted', className)} />;
+  return <div aria-hidden="true" className={join('h-3 animate-shimmer rounded-full bg-gradient-to-r from-muted via-border to-muted bg-[length:280%_100%] motion-reduce:animate-none', className)} />;
 }
 
 /** 아래 가운데에 잠깐 뜨는 알림. 되돌리기처럼 행동 하나를 붙일 수 있다. */
 export function Toast({ children, action }: PropsWithChildren<{ action?: ReactNode }>) {
-  return <div role="status" className="pointer-events-auto flex items-center gap-3.5 rounded-full bg-foreground py-2.5 pl-5 pr-2.5 text-body-sm text-background shadow-lg">{children}{action}</div>;
+  return <div role="status" className="pointer-events-auto flex animate-fade-up items-center gap-3.5 rounded-full bg-foreground py-2.5 motion-reduce:animate-fade pl-5 pr-2.5 text-body-sm text-background shadow-lg">{children}{action}</div>;
 }
 
 /** NextStep 로고 마크: 인디고 면 위에 올라가는 계단과 다음 한 칸(점). 테마 역할 색을 따른다. 장식이면 label을 비운다. */

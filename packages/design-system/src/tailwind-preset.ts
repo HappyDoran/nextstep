@@ -57,7 +57,26 @@ const preset = {
       boxShadow: { sm: 'var(--ns-shadow-sm)', md: 'var(--ns-shadow-md)', lg: 'var(--ns-shadow-lg)' },
       transitionDuration: { fast: 'var(--ns-duration-fast)', base: 'var(--ns-duration-base)', slow: 'var(--ns-duration-slow)' },
       transitionTimingFunction: { out: 'var(--ns-ease-out)', 'in-out': 'var(--ns-ease-in-out)', hover: 'var(--ns-ease-hover)', drawer: 'var(--ns-ease-drawer)' },
-      animation: { spin: 'spin var(--ns-duration-spin) var(--ns-ease-linear) infinite' },
+      // 진입은 transform·opacity만 쓴다. 이동·반복은 쓰는 쪽에서 motion-reduce:animate-none(또는 motion-safe:)으로 끈다.
+      keyframes: {
+        shimmer: { from: { backgroundPosition: '140% 0' }, to: { backgroundPosition: '-140% 0' } },
+        'fade-up': { from: { opacity: '0', transform: 'translateY(8px)' } },
+        pop: { from: { opacity: '0', transform: 'scale(0.96)' } },
+        rise: { from: { transform: 'translateY(4px)' } },
+        fade: { from: { opacity: '0' } },
+        sweep: { from: { transform: 'translateX(-100%)' }, to: { transform: 'translateX(250%)' } },
+      },
+      animation: {
+        spin: 'spin var(--ns-duration-spin) var(--ns-ease-linear) infinite',
+        shimmer: 'shimmer 1.5s var(--ns-ease-linear) infinite',
+        'fade-up': 'fade-up var(--ns-duration-base) var(--ns-ease-out) both',
+        pop: 'pop var(--ns-duration-base) var(--ns-ease-out) both',
+        rise: 'rise var(--ns-duration-fast) var(--ns-ease-out)',
+        fade: 'fade var(--ns-duration-base) var(--ns-ease-out) both',
+        // 짧은 조회에는 보이지 않게 160ms 뒤에 나타난다.
+        'fade-late': 'fade var(--ns-duration-fast) var(--ns-ease-out) 160ms both',
+        sweep: 'sweep 1.4s var(--ns-ease-in-out) infinite',
+      },
     },
   },
 } satisfies Partial<Config>;

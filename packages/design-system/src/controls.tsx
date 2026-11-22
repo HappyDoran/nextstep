@@ -15,7 +15,7 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 
 /** 화면마다 주된 행동 하나만 primary로 둔다. 아이콘만 있으면 aria-label을 준다. */
 /** 버튼 모양의 링크(외부 지원 페이지 등)에 같은 모양을 쓴다. */
 export const buttonClass = (variant: keyof typeof buttonVariant = 'primary', size: keyof typeof buttonSize = 'md', className?: string) =>
-  join('inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-control border font-sans font-semibold transition-colors duration-fast ease-hover disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none', buttonVariant[variant], buttonSize[size], focus, className);
+  join('inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-control border font-sans font-semibold transition-[color,background-color,border-color,transform] duration-fast ease-hover motion-safe:active:enabled:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none', buttonVariant[variant], buttonSize[size], focus, className);
 export function Button({ variant = 'primary', size = 'md', className, ...props }: ButtonProps) {
   return <button type="button" {...props} className={buttonClass(variant, size, className)} />;
 }

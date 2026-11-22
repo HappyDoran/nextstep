@@ -18,7 +18,7 @@ export function Sheet({ open, onClose, title, eyebrow, meta, classification, foo
     if (!open && dialog.open) dialog.close();
   }, [open]);
   return <dialog ref={ref} onClose={onClose} onMouseDown={event => { downOutside.current = event.target === ref.current; }} onClick={event => { if (event.target === ref.current && downOutside.current) onClose(); }} aria-labelledby={titleId}
-    className={`m-auto max-h-[calc(100dvh-4rem)] w-[calc(100vw-2rem)] overflow-hidden rounded-dialog bg-card p-0 text-foreground shadow-lg backdrop:bg-black/40 open:flex open:flex-col ${size === 'sm' ? 'max-w-lg' : size === 'lg' ? 'h-[min(52rem,calc(100dvh-4rem))] max-w-5xl' : 'max-w-3xl'}`}>
+    className={`m-auto max-h-[calc(100dvh-4rem)] w-[calc(100vw-2rem)] overflow-hidden rounded-dialog bg-card p-0 text-foreground shadow-lg backdrop:bg-black/40 backdrop:animate-fade open:flex open:flex-col open:animate-pop motion-reduce:open:animate-fade ${size === 'sm' ? 'max-w-lg' : size === 'lg' ? 'h-[min(52rem,calc(100dvh-4rem))] max-w-5xl' : 'max-w-3xl'}`}>
     <header className={`relative border-b border-border px-8 pb-5 pt-7 before:absolute before:inset-x-0 before:top-0 before:h-1.5 before:content-[''] ${classification ? bar[classification] : 'before:bg-primary'}`}>
       {eyebrow}
       <h2 id={titleId} className="mt-2.5 pr-10 text-title font-extrabold text-balance">{title}</h2>
