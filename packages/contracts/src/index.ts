@@ -151,9 +151,8 @@ export const latestRefreshSchema = z.object({ job: jobSchema.nullable(), counts:
 export const mailConnectRequestSchema = z.object({
   account: z.email().max(254),
   appPassword: z.string().min(1).max(100),
+  // 조회 범위는 가입 시점부터다(가입 전 메일은 '과거 범위 넓히기'로 직접 가져온다, 기획서 4절 2026-11-22).
   consent: z.literal(true),
-  // 최초 조회 기간(일). 사용자가 고르고 동의한다(기획서 4절).
-  days: z.union([z.literal(30), z.literal(90), z.literal(180), z.literal(365)]).default(90),
 }).strict();
 // 과거 범위 넓히기: 지금 조회한 범위보다 오래된 메일을 별도 작업으로 가져온다. 현재 조회 위치는 바꾸지 않는다.
 export const mailBackfillRequestSchema = z.object({ days: z.union([z.literal(90), z.literal(180), z.literal(365), z.literal(730)]) }).strict();

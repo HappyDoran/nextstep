@@ -9,9 +9,8 @@ test('네이버 연결 동의 필수·연결 상태 표시와 확인 목록 처�
     await page.goto('/settings#mail');
     await page.getByLabel('네이버 메일 주소').fill('tester@naver.com');
     await page.getByLabel('애플리케이션 비밀번호').fill('x');
-    // 처음 조회할 기간을 고른다(기본 3개월).
-    await expect(page.getByLabel('처음 조회할 기간')).toHaveValue('90');
-    await page.getByLabel('처음 조회할 기간').selectOption('180');
+    // 조회 범위는 가입 시점부터라 기간을 고르지 않는다(가입 전 메일은 과거 범위 넓히기).
+    await expect(page.getByLabel('처음 조회할 기간')).toHaveCount(0);
     await page.getByRole('button', { name: '연결 검사 후 연결' }).click();
     // 동의하지 않으면 브라우저 필수 입력 검사로 제출되지 않는다.
     await expect(page.getByLabel(/읽기 전용으로 조회하고/)).toHaveJSProperty('validity.valueMissing', true);

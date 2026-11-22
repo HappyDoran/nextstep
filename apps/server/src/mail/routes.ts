@@ -40,9 +40,10 @@ export function registerMail(app: FastifyInstance, db: DatabaseSync, secretKey: 
     // 로그인 확인을 기다리는 동안 예약 메일 확인이 시작됐을 수 있다(이 확인부터 저장까지는 await가 없어 끼어들 수 없다).
     if (busy()) return busyReply();
     const at = new Date().toISOString();
-    // 고른 최초 조회 기간으로 조회 범위를 정한다. 재연결하면 과거 범위 넓히기 진행도 지운다.
-    const coveredSince = new Date(Date.now() - body.data.days * 86_400_000).toISOString();
+    // 조회 범위는 가입 시점부터다. 같은 계정으로 다시 연결하면 이미 넓혀 둔 더 이른 범위를 유지한다. 재연결하면 과거 범위 넓히기 진행은 지운다.
     const previous = db.prepare('SELECT account, covered_since, range_incomplete FROM mail_connections WHERE user_id = ?').get(user.id) as { account: string; covered_since: string | null; range_incomplete: number } | undefined;
+    const signedUp = (db.prepare('SELECT created_at FROM users WHERE id = ?').get(user.id) as { created_at: string }).created_at;
+    const coveredSince = previous?.account === body.data.account && previous.covered_since && previous.covered_since < signedUp ? previous.covered_since : signedUp;
     db.prepare(`INSERT INTO mail_connections (user_id, provider, account, secret, status, consent_at, created_at, covered_since) VALUES (?, 'naver', ?, ?, '정상', ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET account = excluded.account, secret = excluded.secret, status = '정상', consent_at = excluded.consent_at, last_error = NULL, range_incomplete = 0, covered_since = excluded.covered_since, backfill_since = NULL`)
       .run(user.id, body.data.account, encrypt(secretKey, body.data.appPassword), at, at, coveredSince);

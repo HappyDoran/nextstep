@@ -6,7 +6,6 @@ import { jobSchema, type Me } from '@nextstep/contracts';
 import { ACTIVE_JOB, AI_CAUSES, call, SLOW, useMailConnection, useWhen } from '../api-client';
 
 const ERRORS: Record<string, string> = { auth_failed: '인증 실패: 네이버 애플리케이션 비밀번호와 IMAP 사용 설정을 확인하세요.', network: '네트워크 오류', tls: '보안 연결 오류', protocol: '메일 서버 응답 오류', not_connected: '연결 정보 없음', disconnected: '조회 중 연결이 해제됨', secret_invalid: '저장한 연결 정보를 읽지 못함. 다시 연결하세요' };
-const PERIODS: [number, string][] = [[30, '최근 1개월'], [90, '최근 3개월'], [180, '최근 6개월'], [365, '최근 1년']];
 const PAST: [number, string][] = [[90, '최근 3개월까지'], [180, '최근 6개월까지'], [365, '최근 1년까지'], [730, '최근 2년까지']];
 const CONNECT_ERRORS: Record<number, string> = {
   400: '네이버 주소·비밀번호와 조회 동의를 확인하세요.',
@@ -24,7 +23,7 @@ export function MailSetting({ me }: { me: Me }) {
   const when = useWhen();
   const refresh = () => client.invalidateQueries({ queryKey: key });
   const connect = useMutation({
-    mutationFn: async (form: FormData) => jobSchema.parse(await call('mail/connection', { method: 'PUT', body: JSON.stringify({ account: form.get('account'), appPassword: form.get('appPassword'), consent: form.get('consent') === 'on', days: Number(form.get('days')) }), timeout: SLOW, messages: CONNECT_ERRORS })),
+    mutationFn: async (form: FormData) => jobSchema.parse(await call('mail/connection', { method: 'PUT', body: JSON.stringify({ account: form.get('account'), appPassword: form.get('appPassword'), consent: form.get('consent') === 'on' }), timeout: SLOW, messages: CONNECT_ERRORS })),
     onSuccess: () => { setReconnect(false); void refresh(); },
   });
   // 비밀번호가 바뀌었거나(인증 실패) 조회 기간을 다시 고를 때 같은 양식으로 다시 연결한다.
@@ -52,8 +51,7 @@ export function MailSetting({ me }: { me: Me }) {
       </section>
       <Field label="네이버 메일 주소"><Input name="account" type="email" required autoComplete="off" defaultValue={conn?.account} /></Field>
       <Field label="애플리케이션 비밀번호"><Input name="appPassword" type="password" required autoComplete="off" /></Field>
-      <Field label="처음 조회할 기간"><Select name="days" defaultValue="90">{PERIODS.map(([d, t]) => <option key={d} value={d}>{t}</option>)}</Select></Field>
-      <label className="flex items-start gap-2 text-body-sm"><input name="consent" type="checkbox" required className="mt-1 size-icon-md accent-primary" />고른 기간의 받은 메일(보낸·임시·휴지통·스팸 제외)을 읽기 전용으로 조회하고, 이후 새 메일을 1시간마다 확인하는 데 동의합니다.</label>
+      <label className="flex items-start gap-2 text-body-sm"><input name="consent" type="checkbox" required className="mt-1 size-icon-md accent-primary" />NextStep에 가입한 뒤 받은 메일(보낸·임시·휴지통·스팸 제외)을 읽기 전용으로 조회하고, 이후 새 메일을 1시간마다 확인하는 데 동의합니다. 가입 전에 받은 메일은 연결한 뒤 &lsquo;과거 범위 넓히기&rsquo;로 직접 가져올 수 있어요.</label>
       <div className="flex flex-wrap gap-2"><Button type="submit" disabled={connect.isPending}>연결 검사 후 연결</Button>{conn && <Button variant="quiet" onClick={() => setReconnect(false)}>취소</Button>}</div>
       {connect.isError && <p role="alert" className="text-body-sm text-destructive">{connect.error.message}</p>}
     </form>;

@@ -47,7 +47,7 @@ async function setup() {
     if (password !== 'app-password') throw new MailSourceError('auth_failed');
     state.seenCursors.push(new Map(cursors));
     const last = cursors.get('INBOX')?.lastUid ?? 0;
-    return [{ mailbox: 'INBOX', uidValidity: '0', messages: state.mails.filter(m => m.uid > last), oldestDate: new Date(Date.now() - 30 * 86_400_000).toISOString(), complete: true }];
+    return [{ mailbox: 'INBOX', uidValidity: '0', messages: state.mails.filter(m => m.uid > last), oldestDate: new Date(Date.now() + 60_000).toISOString(), complete: true }]; // 조회 시작(가입 시점)보다 늦은 메일만 보이는 편지함 = 범위 미달
   };
   // 메일 전체 보기용 본문 조회(읽기 전용, 저장 안 함). 비밀번호가 맞을 때만 돌려준다.
   const mailBodies = async (_account, password, refs) => {
@@ -245,18 +245,17 @@ test('조회 기간을 골라 연결하고, 과거 범위 넓히기는 현재 �
   try {
     const db0 = openDatabase(path); const inviteCode = createInvite(db0); db0.close();
     const a = (await signIn(app, 'a@example.com', inviteCode));
-    assert.equal((await app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 't@naver.com', appPassword: 'x', consent: true, days: 45 } })).statusCode, 400);
-    assert.equal((await app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 't@naver.com', appPassword: 'x', consent: true, days: 30 } })).statusCode, 202);
+    // 조회 기간은 더 고르지 않는다(가입 시점부터).
+    assert.equal((await app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 't@naver.com', appPassword: 'x', consent: true, days: 30 } })).statusCode, 400);
+    assert.equal((await app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 't@naver.com', appPassword: 'x', consent: true } })).statusCode, 202);
     const run = async () => { const db = openDatabase(path); try { await runNext(db, createMailHandler(db, loadSecretKey(join(dir, 'secret.key')), source, undefined, backfill)); } finally { db.close(); } };
     await run();
     const conn = (await app.inject({ url: '/mail/connection', headers: { cookie: a } })).json();
-    // 최초 조회는 고른 기간(30일)부터.
-    assert.ok(Math.abs(Date.parse(seen.since.at(-1)) - (Date.now() - 30 * 86_400_000)) < 60_000);
+    // 최초 조회는 가입 시점부터(방금 가입).
+    assert.ok(Math.abs(Date.parse(seen.since.at(-1)) - Date.now()) < 60_000);
     assert.equal(conn.coveredSince, seen.since.at(-1));
     assert.equal(conn.backfillSince, null);
     assert.equal(seen.backfill.length, 0);
-    // 이미 조회한 범위보다 짧은 기간은 거부.
-    assert.equal((await app.inject({ method: 'POST', url: '/mail/backfill', headers: { cookie: a }, payload: { days: 30 } })).statusCode, 400);
     assert.equal((await app.inject({ method: 'POST', url: '/mail/backfill', headers: { cookie: a }, payload: { days: 180 } })).statusCode, 202);
     await run();
     let c = (await app.inject({ url: '/mail/connection', headers: { cookie: a } })).json();
@@ -525,11 +524,12 @@ test('첫 조회에 받은 메일이 없으면 조회 위치를 저장하지 않
   } finally { await s.done(); }
 });
 
-test('다른 계정·더 넓은 기간·범위 미달 연결을 다시 연결하면 조회 위치를 지우고, 같은 계정·같은 기간이면 유지한다', async () => {
+test('조회 범위는 가입 시점부터, 같은 계정 재연결은 넓혀 둔 범위·조회 위치를 유지하고 다른 계정·범위 미달이면 처음부터 다시 읽는다', async () => {
   const s = await setup();
   try {
     const a = await s.signup('a@example.com');
-    const put = (account, days = 30) => s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account, appPassword: 'app-password', consent: true, days } });
+    const put = account => s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account, appPassword: 'app-password', consent: true } });
+    const covered = async () => (await s.app.inject({ url: '/mail/connection', headers: { cookie: a } })).json().coveredSince;
     const cursors = () => { const raw = new DatabaseSync(s.path); try { return raw.prepare('SELECT count(*) n FROM mail_cursors').get().n; } finally { raw.close(); } };
     s.state.mails = [mail(1, 'noreply@wanted.co.kr', '[원티드] 가상회사 지원이 완료되었습니다')];
     await put('tester@naver.com');
@@ -544,12 +544,15 @@ test('다른 계정·더 넓은 기간·범위 미달 연결을 다시 연결하
     rangeFlag(0);
     await put('tester@naver.com');
     assert.equal(cursors(), 1);
-    await put('tester@naver.com', 90);
-    assert.equal(cursors(), 0);
-    await s.run();
+    // 넓혀 둔 범위(예: 운영자 9/27)는 같은 계정 재연결에서 유지된다.
+    const raw = new DatabaseSync(s.path); raw.prepare("UPDATE mail_connections SET covered_since = '2026-09-26T15:00:00.000Z'").run(); raw.close();
+    await put('tester@naver.com');
+    assert.equal(await covered(), '2026-09-26T15:00:00.000Z');
     assert.equal(cursors(), 1);
-    await put('other@naver.com', 30);
+    // 다른 계정이면 가입 시점부터 처음부터 읽는다.
+    await put('other@naver.com');
     assert.equal(cursors(), 0);
+    assert.ok(Math.abs(Date.parse(await covered()) - Date.now()) < 60_000);
   } finally { await s.done(); }
 });
 
