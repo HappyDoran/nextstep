@@ -31,7 +31,8 @@
     "mac": {
       "icon": "assets/icon-1024.png",
       "category": "public.app-category.productivity",
-      "identity": null
+      "identity": "-",
+      "hardenedRuntime": false
     },
     "win": {
       "icon": "assets/icon-1024.png",
