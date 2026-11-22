@@ -20,6 +20,5 @@ export type CollectedPosting = {
   bodyFailure: string | null;
 };
 export type CollectFailure = { source: SourceId; id?: string; code: string };
-export const FAMILY_KEYS: Record<JobFamily, 'frontend' | 'app' | 'design' | 'planning' | 'backend' | 'qa'> = { 프론트엔드: 'frontend', '앱 개발': 'app', 디자인: 'design', 기획: 'planning', 백엔드: 'backend', QA: 'qa' };
 // 점핏처럼 개발 직무만 다루는 출처가 받는 직무(기획서 3절).
 export const DEV_FAMILIES: JobFamily[] = ['프론트엔드', '앱 개발', '백엔드', 'QA'];

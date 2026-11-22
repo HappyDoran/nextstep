@@ -24,7 +24,6 @@ export type PostingInput = {
   bodyNote: string | null;
 };
 
-const TARGETS = ['프론트엔드', '앱 개발', '디자인', '기획', '백엔드', 'QA'];
 const ALIASES: Record<string, string> = { ts: 'typescript', js: 'javascript', rn: 'reactnative' };
 // 직무 이름 비교에만 쓰는 별칭(일반 경험 비교에 쓰면 '기획'이 '사업기획'과 맞아 버린다).
 const FAMILY_ALIASES: Record<string, string> = Object.fromEntries(Object.entries({
@@ -146,7 +145,7 @@ export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: P
       else if (best > 0 || (sameJob && need > 0)) out('challenge', `${r.text}: 확인된 경력 ${span(best)}`);
       else if (sameJob) out('unsure', `${r.text}: 실무 경력 미기재`);
       else if (matches(r.keys, c.roles)) out('unsure', `${r.text}: 직책은 있으나 기간 미기재`);
-      else if (r.keys.some(k => !TARGETS.some(t => family(t) === family(k))) || need > 0) out('exclude', `필수 ${r.text} 없음(유사 경험으로 대체하지 않음)`);
+      else if (r.keys.some(k => !TARGET_KEYS.includes(family(k))) || need > 0) out('exclude', `필수 ${r.text} 없음(유사 경험으로 대체하지 않음)`);
       else out('unsure', `${r.text} 확인 불가`);
     } else if (r.type === 'skill') {
       if (r.practical && r.years) {

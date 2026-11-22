@@ -1,3 +1,4 @@
+import { text } from 'node:stream/consumers';
 import { ImapFlow } from 'imapflow';
 
 export type ImapFailure = 'missing_credentials' | 'auth_failed' | 'network' | 'tls' | 'protocol';
@@ -47,12 +48,8 @@ export function mailText(raw: string, html: boolean) {
 
 type Client = InstanceType<typeof ImapFlow>;
 
-// 조각을 모두 모은 뒤 한 번에 디코딩한다(조각마다 디코딩하면 경계에 걸친 한글이 깨진다).
-export async function streamText(content: AsyncIterable<Buffer | string>) {
-  const chunks: Buffer[] = [];
-  for await (const chunk of content) chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-  return Buffer.concat(chunks).toString('utf8');
-}
+// 스트림 디코더가 조각 경계에 걸친 한글을 이어 붙여 읽는다.
+export const streamText = (content: AsyncIterable<Buffer | string>) => text(content);
 
 async function openClient(account: string, password: string) {
   const client = new ImapFlow({ host: 'imap.naver.com', port: 993, secure: true, auth: { user: account, pass: password }, logger: false });

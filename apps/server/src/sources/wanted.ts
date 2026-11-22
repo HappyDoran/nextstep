@@ -1,13 +1,13 @@
 // wanted 공개 페이지 해석. 수집 정책(모드)은 호출하는 쪽이 확인한다.
 import type { JobFamily, Profile } from '@nextstep/contracts';
-import { FAMILY_KEYS, type CollectedPosting, type CollectFailure } from './types.js';
+import type { CollectedPosting, CollectFailure } from './types.js';
 import { kstDeadline, nextData, politeGet } from './http.js';
 import { careerOk, regionOk } from './filter.js';
 
 export const ORIGIN = 'https://www.wanted.co.kr';
 export const PER_ROLE = 3;
 // 원티드 직무 태그 ID(2026-11-07 목록 응답으로 확인, 서버 개발자 872·QA 676은 2026-11-14 확인).
-export const ROLES: Record<string, number[]> = { frontend: [669], app: [677, 678, 10111], design: [597, 599], planning: [559, 565], backend: [872], qa: [676] };
+export const ROLES: Record<JobFamily, number[]> = { 프론트엔드: [669], '앱 개발': [677, 678, 10111], 디자인: [597, 599], 기획: [559, 565], 백엔드: [872], QA: [676] };
 
 export type WantedPosting = {
   id: string;
@@ -104,7 +104,7 @@ export function wantedListQuery(family: JobFamily, limit: number, f: Profile) {
   else for (const s of new Set(sido)) query.append('locations', `${s}.all`);
   if (f.careerMax === null) query.append('years', '-1');
   else { query.append('years', '0'); query.append('years', String(f.careerMax)); }
-  for (const tag of ROLES[FAMILY_KEYS[family]]!) query.append('tag_type_ids', String(tag));
+  for (const tag of ROLES[family]) query.append('tag_type_ids', String(tag));
   return query;
 }
 

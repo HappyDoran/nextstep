@@ -40,7 +40,7 @@ export function parseCookies(header: string | undefined) {
 function cookie(name: string, value: string, maxAge: number, secure: boolean) {
   return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
 }
-const sessionCookie = (token: string, maxAge: number, secure: boolean) => cookie(SESSION_COOKIE, token, maxAge, secure);
+const sessionCookie = (token: string, secure: boolean, maxAge = SESSION_DAYS * 86_400) => cookie(SESSION_COOKIE, token, maxAge, secure);
 
 type Google = { clientId: string; clientSecret: string; redirectUri: string; authUrl: string; tokenUrl: string };
 // 요청마다 환경 변수를 읽는다(테스트·e2e는 주소를 로컬 모의 서버로 바꾼다). 클라이언트 값이 없으면 로그인을 막는다.
@@ -116,8 +116,7 @@ function startPending(db: DatabaseSync, identity: Identity) {
 function pendingIdentity(db: DatabaseSync, request: FastifyRequest): Identity | undefined {
   const token = parseCookies(request.headers.cookie)[PENDING_COOKIE];
   if (!token) return undefined;
-  const row = db.prepare('SELECT google_sub AS sub, email FROM pending_logins WHERE token_hash = ? AND expires_at > ?').get(sha256(token), now()) as Identity | undefined;
-  return row ? { sub: row.sub, email: row.email } : undefined;
+  return db.prepare('SELECT google_sub AS sub, email FROM pending_logins WHERE token_hash = ? AND expires_at > ?').get(sha256(token), now()) as Identity | undefined;
 }
 
 function startSession(db: DatabaseSync, userId: string) {
@@ -190,7 +189,7 @@ export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { 
       return reply.redirect(`nextstep://auth?code=${code}`);
     }
     reply.header('set-cookie', userId
-      ? [clearState, clearPending, sessionCookie(startSession(db, userId), SESSION_DAYS * 86_400, options.secureCookie)]
+      ? [clearState, clearPending, sessionCookie(startSession(db, userId), options.secureCookie)]
       : [clearState, pendingCookie(startPending(db, identity), pendingMaxAge)]);
     return reply.redirect('/');
   });
@@ -207,7 +206,7 @@ export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { 
       return reply.status(202).send(pendingSchema.parse({ email: identity.email, requested: hasRequest(db, identity.sub) }));
     }
     const user = db.prepare('SELECT id, email FROM users WHERE id = ?').get(row.user_id) as { id: string; email: string };
-    reply.header('set-cookie', [clearPending, sessionCookie(startSession(db, user.id), SESSION_DAYS * 86_400, options.secureCookie)]);
+    reply.header('set-cookie', [clearPending, sessionCookie(startSession(db, user.id), options.secureCookie)]);
     return meSchema.parse(user);
   });
 
@@ -234,7 +233,7 @@ export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { 
       db.prepare('DELETE FROM pending_logins WHERE google_sub = ?').run(identity.sub);
       const token = startSession(db, userId);
       db.exec('COMMIT');
-      reply.header('set-cookie', [clearPending, sessionCookie(token, SESSION_DAYS * 86_400, options.secureCookie)]);
+      reply.header('set-cookie', [clearPending, sessionCookie(token, options.secureCookie)]);
       return reply.status(201).send(meSchema.parse({ id: userId, email: identity.email }));
     } catch (error) {
       if (db.isTransaction) db.exec('ROLLBACK');
@@ -247,7 +246,7 @@ export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { 
     const cookies = parseCookies(request.headers.cookie);
     if (cookies[SESSION_COOKIE]) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(sha256(cookies[SESSION_COOKIE]));
     if (cookies[PENDING_COOKIE]) db.prepare('DELETE FROM pending_logins WHERE token_hash = ?').run(sha256(cookies[PENDING_COOKIE]));
-    reply.header('set-cookie', [sessionCookie('', 0, options.secureCookie), clearPending]);
+    reply.header('set-cookie', [sessionCookie('', options.secureCookie, 0), clearPending]);
     return reply.status(204).send();
   });
 
@@ -262,7 +261,7 @@ export function registerAuth(app: FastifyInstance, db: DatabaseSync, options: { 
     if (!user) return reply;
     db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
     options.onAccountDeleted?.(user.id);
-    reply.header('set-cookie', sessionCookie('', 0, options.secureCookie));
+    reply.header('set-cookie', sessionCookie('', options.secureCookie, 0));
     return reply.status(204).send();
   });
 }

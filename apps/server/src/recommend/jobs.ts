@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { jobSchema, type Job } from '@nextstep/contracts';
 
-export type JobKind = 'refresh' | 'link' | 'mail' | 'suggest';
+export type JobKind = Job['kind'];
 type Row = { id: string; user_id: string; kind: JobKind; payload: string | null; status: string; attempts: number; error_code: string | null; result: string | null; created_at: string; finished_at: string | null };
 export type ClaimedJob = { id: string; userId: string; kind: JobKind; payload: unknown; attempts: number };
 export type JobOutcome = { status: '성공' | '일부 실패' | '실패'; errorCode?: string; result: Record<string, unknown> };

@@ -1,4 +1,6 @@
 import { createRequire } from 'node:module';
+import type { z } from 'zod';
+import type { resumeFailureSchema } from '@nextstep/contracts';
 import { dirname, extname, join } from 'node:path';
 import { getDocument, PasswordException } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { ocrPdfPages } from './ocr.js';
@@ -13,7 +15,7 @@ const OCR_TIMEOUT_MS = 40_000;
 // ponytail: 글자 수 기준 스캔본 판정. 문서 전체가 기준 미만이면 실패, 일부 쪽만 미만이면 emptyPages로 경고한다.
 const MIN_TEXT_CHARS = 20;
 
-export type ResumeFailure = 'unsupported_type' | 'too_large' | 'encrypted' | 'damaged' | 'scanned_or_empty' | 'timeout';
+export type ResumeFailure = z.infer<typeof resumeFailureSchema>;
 export type ResumeExtraction =
   | { ok: true; kind: 'pdf' | 'md' | 'zip'; text: string; pages?: number; emptyPages?: number[]; ocrPages?: number[] }
   | { ok: false; code: ResumeFailure };
