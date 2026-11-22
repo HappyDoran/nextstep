@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { structured, dataBlock, AiError, MAX_INPUT_CHARS } from '../dist/ai/llm.js';
-import { extractCandidate } from '../dist/prompts/candidate.js';
+import { extractCandidate, candidateSchema, careerMonths } from '../dist/prompts/candidate.js';
 import { judgementSchema } from '../dist/prompts/recommend.js';
 
 // 실제 Ollama 대신 로컬 모의 서버로 요청 형식·응답 검증만 확인한다(실제 연동 검증이 아님).
@@ -50,6 +50,27 @@ test('지원자 추출: 문맥을 넘지 않게 앞에서부터 자르고(지시
     assert.equal(seen[0].messages[0].role, 'system');
     assert.ok(seen[0].messages[1].content.includes('# 이력서'));
     assert.equal(seen[0].messages[1].content.includes('끝부분'), false);
+  });
+});
+
+test('지원자 추출: 직무는 한국어 목록(+기타)만 받고, 개월은 모델이 아니라 재직 연월로 코드가 센다', async () => {
+  // 2026-11-22 홈서버 실측: 소형 모델이 직무를 영어로, 개월 자리에 연도를 넣었다. 열거형이라 구조화 출력이 영어를 낼 수 없다.
+  const career = { company: 'A사', family: '프론트엔드', start: '2025-04', end: '현재', stack: [] };
+  const base = { skills: [], experiences: [], roles: [], education: '대졸' };
+  assert.equal(candidateSchema.safeParse({ ...base, careers: [{ ...career, family: 'Frontend' }] }).success, false);
+  assert.equal(candidateSchema.safeParse({ ...base, careers: [{ ...career, family: '기타' }] }).success, true);
+  // 양 끝 달 포함. "현재"는 지금 달, 점 표기도 읽고, 읽을 수 없거나 거꾸로면 0.
+  const now = new Date(2026, 10, 22);
+  assert.equal(careerMonths('2025-04', '현재', now), 20);
+  assert.equal(careerMonths('2024-05', '2025-10', now), 18);
+  assert.equal(careerMonths('2024.05', '2025.10', now), 18);
+  assert.equal(careerMonths('2025-10', '2024-05', now), 0);
+  assert.equal(careerMonths('2025', '현재', now), 0);
+  assert.equal(careerMonths('미기재', '현재', now), 0);
+  const reply1 = { ...base, careers: [{ ...career, start: '2024-01', end: '2024-12', stack: ['React'] }, { company: 'B사', family: '앱 개발', start: '2023-01', end: '2023-06', stack: ['Swift'] }] };
+  await withOllama((_req, res) => reply(res, 200, { message: { content: JSON.stringify(reply1) } }), async () => {
+    const c = await extractCandidate('# 이력서\n월 계산 확인용 합성 서류');
+    assert.deepEqual(c.careers, [{ family: '프론트엔드', months: 12, stack: ['React'] }, { family: '앱 개발', months: 6, stack: ['Swift'] }]);
   });
 });
 
