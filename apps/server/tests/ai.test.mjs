@@ -116,10 +116,15 @@ test('프로필 초안은 지원자 추출의 직무별 실무 개월을 합쳐 
     careers: [{ family: '프론트엔드', months: 12, stack: ['React'] }, { family: '앱개발', months: 18, stack: ['Swift'] }, { family: '프론트엔드', months: 6, stack: [] }, { family: 'PO', months: 24, stack: [] }],
     skills: ['React', ' React ', 'Swift'],
   });
-  assert.deepEqual(p.jobFamilies, ['프론트엔드', '앱 개발']);
-  assert.deepEqual(p.experiences, [{ jobFamily: '프론트엔드', years: 1.5 }, { jobFamily: '앱 개발', years: 1.5 }]);
+  // PO는 기획 별칭으로 맞춘다.
+  assert.deepEqual(p.jobFamilies, ['프론트엔드', '앱 개발', '기획']);
+  assert.deepEqual(p.experiences, [{ jobFamily: '프론트엔드', years: 1.5 }, { jobFamily: '앱 개발', years: 1.5 }, { jobFamily: '기획', years: 2 }]);
   assert.deepEqual(p.skills, ['React', 'Swift']);
   assert.equal(p.summary, '');
+  // 영어 직무 이름은 별칭으로 맞추고, 연도처럼 틀린 개월(2025)은 연수로 쓰지 않는다(2026-11-22 홈서버 실측).
+  const odd = profileFromCandidate({ careers: [{ family: 'Frontend', months: 2025, stack: [] }, { family: 'Mobile App', months: 12, stack: [] }], skills: [] });
+  assert.deepEqual(odd.jobFamilies, ['프론트엔드', '앱 개발']);
+  assert.deepEqual(odd.experiences, [{ jobFamily: '앱 개발', years: 1 }]);
   // 목록 밖 직무만 있으면 기본 직무 하나로 둔다(프로필은 직무가 하나 이상이어야 함).
   assert.deepEqual(profileFromCandidate({ careers: [], skills: [] }).jobFamilies, ['프론트엔드']);
 });

@@ -47,8 +47,14 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
   const job = useProfileDraft(me).data ?? null;
   const running = job !== null && ACTIVE_JOB.includes(job.status);
   const ready = job?.status === '성공' ? profileSchema.safeParse(job.result?.profile).data ?? null : null;
-  // 초안은 서류 사실(직무·경력·기술)만 바꾸고 사용자가 고른 선호는 그대로 둔다. 요약이 비어 있으면 지금 요약을 유지한다.
-  const applied = ready && { ...current(), jobFamilies: ready.jobFamilies, experiences: ready.experiences, skills: ready.skills, summary: ready.summary || current().summary };
+  // 초안은 지금 프로필에 서류에서 새로 찾은 직무·경력·기술을 더하기만 한다(소형 모델 추출이 빠뜨리거나 틀릴 수 있어 빼지 않음).
+  // 이미 적은 직무 경력 연수는 그대로 두고, 새 직무만 초안 연수를 쓴다. 선호·요약은 그대로다.
+  const applied = ready && (() => {
+    const now = current();
+    const add = <T,>(base: T[], more: T[]) => [...base, ...more.filter(x => !base.includes(x))];
+    return { ...now, jobFamilies: add(now.jobFamilies, ready.jobFamilies), skills: add(now.skills, ready.skills),
+      experiences: [...now.experiences, ...ready.experiences.filter(e => !now.experiences.some(x => x.jobFamily === e.jobFamily))] };
+  })();
   const suggest = useMutation({
     mutationFn: async () => jobSchema.parse(await call('profile/suggest', { method: 'POST', messages: { 409: '이력서를 먼저 등록하세요.' } })),
     onSuccess: started => { client.setQueryData(noticeKey(me), null); client.setQueryData(draftKey(me), started); },
@@ -72,7 +78,7 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
       {draftError && <Button variant="quiet" disabled={discard.isPending} onClick={() => discard.mutate()}>실패 안내 지우기</Button>}
     </div>
     {ready && applied && <DraftReview now={current()} next={applied} otherEdits={JSON.stringify({ ...current(), jobFamilies: 0, experiences: 0, skills: 0, summary: 0 }) !== JSON.stringify({ ...initial, jobFamilies: 0, experiences: 0, skills: 0, summary: 0 })} busy={save.isPending || discard.isPending}
-      onSave={() => save.mutate({ profile: applied, consume: true })} onFill={() => { setFilledId(job?.id ?? null); setForm(applied); setSkills(ready.skills.join(', ')); }} onDiscard={() => discard.mutate()} />}
+      onSave={() => save.mutate({ profile: applied, consume: true })} onFill={() => { setFilledId(job?.id ?? null); setForm(applied); setSkills(applied.skills.join(', ')); }} onDiscard={() => discard.mutate()} />}
     <fieldset className="flex flex-col gap-3"><legend className="mb-2 text-body-sm font-semibold">희망 직무 (복수 선택)</legend>
       {FAMILIES.map(family => <div key={family} className="flex flex-wrap items-center gap-3">
         <label className="inline-flex h-control-sm cursor-pointer items-center gap-2 rounded-full border border-border-strong bg-card px-3 text-body-sm text-muted-foreground has-[:checked]:border-primary has-[:checked]:bg-secondary has-[:checked]:font-semibold has-[:checked]:text-secondary-foreground has-[:focus-visible]:outline has-[:focus-visible]:outline-focus has-[:focus-visible]:outline-ring min-w-32"><input type="checkbox" checked={form.jobFamilies.includes(family)} onChange={() => setForm({ ...form, jobFamilies: toggle(form.jobFamilies, family) })} className="size-icon-sm accent-primary" />{family}</label>
@@ -104,7 +110,7 @@ function DraftReview({ now, next, otherEdits, busy, onSave, onFill, onDiscard }:
   const changes = FIELDS.map(([label, show]) => [label, show(now), show(next)] as const).filter(([, a, b]) => a !== b);
   return <section aria-labelledby="draft-title" className="grid animate-fade-up gap-3 rounded-surface border border-primary bg-card p-5 motion-reduce:animate-fade">
     <div><h4 id="draft-title" className="text-body font-extrabold">이력서로 만든 초안이 준비됐어요</h4>
-      <p className="mt-1 text-body-sm text-muted-foreground">{changes.length ? '바뀌는 항목만 보여 드려요. 근무 지역·고용 형태 같은 공고 필터는 그대로예요.' : '지금 입력한 프로필과 같아요.'}</p></div>
+      <p className="mt-1 text-body-sm text-muted-foreground">{changes.length ? '서류에서 새로 찾은 항목을 지금 프로필에 더해요. 이미 적은 값은 지우지 않고, 공고 필터는 그대로예요.' : '서류에서 새로 찾은 항목이 없어요. 지금 프로필 그대로예요.'}</p></div>
     {changes.length > 0 && <dl className="grid gap-2.5 text-body-sm">
       {changes.map(([label, a, b]) => <div key={label} className="grid gap-0.5">
         <dt className="font-semibold">{label}</dt>
