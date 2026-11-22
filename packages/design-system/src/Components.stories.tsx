@@ -40,7 +40,7 @@ export const Fields: Story = {
 function Timeline({ onOpen }: { onOpen?: (index: number) => void }) {
   const [folded, setFolded] = useState(false);
   return <>
-    <Lane title="이번 주 마감" hint="11/18 – 11/23" count="9건">
+    <Lane title="이번 주 마감" count="9건">
       <RowList>{rows.map((r, i) => <Row key={r.t} classification={r.c} className="grid-cols-[4.5rem_1fr_16rem_5rem]">
         <ClassLabel classification={r.c} />
         <RowTrigger onClick={() => onOpen?.(i)}><span className="block text-body font-bold">{r.t}</span><span className="block text-caption text-muted-foreground">{r.s}</span></RowTrigger>

@@ -1,6 +1,6 @@
 import type { ComponentType, PropsWithChildren, ReactNode } from 'react';
 
-const focus = 'focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus';
+import { focus } from './controls.js';
 
 /** 앱 틀: 왼쪽 아이콘 메뉴 · 화면(머리+본문) · 하단 상태바. */
 export function AppShell({ rail, status, children }: PropsWithChildren<{ rail: ReactNode; status: ReactNode }>) {

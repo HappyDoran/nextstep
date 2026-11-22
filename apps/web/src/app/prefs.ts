@@ -49,18 +49,13 @@ export function setPrefs(patch: Partial<Prefs>) {
   for (const l of listeners) l();
 }
 /** 사용자별 보기 조건(nextstep:view:*)과 마지막 화면을 지운다. 로그아웃·계정 삭제 때 다음 사용자에게 남지 않게 한다. */
+const dropKeys = (prefix: string) => { for (const key of Object.keys(localStorage)) if (key.startsWith(prefix)) localStorage.removeItem(key); };
 export function clearViews() {
-  try {
-    for (const key of Object.keys(localStorage)) if (key.startsWith('nextstep:view:')) localStorage.removeItem(key);
-    localStorage.removeItem(LAST_PATH_KEY);
-  } catch { /* 지울 것이 없음 */ }
+  try { dropKeys('nextstep:view:'); localStorage.removeItem(LAST_PATH_KEY); } catch { /* 지울 것이 없음 */ }
 }
 /** 이 기기 설정 초기화: NextStep이 이 기기에 둔 값만 지운다(로그인은 서버 쿠키라 유지). */
 export function resetDevice() {
-  try {
-    for (const key of Object.keys(localStorage)) if (key.startsWith('nextstep:')) localStorage.removeItem(key);
-    sessionStorage.clear();
-  } catch { /* 지울 것이 없음 */ }
+  try { dropKeys('nextstep:'); sessionStorage.clear(); } catch { /* 지울 것이 없음 */ }
 }
 
 /** 시각 표기. 상대 표기는 7일이 넘으면 절대 표기로 바꾼다. */

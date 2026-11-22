@@ -1,9 +1,9 @@
 'use client';
 import { useEffect, useState, type FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { Button, buttonClass, Field, GoogleMark, Input } from '@nextstep/design-system';
 import { pendingSchema, type Me, type Pending } from '@nextstep/contracts';
-import { call, ME_KEY, RequestError, useMe } from './api-client';
+import { call, ME_KEY, optional, useMe } from './api-client';
 import { clearViews } from './prefs';
 
 const PENDING_KEY = ['auth', 'pending'];
@@ -15,28 +15,22 @@ const LOGIN_ERRORS: Record<string, string> = {
 };
 const takeParam = (name: string) => typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get(name);
 
-/** 로그아웃: 서버 세션을 끝내고 이전 사용자의 캐시를 버린다(계정 화면·계정 메뉴 공용). */
-export function useSignOut() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: () => call('auth/logout', { method: 'POST' }),
-    onSuccess: () => {
-      clearViews();
-      client.removeQueries({ predicate: query => query.queryKey[0] !== ME_KEY[0] });
-      client.setQueryData(ME_KEY, null);
-      client.setQueryData(PENDING_KEY, null);
-    },
-  });
+// 사용자가 바뀌면 이전 사용자의 캐시를 모두 버린다. 계정 조회·대기 조회는 'auth' 아래 두어 지우지 않고 값만 바꾼다
+// (화면 여러 곳이 구독하는 쿼리를 지우면 옛 값을 계속 보여 준다).
+const dropUserData = (client: QueryClient) => client.removeQueries({ predicate: query => query.queryKey[0] !== ME_KEY[0] });
+function resetSession(client: QueryClient, next: Me | null) {
+  dropUserData(client);
+  client.setQueryData(ME_KEY, next);
+  client.setQueryData(PENDING_KEY, null);
 }
 
-async function fetchPending(): Promise<Pending | null> {
-  try {
-    return pendingSchema.parse(await call('auth/pending'));
-  } catch (error) {
-    if (error instanceof RequestError && error.status === 401) return null;
-    throw error;
-  }
+/** 로그아웃: 서버 세션을 끝내고 이전 사용자의 캐시·보기 조건을 버린다(계정 화면·계정 메뉴 공용). */
+export function useSignOut() {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: () => call('auth/logout', { method: 'POST' }), onSuccess: () => { clearViews(); resetSession(client, null); } });
 }
+
+const fetchPending = async (): Promise<Pending | null> => { const data = await optional('auth/pending', 401); return data === null ? null : pendingSchema.parse(data); };
 
 // 로그인 흐름(기획서 0.2.13): 구글 로그인 → 등록 계정은 바로 로그인, 미등록 계정은 운영자에게 초대 코드 요청이 가고
 // 이 화면이 코드 입력 화면이 된다. 대기 상태는 서버 쿠키라 앱을 다시 열어도 입력 화면부터 이어진다.
@@ -54,16 +48,7 @@ export function Account() {
     for (const name of ['login_error', 'desktop_code']) url.searchParams.delete(name);
     if (url.search !== before) window.history.replaceState(null, '', url);
   }, []);
-  // 사용자가 바뀌면 이전 사용자의 캐시를 모두 버린다.
-  // 계정 조회 쿼리는 화면 여러 곳이 구독하므로 지우지 않고 값만 바꾼다.
-  // 계정 조회·대기 조회는 'auth' 아래 두어 지우지 않는다(구독 중인 쿼리를 지우면 화면이 옛 값을 계속 보여 준다).
-  const dropUserData = () => client.removeQueries({ predicate: query => query.queryKey[0] !== ME_KEY[0] });
-  const reset = (next: Me | null) => {
-    dropUserData();
-    client.setQueryData(ME_KEY, next);
-    client.setQueryData(PENDING_KEY, null);
-  };
-  const reload = () => { dropUserData(); void client.invalidateQueries({ queryKey: ['auth'] }); };
+  const reload = () => { dropUserData(client); void client.invalidateQueries({ queryKey: ['auth'] }); };
   // 데스크톱 앱: 기본 브라우저에서 구글 로그인을 마치면 앱이 이 창을 ?desktop_code=로 열고, 여기서 세션 또는 코드 입력 대기로 바꾼다.
   const exchange = useMutation({
     mutationFn: (code: string) => call('auth/desktop/exchange', { method: 'POST', body: JSON.stringify({ code }), messages: { 400: '로그인을 다시 시도하세요.', 401: '로그인 시간이 지났습니다. 다시 시도하세요.' } }),
@@ -76,7 +61,7 @@ export function Account() {
     onSuccess: reload,
   });
   const logout = useSignOut();
-  const remove = useMutation({ mutationFn: () => call('account', { method: 'DELETE' }), onSuccess: () => { clearViews(); reset(null); } });
+  const remove = useMutation({ mutationFn: () => call('account', { method: 'DELETE' }), onSuccess: () => { clearViews(); resetSession(client, null); } });
 
   if (me.isPending || (me.data === null && pending.isPending)) return <p role="status" className="text-muted-foreground">계정 상태를 확인하고 있습니다.</p>;
   if (me.isError) return <p role="status" className="text-muted-foreground">계정 상태를 확인하지 못했습니다. 서버 연결을 확인하세요.</p>;

@@ -1,8 +1,7 @@
 import type { ButtonHTMLAttributes, PropsWithChildren, ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 
-const focus = 'focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus';
-const join = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(' ');
+import { focus, join } from './controls.js';
 
 /** 추천 분류. 화면은 서버가 준 값을 그대로 넘기고, 색은 글자와 함께만 쓴다. */
 export type Classification = '기본' | '도전' | '미확인' | '제외';
@@ -19,14 +18,13 @@ export function ClassLabel({ classification }: { classification: Classification 
 }
 
 /** 마감·상태 묶음. onToggle을 주면 접고 펼칠 수 있다. */
-export function Lane({ title, hint, count, expanded = true, onToggle, children }: PropsWithChildren<{ title: ReactNode; hint?: ReactNode; count: ReactNode; expanded?: boolean; onToggle?: () => void }>) {
+export function Lane({ title, count, expanded = true, onToggle, children }: PropsWithChildren<{ title: ReactNode; count: ReactNode; expanded?: boolean; onToggle?: () => void }>) {
   return <section className="mb-7">
     <div className="mb-2.5 flex items-center gap-2.5">
       {/* 화면 제목(h1) 아래 묶음 제목이라 h2. 접을 수 있으면 제목 안에 버튼을 둔다. */}
       <h2 className="text-body-sm font-extrabold text-foreground">{onToggle
         ? <button type="button" aria-expanded={expanded} onClick={onToggle} className={join('inline-flex cursor-pointer items-center gap-1.5', focus)}><ChevronDown className={join('size-icon-sm shrink-0 stroke-emphasis transition-transform duration-fast motion-reduce:transition-none', !expanded && '-rotate-90')} aria-hidden="true" focusable="false" />{title}</button>
         : title}</h2>
-      {hint ? <span className="text-caption text-muted-foreground">{hint}</span> : null}
       <span className="h-px flex-1 bg-border" aria-hidden="true" />
       <span className="text-caption font-semibold tabular-nums text-muted-foreground">{count}</span>
     </div>
@@ -67,7 +65,13 @@ export function Skeleton({ className }: { className?: string }) {
   return <div aria-hidden="true" className={join('h-3 animate-shimmer rounded-full bg-gradient-to-r from-muted via-border to-muted bg-[length:280%_100%] motion-reduce:animate-none', className)} />;
 }
 
-/** 아래 가운데에 잠깐 뜨는 알림. 되돌리기처럼 행동 하나를 붙일 수 있다. 화면 낭독기가 읽도록 늘 그려 두는 role="status" 영역 안에 넣는다. */
+/** 알림 자리(아래 가운데). 화면 낭독기가 새 알림을 읽도록 늘 그려 두고 안에 Toast를 넣거나 뺀다. */
+export function ToastRegion({ className, children }: PropsWithChildren<{ className?: string }>) {
+  return <div role="status" className={join('pointer-events-none fixed inset-x-0 z-10 flex justify-center', className ?? 'bottom-12')}>{children}</div>;
+}
+/** 어두운 Toast 위의 행동 버튼(Button variant="quiet"에 붙임). */
+export const toastAction = '!text-background hover:enabled:bg-transparent hover:enabled:underline';
+/** 아래 가운데에 잠깐 뜨는 알림. 되돌리기처럼 행동을 붙일 수 있다. ToastRegion 안에 둔다. */
 export function Toast({ children, action }: PropsWithChildren<{ action?: ReactNode }>) {
   return <div className="pointer-events-auto flex animate-fade-up items-center gap-3.5 rounded-full bg-foreground py-2.5 motion-reduce:animate-fade pl-5 pr-2.5 text-body-sm text-background shadow-lg">{children}{action}</div>;
 }

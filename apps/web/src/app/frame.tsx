@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, BriefcaseBusiness, Check, Inbox, LoaderCircle, LogOut, Mail, Settings, Star, WifiOff } from 'lucide-react';
-import { AppShell, Button, Logo, LogoMark, NavItem, PageHeader, Rail, StatusBar, Toast } from '@nextstep/design-system';
+import { AppShell, Button, Logo, LogoMark, NavItem, PageHeader, Rail, StatusBar, Toast, ToastRegion, toastAction } from '@nextstep/design-system';
 import { latestRefreshSchema, reviewSchema, type Me } from '@nextstep/contracts';
 import { ACTIVE_JOB, call, noticeKey, useDraftNotice, useMailConnection, useProfileDraft, useWhen } from './api-client';
 import { LAST_PATH_KEY } from './prefs';
@@ -85,15 +85,15 @@ function DraftNotice({ me, hidden, onOpen }: { me: Me; hidden: boolean; onOpen: 
   const draft = useProfileDraft(me).data;
   const notice = useDraftNotice(me).data;
   // 알림 영역(role=status)은 늘 두고 안의 내용만 바꿔야 화면 낭독기가 새 알림을 읽는다.
-  if (hidden || !notice || draft?.id !== notice) return <div role="status" className="sr-only" />;
+  if (hidden || !notice || draft?.id !== notice) return <ToastRegion className="bottom-24" />;
   const close = () => client.setQueryData(noticeKey(me), null);
-  const action = '!text-background hover:enabled:bg-transparent hover:enabled:underline';
-  return <div role="status" className="pointer-events-none fixed inset-x-0 bottom-12 z-10 flex justify-center">
+  // 지원 현황의 되돌리기 알림과 겹치지 않게 한 줄 위에 둔다.
+  return <ToastRegion className="bottom-24">
     <Toast action={<span className="flex">
-      <Button size="sm" variant="quiet" className={action} onClick={() => { close(); onOpen(); }}>{draft.status === '성공' ? '확인하고 저장' : '확인하기'}</Button>
-      <Button size="sm" variant="quiet" className={`${action} opacity-70`} aria-label="알림 닫기" onClick={close}>닫기</Button>
+      <Button size="sm" variant="quiet" className={toastAction} onClick={() => { close(); onOpen(); }}>{draft.status === '성공' ? '확인하고 저장' : '확인하기'}</Button>
+      <Button size="sm" variant="quiet" className={`${toastAction} opacity-70`} aria-label="알림 닫기" onClick={close}>닫기</Button>
     </span>}>{draft.status === '성공' ? '프로필 초안이 준비됐어요' : '프로필 초안을 만들지 못했어요'}</Toast>
-  </div>;
+  </ToastRegion>;
 }
 
 // 처음 불러오는 자료가 있으면 화면 맨 위에 가는 진행 막대를 보인다. 주기 조회·다시 읽기(이미 값이 있음)에는 보이지 않는다.

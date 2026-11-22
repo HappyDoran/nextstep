@@ -33,19 +33,14 @@ export async function call(path: string, init?: RequestInit & { messages?: Recor
   return response.status === 204 ? null : (response.json() as Promise<unknown>);
 }
 
-async function fetchMe(): Promise<Me | null> {
-  try {
-    return meSchema.parse(await call('auth/me'));
-  } catch (error) {
-    if (error instanceof RequestError && error.status === 401) return null;
-    throw error;
-  }
+/** 있으면 값, 없으면(기본 404, 로그인 조회는 401) null인 조회. */
+export async function optional(path: string, missing = 404) {
+  try { return await call(path); } catch (error) { if (error instanceof RequestError && error.status === missing) return null; throw error; }
 }
+const fetchMe = async () => { const data = await optional('auth/me', 401); return data === null ? null : meSchema.parse(data); };
 
-/** 있으면 값, 없으면(404) null인 조회. */
-export async function optional(path: string) {
-  try { return await call(path); } catch (error) { if (error instanceof RequestError && error.status === 404) return null; throw error; }
-}
+/** 작업 결과의 분석 실패 원인 코드 → 사용자 문구(추천·메일 결과 공용). 모델·처리 방식은 사용자에게 보이지 않는다. */
+export const AI_CAUSES: Record<string, string> = { ai_network: '분석 연결 실패', ai_timeout: '분석 시간 초과', ai_model_unavailable: '분석 준비 안 됨', ai_http: '분석 오류', ai_invalid_output: '분석 결과 형식 오류' };
 
 /** 네이버 메일 연결(없으면 null). 상태바·설정·시작 단계가 같은 캐시를 같은 형태로 쓴다. poll이면 동기화 작업 중에 3초마다, 아니면 1분마다 다시 읽는다. */
 export function useMailConnection(me: Me, poll = false) {

@@ -1,7 +1,7 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, PropsWithChildren, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
-const focus = 'focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus';
-const join = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(' ');
+export const focus = 'focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus';
+export const join = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(' ');
 
 const buttonVariant = {
   primary: 'border-primary bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-active',

@@ -14,8 +14,8 @@ const FAILURES: Record<string, string> = {
   scanned_or_empty: '글자를 읽을 수 없습니다. 이미지 글자 인식(OCR)으로도 읽지 못했습니다. MD로 다시 등록하세요.',
   timeout: '처리 시간이 초과되었습니다. 더 작은 파일로 다시 시도하세요.',
 };
-export const DOCUMENT_NAMES: Record<DocumentKind, string> = { resume: '이력서', portfolio: '포트폴리오', career: '경력기술서' };
-const KINDS: { value: DocumentKind; label: string }[] = [{ value: 'resume', label: '이력서' }, { value: 'career', label: '경력기술서' }, { value: 'portfolio', label: '포트폴리오' }];
+const DOCUMENT_NAMES: Record<DocumentKind, string> = { resume: '이력서', portfolio: '포트폴리오', career: '경력기술서' };
+const KINDS = (['resume', 'career', 'portfolio'] as const).map(value => ({ value, label: DOCUMENT_NAMES[value] }));
 const ACCEPT = '.pdf,.md,.markdown,.zip,application/pdf,text/markdown,application/zip';
 const icon = 'size-icon-base shrink-0 stroke-icon';
 const kb = (size: number) => size < 1024 * 1024 ? `${Math.ceil(size / 1024)}KB` : `${(size / 1024 / 1024).toFixed(1)}MB`;

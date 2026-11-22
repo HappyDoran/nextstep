@@ -4,11 +4,10 @@ import { Check, ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, buttonClass, ClassLabel, classTag, DueDate, Field, Input, Lane, Row, RowList, RowTrigger, Select, Sheet, Skeleton, StatePanel, Tag, Toggle } from '@nextstep/design-system';
 import { applicationSchema, jobSchema, profileSchema, resumeSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
-import { ACTIVE_JOB, buttonIcon as icon, call, monthDay, optional, SOURCE_NAMES, useMailConnection, useMe, useStored, useWhen } from '../api-client';
+import { ACTIVE_JOB, AI_CAUSES, buttonIcon as icon, call, monthDay, optional, SOURCE_NAMES, useMailConnection, useMe, useStored, useWhen } from '../api-client';
 import { Account } from '../account';
 import { Frame, AuthLayout, progressText, useLatestRefresh } from '../frame';
 import { formatWhen } from '../prefs';
-import { AI_CAUSES } from '../settings/ai';
 
 const CLASSES = recommendationClassSchema.options;
 // 사용자가 제외에서 되살린 공고는 '복구' 묶음으로 따로 본다.

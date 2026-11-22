@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LoaderCircle } from 'lucide-react';
 import { Button, Input, Textarea } from '@nextstep/design-system';
 import { jobFamilySchema, jobSchema, profileSchema, type JobFamily, type Me, type Profile } from '@nextstep/contracts';
-import { ACTIVE_JOB, buttonIcon, call, draftKey, noticeKey, optional, RequestError, useProfileDraft, useWhen } from '../api-client';
+import { ACTIVE_JOB, AI_CAUSES, buttonIcon, call, draftKey, noticeKey, optional, RequestError, useProfileDraft, useWhen } from '../api-client';
 
 const FAMILIES = jobFamilySchema.options;
 const EMPLOYMENT = ['정규직', '계약직', '인턴', '프리랜서'] as const;
@@ -37,7 +37,7 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
   const current = (): Profile => ({ ...form, regions: list(regions), skills: list(skills) });
   const clearDraft = () => { client.setQueryData(draftKey(me), null); client.setQueryData(noticeKey(me), null); };
   // 초안을 입력칸에 채웠으면 그 저장으로 초안을 받아들인 것이다. 필터만 고쳐 저장하면 받지 않은 초안은 남긴다.
-  const [filled, setFilled] = useState(false);
+  const [filledId, setFilledId] = useState<string | null>(null);
   const save = useMutation({
     mutationFn: async ({ profile }: { profile: Profile; consume: boolean }) => (await call('profile', { method: 'PUT', body: JSON.stringify(profileSchema.parse(profile)) })) as { profile: Profile; updatedAt: string },
     // 추천 목록의 필터 적용 결과도 바뀌므로 다시 읽는다.
@@ -56,16 +56,16 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
     onSuccess: started => { client.setQueryData(noticeKey(me), null); client.setQueryData(draftKey(me), started); },
   });
   const discard = useMutation({ mutationFn: () => call('profile/draft', { method: 'DELETE' }), onSuccess: clearDraft });
-  const fill = (p: Profile) => { setFilled(true); setForm({ ...form, jobFamilies: p.jobFamilies, experiences: p.experiences, skills: p.skills, summary: p.summary }); setSkills(p.skills.join(', ')); };
+  const fill = (p: Profile) => { setFilledId(job?.id ?? null); setForm({ ...form, jobFamilies: p.jobFamilies, experiences: p.experiences, skills: p.skills, summary: p.summary }); setSkills(p.skills.join(', ')); };
   // 이 구역에서 끝난 초안을 보고 있으면 다른 화면 알림은 필요 없다.
   const finished = job?.finishedAt ? job.id : null;
   useEffect(() => { if (finished) client.setQueryData(noticeKey(me), null); }, [client, finished, me]);
-  const draftError = job?.status === '실패' ? (job.errorCode === 'no_resume' ? '이력서를 먼저 등록하세요.' : '초안을 만들지 못했습니다. 잠시 후 다시 시도하세요.') : null;
+  const draftError = job?.status === '실패' ? (job.errorCode === 'no_resume' ? '이력서를 먼저 등록하세요.' : `초안을 만들지 못했습니다${job.errorCode && AI_CAUSES[job.errorCode] ? `(${AI_CAUSES[job.errorCode]})` : ''}. 잠시 후 다시 시도하고, 계속되면 운영자에게 알려 주세요.`) : null;
   const toggle = <T,>(items: T[], item: T) => items.includes(item) ? items.filter(i => i !== item) : [...items, item];
   const years = (family: JobFamily) => form.experiences.find(e => e.jobFamily === family)?.years ?? '';
   const setYears = (family: JobFamily, value: string) => setForm({ ...form, experiences: [...form.experiences.filter(e => e.jobFamily !== family), ...(value === '' ? [] : [{ jobFamily: family, years: Number(value) }])] });
 
-  return <form className="flex flex-col gap-5" onSubmit={e => { e.preventDefault(); save.mutate({ profile: current(), consume: filled && ready !== null }); }}>
+  return <form className="flex flex-col gap-5" onSubmit={e => { e.preventDefault(); save.mutate({ profile: current(), consume: ready !== null && filledId === job?.id }); }}>
     <p className="text-body-sm text-muted-foreground">사용 중인 이력서로 직무·경력·기술·요약 초안을 만들 수 있어요. 다른 화면으로 가도 계속 만들고, 다 되면 알려 드려요.</p>
     <div className="flex flex-wrap items-center gap-3">
       <Button variant="secondary" disabled={running || suggest.isPending} onClick={() => suggest.mutate()}>
@@ -74,7 +74,7 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
       {running && <p role="status" className="text-body-sm text-muted-foreground">보통 1~2분 걸려요.</p>}
       {draftError && <Button variant="quiet" disabled={discard.isPending} onClick={() => discard.mutate()}>실패 안내 지우기</Button>}
     </div>
-    {ready && applied && <DraftReview now={current()} next={applied} busy={save.isPending || discard.isPending}
+    {ready && applied && <DraftReview now={current()} next={applied} otherEdits={JSON.stringify({ ...current(), jobFamilies: 0, experiences: 0, skills: 0, summary: 0 }) !== JSON.stringify({ ...initial, jobFamilies: 0, experiences: 0, skills: 0, summary: 0 })} busy={save.isPending || discard.isPending}
       onSave={() => save.mutate({ profile: applied, consume: true })} onFill={() => fill(ready)} onDiscard={() => discard.mutate()} />}
     <fieldset className="flex flex-col gap-3"><legend className="mb-2 text-body-sm font-semibold">희망 직무 (복수 선택)</legend>
       {FAMILIES.map(family => <div key={family} className="flex flex-wrap items-center gap-3">
@@ -95,7 +95,7 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
     <label className="flex flex-col gap-1.5 text-body-sm font-semibold">경력 요약<Textarea value={form.summary} maxLength={2000} rows={3} onChange={e => setForm({ ...form, summary: e.target.value })} /></label>
     <div><Button type="submit" disabled={save.isPending || form.jobFamilies.length === 0}>프로필 저장</Button></div>
     <p role="status" className="text-body-sm text-muted-foreground">{updatedAt ? `마지막 저장: ${when(updatedAt)}` : '아직 저장한 프로필이 없습니다.'}</p>
-    {(save.isError || suggest.isError || discard.isError || draftError) && <p role="alert" className="text-body-sm text-destructive">{save.isError && save.error instanceof Error && !(save.error instanceof RequestError) ? '입력값을 확인하세요(희망 직무 1개 이상, 경력 0~50년, 요구 경력 상한 0~30년).' : (save.error ?? suggest.error ?? discard.error)?.message ?? draftError}</p>}
+    {(save.isError || suggest.isError || discard.isError || draftError) && <p role="alert" className="text-body-sm text-destructive">{save.isError && !(save.error instanceof RequestError) ? '입력값을 확인하세요(희망 직무 1개 이상, 경력 0~50년, 요구 경력 상한 0~30년).' : (save.error ?? suggest.error ?? discard.error)?.message ?? draftError}</p>}
   </form>;
 }
 
@@ -103,7 +103,7 @@ const families = (p: Profile) => p.jobFamilies.map(f => { const y = p.experience
 const FIELDS: [string, (p: Profile) => string][] = [['희망 직무·경력', families], ['업무·도구·기술', p => p.skills.join(', ')], ['경력 요약', p => p.summary]];
 
 /** 다 만든 초안: 지금 값에서 바뀌는 항목만 보여 주고 한 번에 저장한다. */
-function DraftReview({ now, next, busy, onSave, onFill, onDiscard }: { now: Profile; next: Profile; busy: boolean; onSave: () => void; onFill: () => void; onDiscard: () => void }) {
+function DraftReview({ now, next, otherEdits, busy, onSave, onFill, onDiscard }: { now: Profile; next: Profile; otherEdits: boolean; busy: boolean; onSave: () => void; onFill: () => void; onDiscard: () => void }) {
   const changes = FIELDS.map(([label, show]) => [label, show(now), show(next)] as const).filter(([, a, b]) => a !== b);
   return <section aria-labelledby="draft-title" className="grid animate-fade-up gap-3 rounded-surface border border-primary bg-card p-5 motion-reduce:animate-fade">
     <div><h4 id="draft-title" className="text-body font-extrabold">이력서로 만든 초안이 준비됐어요</h4>
@@ -115,6 +115,7 @@ function DraftReview({ now, next, busy, onSave, onFill, onDiscard }: { now: Prof
         <dd className="text-foreground"><span className="mr-2 font-semibold text-primary">초안</span>{b || '없음'}</dd>
       </div>)}
     </dl>}
+    {otherEdits && <p className="text-body-sm font-semibold text-warning">입력칸에서 고치고 저장하지 않은 공고 필터도 함께 저장돼요.</p>}
     <div className="flex flex-wrap gap-2">
       <Button disabled={busy || next.jobFamilies.length === 0} onClick={onSave}>초안으로 저장</Button>
       <Button variant="secondary" disabled={busy} onClick={onFill}>입력칸에 채워 고치기</Button>

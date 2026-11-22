@@ -2,7 +2,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { ExternalLink, Plus, Upload } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, buttonClass, Field, Input, Lane, Row, RowList, RowTrigger, Segmented, Select, Sheet, Skeleton, StatePanel, Tag, Toast, Toggle } from '@nextstep/design-system';
+import { Button, buttonClass, Field, Input, Lane, Row, RowList, RowTrigger, Segmented, Select, Sheet, Skeleton, StatePanel, Tag, Toast, ToastRegion, toastAction, Toggle } from '@nextstep/design-system';
 import {
   applicationDetailSchema, applicationImportResultSchema, applicationSchema, applicationStatusSchema, readStatusSchema,
   type Application, type ApplicationStatus, type Me,
@@ -22,7 +22,7 @@ function formBody(form: FormData, forUpdate: boolean) {
   // 잠금 토글은 여러 값이므로 배열로 보낸다(수정 때만).
   delete body.lock;
   if (forUpdate) body.lockedFields = form.getAll('lock');
-  return JSON.stringify(body);
+  return body;
 }
 
 export function Applications({ me }: { me: Me }) {
@@ -83,9 +83,9 @@ export function Applications({ me }: { me: Me }) {
     {openId && <ApplicationDetail id={openId} userKey={key} onClose={() => setOpenId(null)} />}
     <NewApplication open={dialog === 'new'} userKey={key} onClose={() => setDialog(null)} onCreated={a => { setDialog(null); setCreated(a); }} />
     <ImportCsv open={dialog === 'csv'} userKey={key} onClose={() => setDialog(null)} />
-    <div role="status" className="pointer-events-none fixed inset-x-0 bottom-12 z-10 flex justify-center">
-      {created && <Toast action={<Button size="sm" variant="quiet" className="!text-background hover:enabled:bg-transparent hover:enabled:underline" disabled={undo.isPending} onClick={() => undo.mutate(created.id)}>되돌리기</Button>}>{created.company} · {created.roleTitle}를 등록했어요</Toast>}
-    </div>
+    <ToastRegion>
+      {created && <Toast action={<Button size="sm" variant="quiet" className={toastAction} disabled={undo.isPending} onClick={() => undo.mutate(created.id)}>되돌리기</Button>}>{created.company} · {created.roleTitle}를 등록했어요</Toast>}
+    </ToastRegion>
   </Frame>;
 }
 
@@ -112,7 +112,7 @@ function ApplicationRow({ item, userKey, showStatus, onOpen }: { item: Applicati
 function NewApplication({ open, userKey, onClose, onCreated }: { open: boolean; userKey: string[]; onClose: () => void; onCreated: (a: Application) => void }) {
   const client = useQueryClient();
   const create = useMutation({
-    mutationFn: async (form: FormData) => applicationSchema.parse(await call('applications', { method: 'POST', body: formBody(form, false) })),
+    mutationFn: async (form: FormData) => applicationSchema.parse(await call('applications', { method: 'POST', body: JSON.stringify(formBody(form, false)) })),
     onSuccess: a => { void client.invalidateQueries({ queryKey: userKey }); onCreated(a); },
   });
   const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = event.currentTarget; create.mutate(new FormData(form), { onSuccess: () => form.reset() }); };
@@ -157,7 +157,7 @@ function ApplicationDetail({ id, userKey, onClose }: { id: string; userKey: stri
   if (detail.data && !base) setBase(fieldsOf(detail.data));
   const update = useMutation({
     mutationFn: async (form: FormData) => {
-      const body = JSON.parse(formBody(form, true)) as Record<string, unknown>;
+      const body = formBody(form, true);
       const same = (a: unknown, b: unknown) => (Array.isArray(a) && Array.isArray(b) ? [...a].sort().join() === [...b].sort().join() : a === b);
       for (const k of Object.keys(body)) if (same(body[k], base?.[k])) delete body[k];
       if (Object.keys(body).length === 0) return null;

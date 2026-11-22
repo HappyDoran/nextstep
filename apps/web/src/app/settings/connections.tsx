@@ -11,11 +11,7 @@ const tone = (ok: boolean | null | 'partial') => (ok === 'partial' ? '도전' : 
 // 연결 상태(기획서 4절): 홈서버·분석 기능은 지금 확인하고, 메일·공고 출처는 마지막 실행 결과를 보여 준다.
 export function ConnectionPanel({ me }: { me: Me }) {
   const when = useWhen();
-  const health = useQuery({ queryKey: ['service', 'health'], retry: false, refetchOnWindowFocus: false, queryFn: async ({ signal }) => {
-    const response = await fetch('/api/health', { cache: 'no-store', signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) });
-    if (!response.ok) throw new Error('서버 연결 실패');
-    return healthSchema.parse(await response.json());
-  } });
+  const health = useQuery({ queryKey: ['service', 'health'], retry: false, refetchOnWindowFocus: false, queryFn: async () => healthSchema.parse(await call('health', { timeout: 5000 })) });
   const conn = useQuery({ queryKey: ['settings', 'connections', me.id], retry: false, refetchOnWindowFocus: false, queryFn: async () => connectionStatusSchema.parse(await call('settings/connections')) });
   const loading = health.isFetching || conn.isFetching;
   const rows: { name: string; ok: boolean | null | 'partial'; label: string; detail: string }[] = [
