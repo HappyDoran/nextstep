@@ -139,7 +139,7 @@ type Unlinked = { id: string; message_key: string; subject: string; received_at:
 
 // 규칙으로 대상을 찾지 못한 메일을 AI로 해석해 지원 건 생성·연결·확인 요청으로 넘긴다.
 // 오래된 메일부터 해석한다: 지원 완료 메일로 지원 건이 먼저 생겨야 뒤의 열람·결과 메일이 그 건에 붙는다(2026-11-14 실측: 최신순이면 열람 0%).
-async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpret: Interpret; bodies: MailBodySource }, cached: Map<string, MailBody>, counts: Record<string, number>, account: string, password: string, aiFailureCodes: Record<string, number>) {
+async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpret: Interpret; bodies: MailBodySource }, cached: Map<string, MailBody>, counts: Counts, account: string, password: string, aiFailureCodes: Record<string, number>) {
   const rows = db.prepare(`SELECT id, message_key, subject, received_at, classification, platform, mailbox, uid_validity, uid FROM mail_messages
     WHERE user_id = ? AND outcome = 'unlinked' AND interpret_attempts < ? ORDER BY received_at ASC LIMIT ?`).all(userId, MAX_INTERPRET_ATTEMPTS, INTERPRET_CAP) as Unlinked[];
   const missing = rows.filter(r => r.mailbox && r.uid !== null && !cached.has(bodyKey({ mailbox: r.mailbox, uid: r.uid })))
@@ -167,7 +167,7 @@ async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpr
       interp = { ...interp, status: mergeMailStatus(rule, interp.status),
         ...(hint ? { company: hint.company, roleTitle: hint.roleTitle ?? interp.roleTitle, ...(hint.roleTitle ? { confidence: 'high' as const } : {}) } : {}) };
     } catch (error) {
-      counts.aiFailures = (counts.aiFailures ?? 0) + 1;
+      counts.aiFailures++;
       // 원인 코드별 건수를 남겨 화면·운영자가 키·잔액·연결 문제를 구분하게 한다(본문은 남기지 않음).
       const code = (error as { code?: string }).code ?? 'internal';
       aiFailureCodes[code] = (aiFailureCodes[code] ?? 0) + 1;
@@ -185,8 +185,8 @@ async function interpretUnlinked(db: DatabaseSync, userId: string, ai: { interpr
       const outcome = applyInterpretation(db, { id: row.id, userId, messageKey: row.message_key, subject: row.subject, receivedAt: row.received_at, verdict: { status: row.classification as never, evidence: null, platform: row.platform ?? platformOf(body.fromAddress), postingKeys: [] } }, interp);
       db.prepare('UPDATE mail_messages SET outcome = ?, classification = ?, interpret_attempts = interpret_attempts + 1 WHERE id = ? AND user_id = ?').run(outcome, interp.status, row.id, userId);
       db.exec('COMMIT');
-      counts.interpreted = (counts.interpreted ?? 0) + 1;
-      counts[outcome] = (counts[outcome] ?? 0) + 1;
+      counts.interpreted++;
+      counts[outcome]++;
     } catch (error) {
       if (db.isTransaction) db.exec('ROLLBACK');
       throw error;

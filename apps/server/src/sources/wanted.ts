@@ -1,6 +1,6 @@
 // wanted 공개 페이지 해석. 수집 정책(모드)은 호출하는 쪽이 확인한다.
 import type { JobFamily, Profile } from '@nextstep/contracts';
-import type { CollectedPosting, CollectFailure } from './types.js';
+import type { Career, CollectedPosting, CollectFailure } from './types.js';
 import { kstDeadline, nextData, politeGet } from './http.js';
 import { careerOk, regionOk } from './filter.js';
 
@@ -17,7 +17,7 @@ export type WantedPosting = {
   deadline: string | null;
   alwaysHire: boolean;
   active: boolean;
-  careers: { type: 'NEWBIE' | 'EXPERIENCED' | 'ANY'; fromYears: number | null; toYears: number | null }[];
+  careers: Career[];
   location: string | null;
   remote: boolean | null;
   externalApplyUrl: string | null;

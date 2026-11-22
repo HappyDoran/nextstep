@@ -46,11 +46,9 @@ export function importApplications(db: DatabaseSync, userId: string, csv: string
     }
     // 메일 연결이 없으면 다시 해석할 작업을 넣을 수 없으므로 확인 요청을 그대로 둔다.
     if (result.imported && db.prepare('SELECT 1 FROM mail_connections WHERE user_id = ?').get(userId)) {
-      const pending = db.prepare("SELECT message_id FROM review_requests WHERE user_id = ? AND status = '대기' AND held = 0 AND reason = '연결 불명'").all(userId) as { message_id: string }[];
-      for (const r of pending) {
-        db.prepare("DELETE FROM review_requests WHERE message_id = ? AND user_id = ? AND status = '대기'").run(r.message_id, userId);
-        db.prepare("UPDATE mail_messages SET outcome = 'unlinked', interpret_attempts = 0 WHERE id = ? AND user_id = ?").run(r.message_id, userId);
-      }
+      const pending = db.prepare("DELETE FROM review_requests WHERE user_id = ? AND status = '대기' AND held = 0 AND reason = '연결 불명' RETURNING message_id").all(userId) as { message_id: string }[];
+      const requeue = db.prepare("UPDATE mail_messages SET outcome = 'unlinked', interpret_attempts = 0 WHERE id = ? AND user_id = ?");
+      for (const r of pending) requeue.run(r.message_id, userId);
       result.requeued = pending.length;
     }
     db.exec('COMMIT');

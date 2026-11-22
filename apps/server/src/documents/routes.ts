@@ -85,7 +85,7 @@ export function registerDocuments(app: FastifyInstance, db: DatabaseSync, filesD
       throw error;
     }
     for (const old of pruned) removeFile(old.storage_key);
-    return toDocument(db.prepare('SELECT * FROM documents WHERE id = ? AND user_id = ?').get(id, user.id) as Row);
+    return toDocument(findVersion(user.id, kind, id)!);
   });
 
   // 변환된 MD를 사용자가 고친다(OCR 오인식 등). 고친 본문이 추천에 쓰인다.

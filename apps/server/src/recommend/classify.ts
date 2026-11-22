@@ -153,7 +153,7 @@ export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: P
         const used = c.careers.filter(k => matches(r.keys, k.stack));
         const best = Math.max(0, ...used.map(k => k.months));
         if (!used.length) out('exclude', `필수 ${r.text}: 실무 경력 없음`);
-        else if (r.years && best < r.years * 12) out('challenge', `${r.text}: 실무 ${span(best)}`);
+        else if (best < r.years * 12) out('challenge', `${r.text}: 실무 ${span(best)}`);
         else out('met', r.text);
       } else if (has([...r.keys, r.text], known) || allTech(r.text)) out('met', r.text);
       else out('unsure', `필수 ${r.text}: 서류에 미기재`);
