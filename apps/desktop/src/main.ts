@@ -114,7 +114,6 @@ async function poll() {
     status = !job ? '아직 가져온 적 없음' : !job.finishedAt ? '가져오는 중' : `마지막: ${job.status} · ${new Date(job.finishedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
     const settings = readSettings();
     // 처음 설치한 직후에는 지난 결과를 알리지 않고 기준만 잡는다. 그 뒤로는 꺼져 있던 동안 끝난 결과도 한 번 알린다.
-    // 처음 설치한 직후에는 지난 결과를 알리지 않고 기준만 잡는다. 그 뒤로는 꺼져 있던 동안 끝난 결과도 한 번 알린다.
     if (!settings) { writeSettings(job?.finishedAt ? { lastNotifiedId: job.id } : {}); return; }
     const next = noticeFor(body, settings.lastNotifiedId);
     if (!next) return;
@@ -130,7 +129,6 @@ async function poll() {
 
 function updateTray() {
   if (!tray) return;
-  const autoLaunch = app.getLoginItemSettings().openAtLogin;
   tray.setToolTip(`NextStep · ${status}`);
   // 로그인 전이면 가져오기 대신 로그인으로 안내하고, 상태 줄은 쓸 수 있는 결과가 있을 때만 보여 준다.
   const signedOut = status === '로그인 필요';
@@ -141,7 +139,7 @@ function updateTray() {
       { label: status, enabled: false },
     ]),
     { type: 'separator' },
-    { label: '로그인 시 자동 실행', type: 'checkbox', checked: autoLaunch, click: item => { app.setLoginItemSettings({ openAtLogin: item.checked }); updateTray(); } },
+    { label: '로그인 시 자동 실행', type: 'checkbox', checked: app.getLoginItemSettings().openAtLogin, click: item => { app.setLoginItemSettings({ openAtLogin: item.checked }); updateTray(); } },
     { label: 'NextStep 종료', role: 'quit' },
   ]));
 }
