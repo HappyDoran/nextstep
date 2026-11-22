@@ -5,8 +5,8 @@ import { usePathname } from 'next/navigation';
 import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertCircle, BriefcaseBusiness, Check, Inbox, LoaderCircle, LogOut, Mail, Settings, Star, WifiOff } from 'lucide-react';
 import { AppShell, Button, Logo, LogoMark, NavItem, PageHeader, Rail, RowList, Row, Skeleton, StatusBar, Toast, ToastRegion, toastAction } from '@nextstep/design-system';
-import { latestRefreshSchema, reviewSchema, type Me } from '@nextstep/contracts';
-import { ACTIVE_JOB, call, noticeKey, useDraftNotice, useMailConnection, useProfileDraft, useWhen } from './api-client';
+import { latestRefreshSchema, type Me } from '@nextstep/contracts';
+import { ACTIVE_JOB, call, noticeKey, useDraftNotice, useMailConnection, useMe, useProfileDraft, useReviews, useWhen } from './api-client';
 import { LAST_PATH_KEY } from './prefs';
 import { SettingsDialog, sectionFromHash, type Section } from './settings/settings';
 import { useSignOut } from './account';
@@ -61,6 +61,13 @@ export function LoadingScreen() {
   </>;
 }
 
+/** 로그인 확인 중이면 로딩 화면, 로그인 전이면 signedOut(계정 양식 포함)을 소개 면 옆에, 로그인했으면 children을 그린다. */
+export function SignedIn({ signedOut, children }: { signedOut: ReactNode; children: (me: Me) => ReactNode }) {
+  const me = useMe();
+  if (me.isPending) return <LoadingScreen />;
+  return me.data ? children(me.data) : <AuthLayout>{signedOut}</AuthLayout>;
+}
+
 /** 로그인 후 앱 틀: 왼쪽 아이콘 메뉴 · 화면 머리 · 하단 상태바(메일 확인과 공고 갱신 결과). */
 export function Frame({ me, title, description, actions, children }: { me: Me; title: string; description: string; actions?: ReactNode; children: ReactNode }) {
   const path = usePathname();
@@ -73,7 +80,7 @@ export function Frame({ me, title, description, actions, children }: { me: Me; t
     return () => window.removeEventListener('hashchange', read);
   }, []);
   const showSettings = (s: Section | null) => { setSettings(s); window.history.replaceState(null, '', s ? `#settings-${s}` : window.location.pathname + window.location.search); };
-  const reviews = useQuery({ queryKey: ['reviews', me.id], queryFn: async () => reviewSchema.array().parse(await call('reviews')), retry: false, refetchOnWindowFocus: false, refetchInterval: 60_000 });
+  const reviews = useReviews(me, { refetchOnWindowFocus: false, refetchInterval: 60_000 });
   const waiting = reviews.data?.filter(r => !r.held).length ?? 0;
   // 창 제목(데스크톱 앱 창·브라우저 탭)에 확인 목록 대기 건수를 붙인다.
   useEffect(() => {

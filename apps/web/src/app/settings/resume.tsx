@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, LoaderCircle, Trash2, Upload } from 'lucide-react';
 import { Button, Loading, Segmented, Tag, Textarea } from '@nextstep/design-system';
 import { documentVersionSchema, resumeSchema, resumeFailureSchema, DOCUMENT_VERSION_MAX, type DocumentKind, type Me, type Resume } from '@nextstep/contracts';
-import { call, optional, RequestError, SLOW, useWhen } from '../api-client';
+import { call, RequestError, SLOW, useDocument, useWhen } from '../api-client';
 
 const FAILURES: Record<string, string> = {
   unsupported_type: 'PDF·MD·Notion ZIP 파일만 등록할 수 있습니다.',
@@ -53,14 +53,7 @@ function DocumentPanel({ me, kind }: { me: Me; kind: DocumentKind }) {
   const when = useWhen();
   const label = DOCUMENT_NAMES[kind];
   const client = useQueryClient();
-  const key = ['documents', kind, me.id];
-  const query = useQuery({
-    queryKey: key, retry: false,
-    queryFn: async () => {
-      const doc = await optional(`documents/${kind}`);
-      return doc === null ? null : resumeSchema.parse(doc);
-    },
-  });
+  const query = useDocument(me, kind);
   const versions = useQuery({ queryKey: ['documents', kind, 'versions', me.id], retry: false, queryFn: async () => documentVersionSchema.array().parse(await call(`documents/${kind}/versions`)) });
   const refresh = () => client.invalidateQueries({ queryKey: ['documents', kind] });
   const doc = query.data;

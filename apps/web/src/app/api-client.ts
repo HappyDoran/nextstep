@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { mailConnectionSchema, meSchema, profileDraftSchema, type Job, type Me } from '@nextstep/contracts';
+import { applicationSchema, mailConnectionSchema, meSchema, profileDraftSchema, resumeSchema, reviewSchema, type DocumentKind, type Job, type Me, type Profile } from '@nextstep/contracts';
 import { formatWhen, markSignedIn, prefsStore } from './prefs';
 
 export const ME_KEY = ['auth', 'me'];
@@ -64,6 +64,17 @@ export function useMailConnection(me: Me, poll = false) {
     refetchInterval: q => (poll && q.state.data?.lastJob && ACTIVE_JOB.includes(q.state.data.lastJob.status) ? 3000 : 60_000),
   });
 }
+
+/** 화면마다 다른 조회 옵션(창으로 돌아올 때 다시 읽기·주기 조회). 같은 키의 관찰자들이 캐시를 함께 쓴다. */
+type ListOptions = { refetchOnWindowFocus?: boolean; refetchInterval?: number };
+/** 지원 현황 목록. 지원 현황·추천 상세·확인 목록이 같은 캐시를 쓴다. */
+export const useApplications = (me: Me, options?: ListOptions) => useQuery({ queryKey: ['applications', me.id], queryFn: async () => applicationSchema.array().parse(await call('applications')), retry: false, ...options });
+/** 확인 목록. 앱 틀(대기 건수)과 확인 목록 화면이 같은 캐시를 쓴다. */
+export const useReviews = (me: Me, options?: ListOptions) => useQuery({ queryKey: ['reviews', me.id], queryFn: async () => reviewSchema.array().parse(await call('reviews')), retry: false, ...options });
+/** 저장한 프로필(없으면 null). 설정·추천 필터 요약·시작 단계가 같은 캐시를 쓴다. 프로필 본문은 읽는 쪽이 검증한다. */
+export const useProfile = (me: Me) => useQuery({ queryKey: ['profile', me.id], retry: false, queryFn: async () => (await optional('profile')) as { profile: Profile; updatedAt: string } | null });
+/** 사용 중인 서류(없으면 null). 설정 서류 구역과 시작 단계가 같은 캐시를 쓴다. */
+export const useDocument = (me: Me, kind: DocumentKind) => useQuery({ queryKey: ['documents', kind, me.id], retry: false, queryFn: async () => { const doc = await optional(`documents/${kind}`); return doc === null ? null : resumeSchema.parse(doc); } });
 
 /**
  * 프로필 초안 작업(없으면 null). 앱 틀이 구독해 화면을 옮겨도 만드는 동안 3초마다 읽고,
