@@ -3,10 +3,10 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Check, ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, buttonClass, ClassLabel, classTag, DueDate, Field, Input, Lane, Row, RowList, RowTrigger, Select, Sheet, Skeleton, StatePanel, Tag, Toggle } from '@nextstep/design-system';
-import { applicationSchema, jobSchema, profileSchema, resumeSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
-import { ACTIVE_JOB, AI_CAUSES, buttonIcon as icon, call, monthDay, optional, SOURCE_NAMES, useMailConnection, useMe, useStored, useWhen } from '../api-client';
+import { jobSchema, profileSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
+import { ACTIVE_JOB, AI_CAUSES, buttonIcon as icon, call, monthDay, SOURCE_NAMES, useApplications, useDocument, useMailConnection, useProfile, useStored, useWhen } from '../api-client';
 import { Account } from '../account';
-import { Frame, AuthLayout, LoadingScreen, progressText, useLatestRefresh } from '../frame';
+import { Frame, progressText, SignedIn, useLatestRefresh } from '../frame';
 import { formatWhen } from '../prefs';
 
 const CLASSES = recommendationClassSchema.options;
@@ -41,10 +41,7 @@ function JobStatus({ job }: { job: Job | null }) {
 }
 
 export function Recommendations() {
-  const me = useMe();
-  if (me.isPending) return <LoadingScreen />;
-  if (!me.data) return <AuthLayout><div className="flex flex-col gap-4"><h1 className="text-title-lg">추천</h1><p>로그인 후 이용하세요.</p><Account /></div></AuthLayout>;
-  return <RecommendationList me={me.data} />;
+  return <SignedIn signedOut={<div className="flex flex-col gap-4"><h1 className="text-title-lg">추천</h1><p>로그인 후 이용하세요.</p><Account /></div>}>{me => <RecommendationList me={me} />}</SignedIn>;
 }
 
 /** 마감 묶음: 남은 날로 나눈다. 상시·마감 미확인은 맨 뒤. */
@@ -187,7 +184,7 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
     onSuccess: () => client.invalidateQueries({ queryKey: ['applications', me.id] }),
   });
   // 이미 같은 공고 URL로 저장한 지원 건이 있으면 저장됨으로 보인다(서버도 같은 URL은 새로 만들지 않는다).
-  const apps = useQuery({ queryKey: ['applications', me.id], queryFn: async () => applicationSchema.array().parse(await call('applications')), retry: false, refetchOnWindowFocus: false });
+  const apps = useApplications(me, { refetchOnWindowFocus: false });
   const saved = track.isSuccess || Boolean(apps.data?.some(a => a.postingUrl === item.url));
   const deadline = item.alwaysHire ? '상시채용' : item.deadline ? formatWhen(item.deadline, 'absolute') : '마감 미확인';
   const size = item.companyType || item.employeeCount ? [item.companyType, item.employeeCount ? `${item.employeeCount}명` : null].filter(Boolean).join(' · ') : '기업 유형·규모 미확인';
@@ -228,10 +225,7 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
 
 // 지금 적용 중인 공고 필터. 사용자가 고른 값만 보여 주고 바꾸는 곳(설정)으로 안내한다.
 function FilterSummary({ me }: { me: Me }) {
-  const profile = useQuery({
-    queryKey: ['profile', me.id], retry: false,
-    queryFn: async () => (await optional('profile')) as { profile: unknown; updatedAt: string } | null,
-  });
+  const profile = useProfile(me);
   const p = profile.data ? profileSchema.safeParse(profile.data.profile) : null;
   if (!p?.success) return <p className="mb-6 text-caption text-muted-foreground">공고 필터가 없습니다. <a href="#settings-profile" className="font-semibold text-primary">설정</a>에서 프로필과 필터를 저장하세요.</p>;
   const f = p.data;
@@ -246,9 +240,9 @@ function FilterSummary({ me }: { me: Me }) {
 
 /** 추천이 없는 첫 화면: 시작 단계와 완료 여부(기획서 4절 사용 편의). 각 단계는 설정 창의 해당 구역을 연다. */
 function SetupSteps({ me, busy, onRefresh }: { me: Me; busy: boolean; onRefresh: () => void }) {
-  // 설정 화면들과 같은 쿼리 키를 써서 거기서 저장하면 여기도 바로 바뀐다.
-  const resume = useQuery({ queryKey: ['documents', 'resume', me.id], retry: false, queryFn: async () => { const doc = await optional('documents/resume'); return doc === null ? null : resumeSchema.parse(doc); } });
-  const profile = useQuery({ queryKey: ['profile', me.id], retry: false, queryFn: () => optional('profile') });
+  // 설정 화면들과 같은 조회(같은 캐시)를 써서 거기서 저장하면 여기도 바로 바뀐다.
+  const resume = useDocument(me, 'resume');
+  const profile = useProfile(me);
   const mail = useMailConnection(me);
   const ready = Boolean(resume.data) && Boolean(profile.data);
   const failed = resume.isError || profile.isError;

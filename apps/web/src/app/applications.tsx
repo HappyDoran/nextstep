@@ -7,7 +7,7 @@ import {
   applicationDetailSchema, applicationImportResultSchema, applicationSchema, applicationStatusSchema, readStatusSchema,
   type Application, type ApplicationStatus, type Me,
 } from '@nextstep/contracts';
-import { buttonIcon as icon, call, monthDay, useStored, useWhen } from './api-client';
+import { buttonIcon as icon, call, monthDay, useApplications, useStored, useWhen } from './api-client';
 import { Frame } from './frame';
 
 const STATUSES = applicationStatusSchema.options;
@@ -27,7 +27,7 @@ function formBody(form: FormData, forUpdate: boolean) {
 export function Applications({ me }: { me: Me }) {
   const client = useQueryClient();
   const key = ['applications', me.id];
-  const list = useQuery({ queryKey: key, queryFn: async () => applicationSchema.array().parse(await call('applications')), retry: false, refetchOnWindowFocus: false });
+  const list = useApplications(me, { refetchOnWindowFocus: false });
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<ApplicationStatus | '전체'>('전체');
   // 묶음 방식과 접은 묶음은 이 기기에 기억한다. 불합격 묶음은 처음에 접어 둔다(2026-11-18 결정).

@@ -1,10 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { LoaderCircle } from 'lucide-react';
 import { Button, Field, Input, Loading, Textarea } from '@nextstep/design-system';
 import { jobFamilySchema, jobSchema, profileSchema, type JobFamily, type Me, type Profile } from '@nextstep/contracts';
-import { ACTIVE_JOB, AI_CAUSES, buttonIcon, call, draftKey, noticeKey, optional, RequestError, useProfileDraft, useWhen } from '../api-client';
+import { ACTIVE_JOB, AI_CAUSES, buttonIcon, call, draftKey, noticeKey, RequestError, useProfile, useProfileDraft, useWhen } from '../api-client';
 
 const FAMILIES = jobFamilySchema.options;
 const EMPLOYMENT = ['정규직', '계약직', '인턴', '프리랜서'] as const;
@@ -14,11 +14,7 @@ const list = (text: string) => text.split(',').map(s => s.trim()).filter(Boolean
 
 // 저장한 값만 추천 기준이 된다. 초안은 서버가 만들어 두고(화면을 떠나도 계속), 사용자가 바뀌는 항목을 보고 저장한다.
 export function ProfileSetting({ me }: { me: Me }) {
-  const key = ['profile', me.id];
-  const query = useQuery({
-    queryKey: key, retry: false,
-    queryFn: async () => (await optional('profile')) as { profile: Profile; updatedAt: string } | null,
-  });
+  const query = useProfile(me);
   if (query.isPending) return <Loading label="프로필을 불러오고 있습니다." lines={8} />;
   if (query.isError) return <p role="alert" className="text-destructive">{query.error.message}</p>;
   // 저장할 때마다 key가 바뀌어 폼이 저장값으로 다시 시작한다.

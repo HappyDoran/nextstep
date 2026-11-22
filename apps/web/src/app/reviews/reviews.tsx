@@ -3,19 +3,16 @@ import { useState } from 'react';
 import { Check, Mail } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Field, Input, Loading, Segmented, Select, StatePanel, Tag } from '@nextstep/design-system';
-import { applicationSchema, mailStatusSchema, reviewBodySchema, reviewSchema, type Application, type Me, type Review } from '@nextstep/contracts';
-import { buttonIcon as icon, call, SLOW, useMe, useWhen } from '../api-client';
+import { mailStatusSchema, reviewBodySchema, type Application, type Me, type Review } from '@nextstep/contracts';
+import { buttonIcon as icon, call, SLOW, useApplications, useReviews, useWhen } from '../api-client';
 import { Account } from '../account';
-import { Frame, AuthLayout, LoadingScreen } from '../frame';
+import { Frame, SignedIn } from '../frame';
 
 const STATUSES = mailStatusSchema.exclude(['모호']).options;
 const NO_COMPANY = '회사 미확인';
 
 export function Reviews() {
-  const me = useMe();
-  if (me.isPending) return <LoadingScreen />;
-  if (!me.data) return <AuthLayout><div className="flex flex-col gap-4"><h1 className="text-title-lg">확인 목록</h1><Account /></div></AuthLayout>;
-  return <ReviewList me={me.data} />;
+  return <SignedIn signedOut={<div className="flex flex-col gap-4"><h1 className="text-title-lg">확인 목록</h1><Account /></div>}>{me => <ReviewList me={me} />}</SignedIn>;
 }
 
 const RANK: Record<string, number> = { 미지원: 0, '지원 완료': 1, '전형 진행중': 2, 합격: 3, 불합격: 3 };
@@ -27,8 +24,8 @@ const keepsStatus = (r: Review, app?: Application) => !!app
 // 왼쪽은 회사별 대기열, 오른쪽은 고른 메일의 근거와 처리. 처리하면 다음 항목으로 넘어간다(2026-11-18 결정).
 function ReviewList({ me }: { me: Me }) {
   const client = useQueryClient();
-  const reviews = useQuery({ queryKey: ['reviews', me.id], queryFn: async () => reviewSchema.array().parse(await call('reviews')), retry: false });
-  const apps = useQuery({ queryKey: ['applications', me.id], queryFn: async () => applicationSchema.array().parse(await call('applications')), retry: false });
+  const reviews = useReviews(me);
+  const apps = useApplications(me);
   const [selected, setSelected] = useState<string | null>(null);
   const list = reviews.data ?? [];
   // 보류하지 않은 것을 먼저, 회사별로 묶는다(건수 많은 회사 먼저).
