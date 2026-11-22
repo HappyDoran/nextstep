@@ -109,7 +109,7 @@ const FIELDS: [string, (p: Profile) => string][] = [['희망 직무·경력', fa
 function DraftReview({ now, next, otherEdits, busy, onSave, onFill, onDiscard }: { now: Profile; next: Profile; otherEdits: boolean; busy: boolean; onSave: () => void; onFill: () => void; onDiscard: () => void }) {
   const changes = FIELDS.map(([label, show]) => [label, show(now), show(next)] as const).filter(([, a, b]) => a !== b);
   return <section aria-labelledby="draft-title" className="grid animate-fade-up gap-3 rounded-surface border border-primary bg-card p-5 motion-reduce:animate-fade">
-    <div><h4 id="draft-title" className="text-body font-extrabold">이력서로 만든 초안이 준비됐어요</h4>
+    <div><h4 id="draft-title" className="text-body font-extrabold">서류로 만든 초안이 준비됐어요</h4>
       <p className="mt-1 text-body-sm text-muted-foreground">{changes.length ? '서류에서 새로 찾은 항목을 지금 프로필에 더해요. 이미 적은 값은 지우지 않고, 공고 필터는 그대로예요.' : '서류에서 새로 찾은 항목이 없어요. 지금 프로필 그대로예요.'}</p></div>
     {changes.length > 0 && <dl className="grid gap-2.5 text-body-sm">
       {changes.map(([label, a, b]) => <div key={label} className="grid gap-0.5">
@@ -118,11 +118,13 @@ function DraftReview({ now, next, otherEdits, busy, onSave, onFill, onDiscard }:
         <dd className="text-foreground"><span className="mr-2 font-semibold text-primary">초안</span>{b || '없음'}</dd>
       </div>)}
     </dl>}
-    {otherEdits && <p className="text-body-sm font-semibold text-warning">입력칸에서 고치고 저장하지 않은 공고 필터도 함께 저장돼요.</p>}
-    <div className="flex flex-wrap gap-2">
+    {otherEdits && changes.length > 0 && <p className="text-body-sm font-semibold text-warning">입력칸에서 고치고 저장하지 않은 공고 필터도 함께 저장돼요.</p>}
+    {/* 더할 것이 없으면 저장·채우기는 의미가 없어 닫기만 둔다. */}
+    <div className="flex flex-wrap gap-2">{changes.length ? <>
       <Button disabled={busy || next.jobFamilies.length === 0} onClick={onSave}>초안으로 저장</Button>
       <Button variant="secondary" disabled={busy} onClick={onFill}>입력칸에 채워 고치기</Button>
       <Button variant="quiet" disabled={busy} onClick={onDiscard}>버리기</Button>
+    </> : <Button variant="secondary" disabled={busy} onClick={onDiscard}>닫기</Button>}
     </div>
   </section>;
 }
