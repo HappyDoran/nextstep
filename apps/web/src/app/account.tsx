@@ -41,24 +41,26 @@ export function Account() {
   const client = useQueryClient();
   const me = useMe();
   const pending = useQuery({ queryKey: PENDING_KEY, queryFn: fetchPending, enabled: me.data === null, retry: false, refetchOnWindowFocus: false });
-  // 로그인 실패(?login_error=)·데스크톱 앱 로그인 코드(?desktop_code=)는 주소에서 읽고 바로 지운다.
+  // 로그인 실패(?login_error=)·데스크톱 앱 로그인 코드(?desktop_code=&desktop_nonce=)는 주소에서 읽고 바로 지운다.
   // 서버 렌더링 중에는 계정 확인 문구만 그리므로 값이 서버와 달라도 hydration이 어긋나지 않는다.
   const [loginError] = useState(() => takeParam('login_error'));
   const [desktopCode] = useState(() => takeParam('desktop_code'));
+  const [desktopNonce] = useState(() => takeParam('desktop_nonce'));
   useEffect(() => {
     const url = new URL(window.location.href);
     const before = url.search;
-    for (const name of ['login_error', 'desktop_code']) url.searchParams.delete(name);
+    for (const name of ['login_error', 'desktop_code', 'desktop_nonce']) url.searchParams.delete(name);
     if (url.search !== before) window.history.replaceState(null, '', url);
   }, []);
   const reload = () => { dropUserData(client); void client.invalidateQueries({ queryKey: ['auth'] }); };
   // 데스크톱 앱: 기본 브라우저에서 구글 로그인을 마치면 앱이 이 창을 ?desktop_code=로 열고, 여기서 세션 또는 코드 입력 대기로 바꾼다.
   const exchange = useMutation({
-    mutationFn: (code: string) => call('auth/desktop/exchange', { method: 'POST', body: JSON.stringify({ code }), messages: { 400: '로그인을 다시 시도하세요.', 401: '로그인 시간이 지났습니다. 다시 시도하세요.' } }),
+    mutationFn: ({ code, nonce }: { code: string; nonce: string }) => call('auth/desktop/exchange', { method: 'POST', body: JSON.stringify({ code, nonce }), messages: { 400: '로그인을 다시 시도하세요.', 401: '로그인 시간이 지났습니다. 다시 시도하세요.' } }),
     onSuccess: reload,
   });
   const { mutate: exchangeCode } = exchange;
-  useEffect(() => { if (desktopCode) exchangeCode(desktopCode); }, [desktopCode, exchangeCode]);
+  // 앱이 시작한 로그인의 임의 값이 함께 와야 바꾼다(없으면 서버가 400).
+  useEffect(() => { if (desktopCode) exchangeCode({ code: desktopCode, nonce: desktopNonce ?? '' }); }, [desktopCode, desktopNonce, exchangeCode]);
   const join = useMutation({
     mutationFn: (code: string) => call('auth/invite', { method: 'POST', body: JSON.stringify({ code }), messages: { 400: '초대 코드를 확인하세요.', 401: '구글 로그인부터 다시 하세요.', 403: '초대 코드를 확인하세요.', 409: '이미 가입한 구글 계정입니다. 다시 로그인하세요.' } }),
     onSuccess: reload,

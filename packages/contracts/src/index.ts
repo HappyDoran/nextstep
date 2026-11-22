@@ -10,7 +10,7 @@ export type SourceId = z.infer<typeof sourceIdSchema>;
 
 // 초대 계정 인증: 구글 로그인 먼저, 미등록 계정은 초대 코드를 요청·입력해 가입한다(기획서 0.2.13).
 // 데스크톱 앱 로그인: 기본 브라우저의 구글 로그인 뒤 앱으로 넘겨받은 1회용 코드.
-export const desktopExchangeSchema = z.object({ code: z.string().regex(/^[\w-]{43}$/) }).strict();
+export const desktopExchangeSchema = z.object({ code: z.string().regex(/^[\w-]{43}$/), nonce: z.string().regex(/^[\w-]{43}$/) }).strict();
 export const meSchema = z.object({ id: z.string(), email: z.string() });
 // 코드 입력을 기다리는 구글 계정. requested: 운영자에게 그 계정 전용 코드 요청 알림이 갔다(유효한 코드가 있다).
 export const pendingSchema = z.object({ email: z.string(), requested: z.boolean() });
