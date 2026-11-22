@@ -96,16 +96,6 @@
 
 <img src="https://img.shields.io/badge/pnpm-F69220?style=for-the-badge&logo=pnpm&logoColor=white"> <img src="https://img.shields.io/badge/turborepo-EF4444?style=for-the-badge&logo=turborepo&logoColor=white"> <img src="https://img.shields.io/badge/playwright-2EAD33?style=for-the-badge&logo=playwright&logoColor=white"> <img src="https://img.shields.io/badge/ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white"> <img src="https://img.shields.io/badge/tailscale-242424?style=for-the-badge&logo=tailscale&logoColor=white">
 
-## 프로젝트 정보
-
-- **개발 기간**: 2026.11.04 ~ 진행 중
-- **개발 형태**: 1인 개발(기획·디자인·프론트엔드·백엔드·운영)
-- **운영 형태**: 홈서버 한 대에서 웹·서버·AI를 함께 운영하는 비공개 서비스. 웹 브라우저나 데스크톱 앱으로 접속한다.
-
-| 개발 |
-|:---:|
-| <a href="https://github.com/HappyDoran"><img src="https://avatars.githubusercontent.com/u/52277540?v=4" width="100" alt="HappyDoran"><br>HappyDoran</a> |
-
 ## 개발 문서
 
 - [개발 가이드](docs/DEVELOPMENT.md): 설치와 실행, 명령, 환경과 데이터, 검증, 세부 구현 범위
