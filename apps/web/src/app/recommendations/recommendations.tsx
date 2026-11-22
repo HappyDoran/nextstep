@@ -21,6 +21,12 @@ const ERRORS: Record<string, string> = {
   collect_failed: '공고를 가져오지 못했습니다. 잠시 후 다시 시도하세요.',
   unsupported_link: '지원하지 않는 링크입니다.',
   lease_expired: '처리 시간이 초과되었습니다. 다시 시도하세요.',
+  fetch_blocked: '공고 사이트가 접속을 막았습니다. 잠시 후 다시 시도하세요.',
+  fetch_not_found: '공고를 찾을 수 없습니다(마감·삭제).',
+  fetch_http_error: '공고 사이트 응답 오류입니다. 잠시 후 다시 시도하세요.',
+  fetch_network: '공고 사이트에 연결하지 못했습니다.',
+  fetch_parse_failed: '공고 화면 형식을 읽지 못했습니다.',
+  internal: '처리 중 오류가 났습니다. 다시 시도하세요.',
 };
 
 function JobStatus({ job }: { job: Job | null }) {

@@ -37,6 +37,7 @@ export function Applications({ me }: { me: Me }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<'new' | 'csv' | null>(null);
   const [created, setCreated] = useState<Application | null>(null);
+  const [existed, setExisted] = useState(false);
   const undo = useMutation({ mutationFn: (id: string) => call(`applications/${id}`, { method: 'DELETE' }), onSuccess: () => { setCreated(null); void client.invalidateQueries({ queryKey: key }); } });
   useEffect(() => { if (!created) return; const t = setTimeout(() => setCreated(null), 6000); return () => clearTimeout(t); }, [created]);
 
@@ -80,10 +81,12 @@ export function Applications({ me }: { me: Me }) {
             </>}
 
     {openId && <ApplicationDetail id={openId} userKey={key} onClose={() => setOpenId(null)} />}
-    <NewApplication open={dialog === 'new'} userKey={key} onClose={() => setDialog(null)} onCreated={a => { setDialog(null); setCreated(a); }} />
+    <NewApplication open={dialog === 'new'} userKey={key} onClose={() => setDialog(null)} onCreated={(a, existed) => { setDialog(null); setCreated(a); setExisted(existed); }} />
     <ImportCsv open={dialog === 'csv'} userKey={key} onClose={() => setDialog(null)} />
     <ToastRegion>
-      {created && <Toast action={<Button size="sm" variant="quiet" className={toastAction} disabled={undo.isPending} onClick={() => undo.mutate(created.id)}>되돌리기</Button>}>{created.company} · {created.roleTitle}를 등록했어요</Toast>}
+      {created && (existed
+        ? <Toast>{created.company} · {created.roleTitle}는 이미 등록되어 있어요</Toast>
+        : <Toast action={<Button size="sm" variant="quiet" className={toastAction} disabled={undo.isPending} onClick={() => undo.mutate(created.id)}>되돌리기</Button>}>{created.company} · {created.roleTitle}를 등록했어요</Toast>)}
     </ToastRegion>
   </Frame>;
 }
@@ -108,11 +111,12 @@ function ApplicationRow({ item, userKey, showStatus, onOpen }: { item: Applicati
   </Row>;
 }
 
-function NewApplication({ open, userKey, onClose, onCreated }: { open: boolean; userKey: string[]; onClose: () => void; onCreated: (a: Application) => void }) {
+function NewApplication({ open, userKey, onClose, onCreated }: { open: boolean; userKey: string[]; onClose: () => void; onCreated: (a: Application, existed: boolean) => void }) {
   const client = useQueryClient();
   const create = useMutation({
     mutationFn: async (form: FormData) => applicationSchema.parse(await call('applications', { method: 'POST', body: JSON.stringify(formBody(form, false)) })),
-    onSuccess: a => { void client.invalidateQueries({ queryKey: userKey }); onCreated(a); },
+    // 같은 공고 URL의 지원 건이 이미 있으면 서버가 그 건을 돌려준다. 새로 만든 건만 되돌리기를 보인다(기존 건을 지우지 않게).
+    onSuccess: a => { const existed = client.getQueryData<Application[]>(userKey)?.some(x => x.id === a.id) ?? false; void client.invalidateQueries({ queryKey: userKey }); onCreated(a, existed); },
   });
   const submit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = event.currentTarget; create.mutate(new FormData(form), { onSuccess: () => form.reset() }); };
   return <Sheet open={open} onClose={onClose} size="sm" title="지원 직접 등록">

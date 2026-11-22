@@ -9,7 +9,8 @@ async function forward(request: Request, { params }: { params: Promise<{ path: s
   if (!ALLOWED.test(path)) return Response.json({ message: '찾을 수 없습니다.' }, { status: 404 });
   if (request.method !== 'GET') {
     const from = request.headers.get('origin');
-    if (!from || new URL(from).host !== request.headers.get('host')) return Response.json({ message: '요청을 확인하세요.' }, { status: 403 });
+    // Origin: null 같은 값은 URL이 아니라 403으로 거절한다.
+    if (!from || !URL.canParse(from) || new URL(from).host !== request.headers.get('host')) return Response.json({ message: '요청을 확인하세요.' }, { status: 403 });
   }
   const headers: Record<string, string> = {};
   for (const name of ['cookie', 'content-type', 'x-filename']) {
