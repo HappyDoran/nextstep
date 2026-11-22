@@ -27,17 +27,31 @@ async function pool<T, R>(items: T[], fn: (item: T) => Promise<R>) {
   return out;
 }
 
+// 지원자 추출은 재직 연월을 받아 개월을 코드가 센다(candidate-2026-11-22). 합성 프로필의 직무별 개월을 평가 시점에서 거꾸로
+// 이어 붙인 재직 기간 글로 바꿔 보낸다(첫 항목이 가장 최근, 끝은 평가 시점 달). 개월 수 필드는 빼서 모델이 기간으로만 읽게 한다.
+function documentOf(p: Profile, evaluatedAt: string) {
+  let end = Number(evaluatedAt.slice(0, 4)) * 12 + Number(evaluatedAt.slice(5, 7)) - 1;
+  const ym = (n: number) => `${Math.floor(n / 12)}.${String(n % 12 + 1).padStart(2, '0')}`;
+  const careers = ((p.roleCareers ?? []) as { family: string; months: number; stack: string[] }[]).map((r, i) => {
+    const start = end - r.months + 1;
+    const line = `- 회사${i + 1} ${r.family} ${ym(start)} - ${ym(end)} (${r.stack.join(', ')})`;
+    end = start - 1;
+    return line;
+  });
+  return JSON.stringify({ ...p, roleCareers: undefined, totalCareerMonths: undefined, 경력: careers.join('\n') }, (k, v) => (['id', 'desiredFamilies', 'locations'].includes(k) ? undefined : v));
+}
+
 async function main() {
   const started = Date.now();
   // 희망 직무·지역은 규칙 입력(프로필)으로 따로 넘기고, 서류 사실만 추출에 보낸다.
-  const candidates = await pool(data.profiles, p => extractCandidate(JSON.stringify(p, (k, v) => (['id', 'desiredFamilies', 'locations'].includes(k) ? undefined : v))));
+  const candidates = await pool(data.profiles, p => extractCandidate(documentOf(p, data.evaluatedAt)));
   const extracted = await pool(data.cases, c => extractRequirements({ title: c.posting.title, company: c.posting.company, body: bodyOf(c.posting) }));
   const results = data.cases.map(c => {
     const profile = data.profiles.find(p => p.id === c.profileId)!;
     const cand = candidates.get(profile);
     const req = extracted.get(c);
     if (!cand || cand instanceof Error || !req || req instanceof Error) return { id: c.id, family: c.jobFamily, expected: c.expected.classification, got: `오류:${((cand instanceof Error && cand) || (req as Error)).message}`, tags: c.tags, why: '' };
-    const j = classify(data.evaluatedAt, { jobFamilies: profile.desiredFamilies, regions: profile.locations.filter(l => l !== '원격'), remoteOk: profile.locations.includes('원격') }, { ...(cand as Candidate), text: JSON.stringify(profile, (k, v) => (['id', 'desiredFamilies', 'locations'].includes(k) ? undefined : v)) }, {
+    const j = classify(data.evaluatedAt, { jobFamilies: profile.desiredFamilies, regions: profile.locations.filter(l => l !== '원격'), remoteOk: profile.locations.includes('원격') }, { ...(cand as Candidate), text: documentOf(profile, data.evaluatedAt) }, {
       title: c.posting.title,
       families: req.jobFamilies, required: req.required, preferred: req.preferred, careers: c.posting.careers, location: c.posting.location,
       remote: c.posting.remote ?? (req.remote === '미기재' ? null : req.remote), deadline: c.posting.deadline, alwaysHire: c.posting.alwaysHire, companyType: c.posting.companyType, bodyNote: null,
