@@ -59,7 +59,8 @@ async function openClient(account: string, password: string) {
 }
 
 // 조회 대상 편지함(보낸·임시·휴지통·스팸 제외)을 읽기 전용으로 열며 하나씩 처리한다.
-async function eachMailbox<T>(client: Client, fn: (path: string, uidValidity: string, exists: number) => Promise<T>) {
+// 시험에서 가짜 클라이언트를 넘길 수 있게 쓰는 기능만 받는다.
+export async function eachMailbox<T>(client: Pick<Client, 'list' | 'mailboxOpen' | 'usable' | 'logout'>, fn: (path: string, uidValidity: string, exists: number) => Promise<T>) {
   const out: T[] = [];
   try {
     for (const box of await client.list()) {

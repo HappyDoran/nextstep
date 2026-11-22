@@ -10,7 +10,7 @@ import { createInvite } from '../dist/auth.js';
 import { signIn } from './fake-google.mjs';
 import { runNext } from '../dist/recommend/jobs.js';
 import { createMailHandler } from '../dist/mail/sync.js';
-import { MailSourceError, streamText } from '../dist/mail/naver.js';
+import { eachMailbox, MailSourceError, streamText } from '../dist/mail/naver.js';
 import { loadSecretKey } from '../dist/secrets.js';
 import { AiError } from '../dist/ai/llm.js';
 import { classifyMail, postingKey } from '../dist/mail/classify.js';
@@ -612,5 +612,52 @@ test('메일 연결이 없으면 CSV를 가져와도 연결 불명 확인 요청
     const res = (await s.app.inject({ method: 'POST', url: '/applications/import', headers: { cookie: a }, payload: { csv: '회사,직무,상태\n가상회사,QA,지원 완료\n' } })).json();
     assert.equal(res.requeued, 0);
     assert.deepEqual((await s.app.inject({ url: '/reviews', headers: { cookie: a } })).json().map(r => r.reason), ['연결 불명']);
+  } finally { await s.done(); }
+});
+
+test('편지함 하나를 열지 못해도 연결이 살아 있으면 그 편지함만 건너뛰고, 연결이 끊겼으면 조회 전체를 실패로 본다', async () => {
+  // ImapFlow 대신 쓰는 기능(list·mailboxOpen·usable·logout)만 가진 가짜 클라이언트.
+  const fake = usableAfterFailure => {
+    const c = { usable: true, loggedOut: false,
+      list: async () => ['INBOX', '깨진함', '보관함'].map(path => ({ path, flags: new Set() })),
+      mailboxOpen: async path => {
+        if (path === '깨진함') { c.usable = usableAfterFailure; throw Object.assign(new Error('NO'), { code: 'NoConnection' }); }
+        return { uidValidity: 7n, exists: 1 };
+      },
+      logout: async () => { c.loggedOut = true; } };
+    return c;
+  };
+  const ok = fake(true);
+  assert.deepEqual(await eachMailbox(ok, async (path, uidValidity) => `${path}:${uidValidity}`), ['INBOX:7', '보관함:7']);
+  assert.equal(ok.loggedOut, true);
+  const broken = fake(false);
+  await assert.rejects(eachMailbox(broken, async path => path), e => e instanceof MailSourceError && e.code === 'network');
+  assert.equal(broken.loggedOut, true);
+});
+
+test('과거 범위 조회가 실패해도 새 메일 해석·연결 상태 갱신은 하고 일부 실패로 알리며 조회 범위 시작은 옮기지 않는다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    s.state.mails = [mail(1, 'hr@x.example', '서류 전형 결과 안내', '아쉽게도 함께하기 어렵습니다')];
+    await s.app.inject({ method: 'PUT', url: '/mail/connection', headers: { cookie: a }, payload: { account: 'tester@naver.com', appPassword: 'app-password', consent: true } });
+    assert.equal((await s.app.inject({ method: 'POST', url: '/mail/backfill', headers: { cookie: a }, payload: { days: 180 } })).statusCode, 202);
+    const before = (await s.app.inject({ url: '/mail/connection', headers: { cookie: a } })).json();
+    assert.ok(before.backfillSince);
+    let interpreted = 0;
+    const interpret = async () => { interpreted++; return { isRecruiting: false, company: null, roleTitle: null, status: '모호', confidence: 'low', evidence: '안내' }; };
+    const db = openDatabase(s.path);
+    try {
+      await runNext(db, createMailHandler(db, loadSecretKey(join(s.dir, 'secret.key')), async () => [{ mailbox: 'INBOX', uidValidity: '7', messages: s.state.mails, oldestDate: null, complete: true }],
+        { interpret, bodies: async () => new Map() }, async () => { throw new MailSourceError('network'); }));
+    } finally { db.close(); }
+    assert.equal(interpreted, 1);
+    const c = (await s.app.inject({ url: '/mail/connection', headers: { cookie: a } })).json();
+    assert.equal(c.status, '정상');
+    assert.ok(c.lastSuccessAt);
+    assert.equal(c.lastJob.status, '일부 실패');
+    assert.equal(c.lastJob.errorCode, 'network');
+    assert.equal(c.coveredSince, before.coveredSince);
+    assert.equal(c.backfillSince, before.backfillSince);
   } finally { await s.done(); }
 });
