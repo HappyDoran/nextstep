@@ -64,7 +64,7 @@ export function LoadingScreen() {
 /** 로그인 후 앱 틀: 왼쪽 아이콘 메뉴 · 화면 머리 · 하단 상태바(메일 확인과 공고 갱신 결과). */
 export function Frame({ me, title, description, actions, children }: { me: Me; title: string; description: string; actions?: ReactNode; children: ReactNode }) {
   const path = usePathname();
-  // 설정 창: 주소 #settings-<구역>을 따라 열고 닫는다(메뉴·상태바 링크는 해시만 바꾼다).
+  // 설정 창: 주소 #settings-<구역>을 따라 열고 닫는다(계정 메뉴·상태바·화면 안 링크는 해시만 바꾼다).
   const [settings, setSettings] = useState<Section | null>(null);
   useEffect(() => {
     const read = () => setSettings(sectionFromHash(window.location.hash));
@@ -87,11 +87,10 @@ export function Frame({ me, title, description, actions, children }: { me: Me; t
     { href: '/recommendations', label: '추천', icon: <Star className={icon} aria-hidden="true" focusable="false" /> },
     { href: '/', label: '지원 현황', icon: <BriefcaseBusiness className={icon} aria-hidden="true" focusable="false" /> },
     { href: '/reviews', label: '확인 목록', icon: <Inbox className={icon} aria-hidden="true" focusable="false" />, count: waiting },
-    { href: '#settings', label: '설정', icon: <Settings className={icon} aria-hidden="true" focusable="false" /> },
   ];
   return <AppShell
     rail={<Rail footer={<AccountMenu me={me} />} brand={<Link href="/recommendations" aria-label="NextStep 추천으로" className="block rounded-control"><LogoMark /></Link>}>
-      {items.map(item => <NavItem key={item.href} {...(item.href.startsWith('#') ? {} : { link: Link })} href={item.href} icon={item.icon} label={item.label} current={item.href.startsWith('#') ? settings !== null : settings === null && path === item.href} {...(item.count ? { count: item.count } : {})} />)}
+      {items.map(item => <NavItem key={item.href} link={Link} href={item.href} icon={item.icon} label={item.label} current={settings === null && path === item.href} {...(item.count ? { count: item.count } : {})} />)}
     </Rail>}
     status={<StatusBar start={<MailState me={me} />} end={<RefreshState me={me} />} />}>
     <LoadBar />
