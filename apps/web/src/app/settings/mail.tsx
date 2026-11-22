@@ -25,8 +25,10 @@ export function MailSetting({ me }: { me: Me }) {
   const refresh = () => client.invalidateQueries({ queryKey: key });
   const connect = useMutation({
     mutationFn: async (form: FormData) => jobSchema.parse(await call('mail/connection', { method: 'PUT', body: JSON.stringify({ account: form.get('account'), appPassword: form.get('appPassword'), consent: form.get('consent') === 'on', days: Number(form.get('days')) }), timeout: SLOW, messages: CONNECT_ERRORS })),
-    onSuccess: refresh,
+    onSuccess: () => { setReconnect(false); void refresh(); },
   });
+  // 비밀번호가 바뀌었거나(인증 실패) 조회 기간을 다시 고를 때 같은 양식으로 다시 연결한다.
+  const [reconnect, setReconnect] = useState(false);
   const sync = useMutation({ mutationFn: async () => jobSchema.parse(await call('mail/sync', { method: 'POST' })), onSuccess: refresh });
   const [pastDays, setPastDays] = useState(180);
   const backfill = useMutation({ mutationFn: async () => jobSchema.parse(await call('mail/backfill', { method: 'POST', body: JSON.stringify({ days: pastDays }), messages: { 400: '이미 조회한 범위입니다. 더 긴 기간을 고르세요.' } })), onSuccess: refresh });
@@ -36,7 +38,7 @@ export function MailSetting({ me }: { me: Me }) {
   if (query.isPending) return <p role="status" className="text-muted-foreground">메일 연결을 확인하고 있습니다.</p>;
   if (query.isError) return <p role="alert" className="text-destructive">{query.error.message}</p>;
   const conn = query.data;
-  if (!conn) {
+  if (!conn || reconnect) {
     const submit = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); connect.mutate(new FormData(e.currentTarget)); };
     return <form onSubmit={submit} className="flex flex-col gap-4">
       <p className="text-body-sm text-muted-foreground">채용 메일로 지원 상태를 자동으로 반영합니다. 연결하지 않아도 지원 건을 직접 관리할 수 있습니다.</p>
@@ -48,11 +50,11 @@ export function MailSetting({ me }: { me: Me }) {
           <li>2단계 인증 관리 &gt; 애플리케이션 비밀번호 관리에서 새 비밀번호를 만들어 아래에 붙여 넣습니다. 네이버 로그인 비밀번호는 넣지 마세요.</li>
         </ol>
       </section>
-      <Field label="네이버 메일 주소"><Input name="account" type="email" required autoComplete="off" /></Field>
+      <Field label="네이버 메일 주소"><Input name="account" type="email" required autoComplete="off" defaultValue={conn?.account} /></Field>
       <Field label="애플리케이션 비밀번호"><Input name="appPassword" type="password" required autoComplete="off" /></Field>
       <Field label="처음 조회할 기간"><Select name="days" defaultValue="90">{PERIODS.map(([d, t]) => <option key={d} value={d}>{t}</option>)}</Select></Field>
       <label className="flex items-start gap-2 text-body-sm"><input name="consent" type="checkbox" required className="mt-1 size-icon-md accent-primary" />고른 기간의 받은 메일(보낸·임시·휴지통·스팸 제외)을 읽기 전용으로 조회하고, 이후 새 메일을 1시간마다 확인하는 데 동의합니다.</label>
-      <div><Button type="submit" disabled={connect.isPending}>연결 검사 후 연결</Button></div>
+      <div className="flex flex-wrap gap-2"><Button type="submit" disabled={connect.isPending}>연결 검사 후 연결</Button>{conn && <Button variant="quiet" onClick={() => setReconnect(false)}>취소</Button>}</div>
       {connect.isError && <p role="alert" className="text-body-sm text-destructive">{connect.error.message}</p>}
     </form>;
   }
@@ -68,7 +70,8 @@ export function MailSetting({ me }: { me: Me }) {
     {conn.coveredSince && <p className="text-body-sm text-muted-foreground">조회 범위: {new Date(conn.coveredSince).toLocaleDateString('ko-KR')} 이후 받은 메일{conn.backfillSince ? ` · ${new Date(conn.backfillSince).toLocaleDateString('ko-KR')}까지 과거 범위를 넓히는 중(메일 확인 때마다 이어서 가져옴)` : ''}. 자동 갱신을 켜 두면 1시간마다 새 메일을 확인합니다.</p>}
     {conn.rangeIncomplete && <p className="text-body-sm text-destructive">네이버가 IMAP으로 보여 주는 메일이 고른 조회 기간보다 짧습니다. 네이버 메일 환경설정 &gt; POP3/IMAP 설정 &gt; IMAP/SMTP 설정의 &lsquo;IMAP 동기화 메일 제한&rsquo;(기본 1,000통, 최대 5,000통)을 늘린 뒤 다시 연결하면 더 오래된 메일까지 확인합니다.</p>}
     <div className="flex flex-wrap gap-3">
-      <Button disabled={sync.isPending || active} onClick={() => sync.mutate()}>지금 메일 확인</Button>
+      <Button disabled={sync.isPending || active || conn.status === '인증 실패'} onClick={() => sync.mutate()}>지금 메일 확인</Button>
+      <Button variant={conn.status === '인증 실패' ? 'primary' : 'secondary'} disabled={active} onClick={() => setReconnect(true)}>비밀번호 다시 입력·다시 연결</Button>
     </div>
     {!conn.backfillSince && <div className="flex flex-wrap items-end gap-3">
       <Field label="과거 범위 넓히기"><Select value={pastDays} onChange={e => setPastDays(Number(e.target.value))}>{PAST.map(([d, t]) => <option key={d} value={d}>{t}</option>)}</Select></Field>

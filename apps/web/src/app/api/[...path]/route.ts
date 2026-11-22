@@ -29,7 +29,8 @@ async function forward(request: Request, { params }: { params: Promise<{ path: s
       // 서류 변환(이미지 쪽 글자 인식 최대 40초)·AI 처리는 오래 걸릴 수 있다.
       signal: AbortSignal.timeout(120_000),
     });
-    const out = new Headers({ 'content-type': response.headers.get('content-type') ?? 'application/json' });
+    // 개인 자료 응답은 브라우저에 남기지 않는다(서버가 정한 cache-control을 그대로, 없으면 no-store).
+    const out = new Headers({ 'content-type': response.headers.get('content-type') ?? 'application/json', 'cache-control': response.headers.get('cache-control') ?? 'no-store' });
     // 구글 로그인 콜백은 진행 상태 쿠키 삭제와 세션 쿠키를 함께 보내므로 쿠키를 하나씩 옮긴다.
     for (const cookie of response.headers.getSetCookie()) out.append('set-cookie', cookie);
     // 구글 로그인 시작·콜백은 이동 응답이다(구글 인가 화면, 첫 화면, 데스크톱 앱 주소).
