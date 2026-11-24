@@ -1,11 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
-import type { SourceId } from '@nextstep/contracts';
-import { linkRequestSchema, postingCheckSchema, profileDraftSchema, profileSchema, recommendationFeedbackSchema, recommendationListSchema, recommendationSchema, latestRefreshSchema } from '@nextstep/contracts';
+import { linkRequestSchema, profileDraftSchema, profileSchema, recommendationFeedbackSchema, recommendationListSchema, recommendationSchema, latestRefreshSchema } from '@nextstep/contracts';
 import { requireUser } from '../auth.js';
 import { suggestProfile } from '../prompts/profile.js';
 import { enqueue, getJob, latestJob, runNext, type ClaimedJob, type JobOutcome } from './jobs.js';
-import { documentsText, parsePostingLink, recheckPosting, rowFacts } from './pipeline.js';
+import { documentsText, parsePostingLink, rowFacts } from './pipeline.js';
 import { passesFilter } from '../sources/filter.js';
 
 type Row = {
@@ -16,7 +15,7 @@ type Row = {
 };
 
 // 마감 근거가 없으면 임의로 종료하지 않고 미확인으로 둔다.
-function postingStatus(row: Pick<Row, 'deadline' | 'always_hire' | 'closed_at'>, now: string) {
+function postingStatus(row: Row, now: string) {
   if (row.closed_at) return '마감';
   if (row.always_hire) return '모집중';
   // 읽을 수 없는 마감 값(이전 수집분)도 미확인으로 둔다.
@@ -103,20 +102,6 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     if (typeof hidden !== 'boolean') return reply.status(400).send({ message: '요청을 확인하세요.' });
     const r = db.prepare('UPDATE recommendations SET hidden = ? WHERE user_id = ? AND posting_id = ?').run(hidden ? 1 : 0, user.id, request.params.id);
     return r.changes === 1 ? { hidden } : reply.status(404).send({ message: '찾을 수 없습니다.' });
-  });
-
-  // 공고를 열 때 모집 상태를 바로 확인한다(갱신 사이에 마감된 공고 대비). 최근 1시간 안에 확인한 공고는 출처에 다시 묻지 않는다.
-  app.post<{ Params: { id: string } }>('/recommendations/:id/check', async (request, reply) => {
-    const user = requireUser(db, request, reply);
-    if (!user) return reply;
-    const row = db.prepare(`SELECT p.id, p.source, p.source_id, p.checked_at, p.closed_at FROM postings p JOIN recommendations r ON r.posting_id = p.id AND r.user_id = p.owner_user_id
-      WHERE p.id = ? AND p.owner_user_id = ?`).get(request.params.id, user.id) as { id: string; source: SourceId; source_id: string; checked_at: string; closed_at: string | null } | undefined;
-    if (!row) return reply.status(404).send({ message: '찾을 수 없습니다.' });
-    // checked: 출처 원문으로 확인한 결과인지(최근 확인 포함). 이미 마감 표시된 공고는 묻지 않고 false로 둔다.
-    const checked = row.closed_at === null && (Date.now() - Date.parse(row.checked_at) < 60 * 60_000 || await recheckPosting(db, user.id, row));
-    const now = db.prepare('SELECT deadline, always_hire, closed_at, checked_at FROM postings WHERE id = ? AND owner_user_id = ?').get(row.id, user.id) as Pick<Row, 'deadline' | 'always_hire' | 'closed_at' | 'checked_at'> | undefined;
-    if (!now) return reply.status(404).send({ message: '찾을 수 없습니다.' });
-    return postingCheckSchema.parse({ checked, postingStatus: postingStatus(now, new Date().toISOString()), checkedAt: now.checked_at });
   });
 
   // 마감 확인: 사용자가 원문에서 마감을 보면 표시한다. 다시 수집해도 지우지 않고, 다음 판정에서 마감으로 제외된다. 잘못 누르면 취소한다.

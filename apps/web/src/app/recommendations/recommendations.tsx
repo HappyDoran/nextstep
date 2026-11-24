@@ -3,7 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Check, ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, buttonClass, ClassLabel, classTag, DueDate, Field, Input, Lane, Row, RowList, RowTrigger, Select, Sheet, Skeleton, StatePanel, Tag, Toggle } from '@nextstep/design-system';
-import { jobSchema, postingCheckSchema, profileSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
+import { jobSchema, profileSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
 import { ACTIVE_JOB, AI_CAUSES, buttonIcon as icon, call, monthDay, SOURCE_NAMES, useApplications, useDocument, useMailConnection, useProfile, useStored, useWhen } from '../api-client';
 import { Account } from '../account';
 import { Frame, progressText, SignedIn, useLatestRefresh } from '../frame';
@@ -187,17 +187,6 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
     mutationFn: () => call('applications', { method: 'POST', body: JSON.stringify({ company: item.company.slice(0, 200), roleTitle: item.title.slice(0, 200), postingUrl: item.url }) }),
     onSuccess: () => client.invalidateQueries({ queryKey: ['applications', me.id] }),
   });
-  // 상세를 열면 서버가 원문 모집 상태를 바로 확인한다(갱신 사이에 마감된 공고 대비). 마감이면 목록을 다시 받아 빼고, 창은 결과를 보여 준 채 둔다.
-  const check = useQuery({
-    queryKey: ['posting-check', me.id, item.postingId],
-    queryFn: async () => {
-      const result = postingCheckSchema.parse(await call(`recommendations/${item.postingId}/check`, { method: 'POST', timeout: 30_000 }));
-      if (result.checked) void client.invalidateQueries({ queryKey: listKey });
-      return result;
-    },
-    staleTime: 60 * 60_000, retry: false, refetchOnWindowFocus: false,
-  });
-  const status = check.isPending ? '확인 중…' : check.data?.postingStatus ?? item.postingStatus;
   // 이미 같은 공고 URL로 저장한 지원 건이 있으면 저장됨으로 보인다(서버도 같은 URL은 새로 만들지 않는다).
   const apps = useApplications(me, { refetchOnWindowFocus: false });
   const saved = track.isSuccess || Boolean(apps.data?.some(a => a.postingUrl === item.url));
@@ -222,7 +211,7 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
       </div>
     </>}>
     <dl className="grid grid-cols-2 overflow-hidden rounded-surface border border-border text-body-sm md:grid-cols-4">
-      {[['마감', deadline], ['모집 상태', status], ['기업 규모', size], ['마지막 확인', when(item.checkedAt)]].map(([k, v]) => <div key={k} className="border-border px-4 py-3 [&:not(:first-child)]:border-l"><dt className="text-caption text-muted-foreground">{k}</dt><dd className="mt-0.5 font-bold">{v}</dd></div>)}
+      {[['마감', deadline], ['모집 상태', item.postingStatus], ['기업 규모', size], ['마지막 확인', when(item.checkedAt)]].map(([k, v]) => <div key={k} className="border-border px-4 py-3 [&:not(:first-child)]:border-l"><dt className="text-caption text-muted-foreground">{k}</dt><dd className="mt-0.5 font-bold">{v}</dd></div>)}
     </dl>
     <div className={`rounded-surface px-4 py-3.5 ${reasonTone}`}><p className="text-caption font-bold">{item.classification}으로 본 이유</p><p className="text-body-sm font-semibold text-foreground">{item.reason}</p></div>
     {section('맞는 점', '✓', 'text-class-basic', item.met)}
@@ -235,7 +224,6 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
       {(item.classification === '제외' || item.restored) && <Button size="sm" variant="secondary" disabled={feedback.isPending} onClick={() => feedback.mutate({ restored: !item.restored })}>{item.restored ? '복구 취소' : '제외 복구'}</Button>}
     </div>
     <p className="text-caption text-muted-foreground">공고 확인 {when(item.checkedAt)} · 판정 {when(item.evaluatedAt)}. 지원은 기본 브라우저에서 직접 하고, 마치면 지원 현황에서 상태를 바꾸세요.</p>
-    {check.data?.checked && check.data.postingStatus === '마감' && <p role="status" className="text-body-sm font-semibold text-destructive">원문을 확인해 보니 마감된 공고예요. 추천 목록에서 뺐어요.</p>}
     {error && <p role="alert" className="text-body-sm text-destructive">{error.message}</p>}
   </Sheet>;
 }

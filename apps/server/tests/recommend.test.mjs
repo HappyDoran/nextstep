@@ -9,7 +9,7 @@ import { openDatabase } from '../dist/database.js';
 import { createInvite } from '../dist/auth.js';
 import { signIn } from './fake-google.mjs';
 import { runNext, claim, recoverExpired, startWorker } from '../dist/recommend/jobs.js';
-import { createHandler, isNotHiring, parsePostingLink } from '../dist/recommend/pipeline.js';
+import { createHandler, isNotHiring, parsePostingLink, recheckVisible } from '../dist/recommend/pipeline.js';
 
 // 출처·AI를 가짜로 바꿔 작업·저장·격리 규칙만 확인한다(실제 수집·AI 검증이 아님).
 const posting = (source, sourceId, title, body = '필수: React 3년') => ({ source, sourceId, url: `https://example.com/${source}/${sourceId}`, title, company: '가상회사', deadline: '2099-01-01T00:00:00+09:00', alwaysHire: false, location: '서울', remote: false, careers: [], companyType: null, employeeCount: null, externalApplyUrl: null, body, bodyFailure: null });
@@ -378,54 +378,37 @@ test('마감 확인 표시는 다시 수집해도 남고, 다음 갱신에서 �
   } finally { await s.done(); }
 });
 
-test('목록에서 빠진 노출 공고는 갱신 때 상세로 마감을 다시 확인하고, 없어진 공고는 마감으로 본다', async () => {
+test('매시간 재확인: 오래 확인 안 한 노출 공고를 상세로 다시 읽어 조기 마감·삭제를 반영하고, 마감된 공고는 다시 묻지 않는다', async () => {
   const s = await setup();
   try {
     const a = await s.signup('a@example.com');
-    const run = async deps => {
-      await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
-      const db = openDatabase(s.path);
-      try { await runNext(db, createHandler(db, deps)); } finally { db.close(); }
-      return (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items;
-    };
-    await run(fakeDeps([]));
+    await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+    let db = openDatabase(s.path);
+    try { await runNext(db, createHandler(db, fakeDeps([]))); } finally { db.close(); }
     const calls = [];
-    const empty = async () => ({ postings: [], failures: [] });
-    const deps = fakeDeps([]);
-    // 두 번째 실행: 목록에는 아무것도 없고, 사람인 공고는 조기 마감(마감일이 지남), 잡코리아 공고는 사라짐.
-    deps.collect = { jobkorea: empty, saramin: empty, wanted: empty, jumpit: empty, jasoseol: empty };
-    deps.fetchOne = { ...deps.fetchOne,
+    const fetchOne = {
       saramin: async id => { calls.push(`saramin:${id}`); return { ...posting('saramin', id, '프론트엔드'), deadline: '2026-01-01T00:00:00+09:00' }; },
-      jobkorea: async id => { calls.push(`jobkorea:${id}`); return { source: 'jobkorea', code: 'not_found' }; } };
-    const items = await run(deps);
-    assert.deepEqual(calls.sort(), ['jobkorea:1', 'saramin:2']);
+      jobkorea: async id => { calls.push(`jobkorea:${id}`); return { source: 'jobkorea', code: 'not_found' }; },
+    };
+    const later = Date.now() + 7 * 60 * 60_000;
+    db = openDatabase(s.path);
+    try {
+      // 방금 갱신으로 확인한 공고는 아직 묻지 않는다.
+      assert.equal(await recheckVisible(db, Date.now(), fetchOne), 0);
+      // 3시간이 지나면 사람인은 조기 마감(마감일 지남), 잡코리아는 사라짐으로 확인한다.
+      assert.equal(await recheckVisible(db, later, fetchOne), 2);
+      assert.deepEqual(calls.sort(), ['jobkorea:1', 'saramin:2']);
+    } finally { db.close(); }
+    const items = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items;
     const bySource = Object.fromEntries(items.map(i => [i.source, i]));
     assert.equal(bySource.saramin.postingStatus, '마감');
-    assert.equal(bySource.saramin.classification, '제외');
     assert.ok(bySource.jobkorea.closedAt);
-    assert.equal(bySource.jobkorea.classification, '제외');
-    // 다음 실행에서는 이미 마감인 공고를 다시 요청하지 않는다.
+    // 마감된 공고는 다음 회차에 다시 묻지 않고, 공고 갱신이 실행 중이면 회차를 건너뛴다.
     calls.length = 0;
-    await run(deps);
-    assert.deepEqual(calls, []);
-  } finally { await s.done(); }
-});
-
-test('공고를 열 때 원문 모집 상태를 확인하고, 1시간 안에 확인한 공고는 다시 묻지 않는다', async () => {
-  const s = await setup();
-  try {
-    const a = await s.signup('a@example.com');
-    const b = await s.signup('b@example.com');
-    await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
-    const db = openDatabase(s.path);
-    try { await runNext(db, createHandler(db, fakeDeps([]))); } finally { db.close(); }
-    const [item] = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items;
-    const check = cookie => s.app.inject({ method: 'POST', url: `/recommendations/${item.postingId}/check`, headers: { cookie } });
-    assert.equal((await check(b)).statusCode, 404);
-    // 방금 갱신으로 확인한 공고는 출처에 다시 묻지 않고 저장된 상태를 돌려준다.
-    assert.deepEqual({ ...(await check(a)).json(), checkedAt: undefined }, { checked: true, postingStatus: '모집중', checkedAt: undefined });
-    // 마감 표시한 공고는 묻지 않는다(checked false).
-    await s.app.inject({ method: 'PUT', url: `/recommendations/${item.postingId}/closed`, headers: { cookie: a }, payload: { closed: true } });
-    assert.deepEqual({ ...(await check(a)).json(), checkedAt: undefined }, { checked: false, postingStatus: '마감', checkedAt: undefined });
+    db = openDatabase(s.path);
+    try {
+      assert.equal(await recheckVisible(db, later + 7 * 60 * 60_000, fetchOne), 0);
+      assert.deepEqual(calls, []);
+    } finally { db.close(); }
   } finally { await s.done(); }
 });

@@ -8,7 +8,7 @@ import { registerProfile } from './profile.js';
 import { registerDocuments, removeUserFiles } from './documents/routes.js';
 import { dirname, join } from 'node:path';
 import { createSuggestHandler, registerRecommendations } from './recommend/routes.js';
-import { createHandler } from './recommend/pipeline.js';
+import { createHandler, startRecheck } from './recommend/pipeline.js';
 import { startWorker, type ClaimedJob } from './recommend/jobs.js';
 import { startScheduler } from './schedule.js';
 import { loadSecretKey } from './secrets.js';
@@ -48,7 +48,8 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
     const stop = startWorker(db, (job: ClaimedJob) => (job.kind === 'mail' ? mail(job) : job.kind === 'suggest' ? suggest(job) : recommend(job)));
     // 예약 실행은 작업자와 같은 서버 프로세스에서 돈다. 브라우저를 닫아도 계속된다.
     const stopSchedule = startScheduler(db, options.scheduleHour ?? 21);
-    app.addHook('onClose', async () => { stop(); stopSchedule(); });
+    const stopRecheck = startRecheck(db);
+    app.addHook('onClose', async () => { stop(); stopSchedule(); stopRecheck(); });
   }
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     // 4xx는 Fastify가 판정한 클라이언트 오류이므로 상태를 유지한다. 내부 메시지는 노출하지 않는다.

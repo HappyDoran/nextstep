@@ -34,8 +34,9 @@ export const defaultDeps: PipelineDeps = {
 const PER_FAMILY = 5;
 // 자소설닷컴은 직무별 목록에서 직무당 이 수만큼 상세를 읽는다.
 const JASOSEOL_PER_FAMILY = 5;
-// 이번 목록에 다시 나오지 않은 노출 공고를 실행마다 오래 확인 안 한 순으로 이만큼 상세로 다시 확인한다(요청당 2.5초).
-const RECHECK_LIMIT = 30;
+// 노출 공고 마감 재확인: 매시간 사용자마다 이 시간보다 오래 확인 안 한 공고를 오래된 순으로 이만큼 다시 읽는다(요청당 2.5초).
+const RECHECK_PER_HOUR = 20;
+const RECHECK_AFTER_MS = 3 * 60 * 60_000;
 // 채용이 아닌 교육·부트캠프 모집은 공고로 받지 않는다(자소설닷컴 직무별 목록에 섞여 나온다).
 const NOT_HIRING = /교육생|수강생|훈련생|부트캠프|클래스메이트|국비\s*(?:지원|교육)|\d+기\s*모집/;
 export const isNotHiring = (title: string) => NOT_HIRING.test(title);
@@ -161,6 +162,38 @@ export async function recheckPosting(db: DatabaseSync, userId: string, p: { id: 
   } catch { return false; }
 }
 
+/**
+ * 노출 공고 마감 재확인(사용자 결정 2026-11-24): 목록에서 빠진 공고는 조기 마감돼도 저장된 마감일이 그대로라(사람인 조기 마감 확인) 상세를 다시 읽는다.
+ * 공고를 열 때가 아니라 매시간 조금씩 미리 확인해, 마감된 공고는 사용자가 보기 전에 목록에서 빠진다. 숨김·제외·이미 마감인 공고는 건너뛴다.
+ * 공고 갱신이 실행 중이면 출처 요청이 겹치지 않게 이번 회차를 건너뛴다. 확인한 공고 수를 돌려준다.
+ */
+export async function recheckVisible(db: DatabaseSync, now = Date.now(), fetchOne = defaultDeps.fetchOne) {
+  if (db.prepare("SELECT 1 FROM jobs WHERE kind = 'refresh' AND status = '실행중'").get()) return 0;
+  resetBlockedHosts();
+  const before = new Date(now - RECHECK_AFTER_MS).toISOString();
+  const users = db.prepare('SELECT DISTINCT user_id FROM recommendations').all() as { user_id: string }[];
+  let rechecked = 0;
+  for (const { user_id: userId } of users) {
+    const stale = (db.prepare(`SELECT p.id, p.source, p.source_id, p.deadline, p.always_hire FROM postings p JOIN recommendations r ON r.posting_id = p.id AND r.user_id = p.owner_user_id
+        WHERE p.owner_user_id = ? AND p.checked_at < ? AND p.closed_at IS NULL AND r.hidden = 0 AND r.classification != '제외' ORDER BY p.checked_at`)
+      .all(userId, before) as { id: string; source: SourceId; source_id: string; deadline: string | null; always_hire: number }[])
+      .filter(p => p.always_hire === 1 || !p.deadline || !(Date.parse(p.deadline) < now)).slice(0, RECHECK_PER_HOUR);
+    for (const p of stale) if (await recheckPosting(db, userId, p, fetchOne)) rechecked++;
+  }
+  return rechecked;
+}
+
+/** 매시간 노출 공고 마감 재확인을 돈다(앞 회차가 길어지면 겹치지 않고 건너뜀). */
+export function startRecheck(db: DatabaseSync) {
+  let running = false;
+  const timer = setInterval(() => {
+    if (running) return;
+    running = true;
+    recheckVisible(db).catch(() => 0).finally(() => { running = false; });
+  }, 60 * 60_000);
+  return () => clearInterval(timer);
+}
+
 // 판정에 쓰는 저장된 공고 사실의 버전. 나중 수집에서 조건 추출·마감·경력 등이 바뀌면 다시 판정한다(규칙만 다시 돌고 공고 추출은 하지 않음).
 export function postingVersion(row: Pick<PostingRow, 'title' | 'deadline' | 'always_hire' | 'location' | 'remote' | 'careers' | 'company_type' | 'requirements' | 'body_failure' | 'closed_at'>) {
   const facts = [row.title, row.deadline, row.always_hire, row.location, row.remote, row.careers, row.company_type, row.requirements, row.body_failure, ...(row.closed_at ? [row.closed_at] : [])];
@@ -238,22 +271,13 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
       }
       progress(index + 1);
     }
-    // 마감 재확인(기술 설계 D): 목록에서 빠진 공고는 조기 마감돼도 저장된 마감일이 그대로라(2026-11-24 사람인 조기 마감 확인) 상세를 다시 읽는다.
-    // 숨김·제외·이미 마감인 공고는 건너뛴다. 없어진 공고(404·410)는 그 시각에 마감된 것으로 본다. 차단·연결 실패는 다음 실행에서 다시 본다.
-    const runAt = new Date(started).toISOString();
-    const stale = (db.prepare(`SELECT p.id, p.source, p.source_id, p.deadline, p.always_hire FROM postings p JOIN recommendations r ON r.posting_id = p.id AND r.user_id = p.owner_user_id
-        WHERE p.owner_user_id = ? AND p.checked_at < ? AND p.closed_at IS NULL AND r.hidden = 0 AND r.classification != '제외' ORDER BY p.checked_at`)
-      .all(job.userId, runAt) as { id: string; source: SourceId; source_id: string; deadline: string | null; always_hire: number }[])
-      .filter(p => p.always_hire === 1 || !p.deadline || !(Date.parse(p.deadline) < started)).slice(0, RECHECK_LIMIT);
-    let rechecked = 0;
-    for (const p of stale) if (await recheckPosting(db, job.userId, p, deps.fetchOne)) rechecked++;
     const rows = db.prepare('SELECT p.* FROM postings p WHERE p.owner_user_id = ? ORDER BY p.checked_at DESC').all(job.userId) as PostingRow[];
     // 사용자 필터에 맞지 않는 공고는 판정하지 않는다(요금 절감). 사용자가 넣은 링크 공고는 거르지 않는다. 고용 형태는 본문 추출 결과로 거른다.
     const matching = rows.filter(row => row.acquired_by === 'link' || passesFilter(rowFacts(row), basis.profile));
     counts.filteredOut = rows.length - matching.length;
     await judgeFor(db, deps, job.userId, basis, matching, counts);
     const failed = counts.sourceFailures.length > 0 || counts.aiFailures > 0;
-    const result = { collected: counts.collected, rechecked, judged: counts.judged, notHiring: counts.notHiring, filteredOut: counts.filteredOut, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes, sourceFailures: counts.sourceFailures.map(f => `${f.source}:${f.code}`),
+    const result = { collected: counts.collected, judged: counts.judged, notHiring: counts.notHiring, filteredOut: counts.filteredOut, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes, sourceFailures: counts.sourceFailures.map(f => `${f.source}:${f.code}`),
       // 출처별로 받은 공고 수(일부 실패와 전체 실패를 가르는 데 씀)와 실패한 공고 번호(원인 확인용, 원문 아님).
       sourceCollected: counts.sourceCollected, sourceFailureIds: counts.sourceFailures.filter(f => f.id).map(f => `${f.source}:${f.id}`) };
     if (counts.collected === 0 && failed) return { status: '실패', errorCode: 'collect_failed', result };
