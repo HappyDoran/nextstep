@@ -97,11 +97,9 @@ function RecommendationList({ me }: { me: Me }) {
   // 창을 며칠 띄워 둬도 D-day·마감 묶음·7일 안 필터가 맞도록 1분마다 기준 시각을 다시 잡는다.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(id); }, []);
-  // 마감된 공고는 지원한 것(지원 현황에 미지원이 아닌 상태로 있는 공고)만 남기고 목록에서 뺀다(사용자 요청 2026-11-24).
-  const apps = useApplications(me, { refetchOnWindowFocus: false });
-  const applied = new Set(apps.data?.filter(a => a.status !== '미지원').map(a => a.postingUrl));
+  // 마감된 공고는 목록에서 뺀다. 지원한 공고는 공고가 마감돼도 전형이 이어지므로 지원 현황에서 마감 표시 없이 관리한다(사용자 요청 2026-11-24).
   const q = search.trim().toLowerCase();
-  const matches = (i: Recommendation) => i.hidden === showHidden && (laneOf(i, now) !== '마감 지남' || applied.has(i.url)) && (source === '전체' || i.source === source)
+  const matches = (i: Recommendation) => i.hidden === showHidden && laneOf(i, now) !== '마감 지남' && (source === '전체' || i.source === source)
     && (!soon || (!i.closedAt && !i.alwaysHire && i.deadline !== null && Date.parse(i.deadline) >= now && Date.parse(i.deadline) - now <= 7 * DAY))
     && (!q || `${i.title} ${i.company}`.toLowerCase().includes(q));
   const visible = all.filter(matches);

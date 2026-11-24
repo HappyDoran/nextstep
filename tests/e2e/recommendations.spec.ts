@@ -130,7 +130,7 @@ test('추천 목록 표시·관심 없음·지원 현황 저장과 작업 실패
   } finally { await deleteAccount(page); }
 });
 
-test('마감된 공고는 지원한 것만 마감으로 남고 나머지는 목록에서 빠지며, 다른 곳에서 시작한 갱신도 따라간다', async ({ page }) => {
+test('마감된 공고는 지원 여부와 관계없이 추천 목록에서 빠지고, 다른 곳에서 시작한 갱신도 따라간다', async ({ page }) => {
   await signup(page, `e2e-rec3-${Date.now()}@example.com`);
   try {
     // 표시 규칙만 확인한다(추천·작업 응답은 모의, 실제 수집 아님).
@@ -143,18 +143,13 @@ test('마감된 공고는 지원한 것만 마감으로 남고 나머지는 목�
     const job = { id: 'outside', kind: 'refresh', status: '실행중', errorCode: null, result: null, createdAt: '2026-11-07T00:00:00.000Z', finishedAt: null };
     await page.route('**/api/jobs/latest', route => route.fulfill({ json: { job, counts: null } }));
     await page.route('**/api/jobs/outside', route => route.fulfill({ json: job }));
-    // 지난 공고 30은 지원 완료, 지난 공고 29는 저장만(미지원) 했다.
-    const origin = { origin: new URL(page.url()).origin };
-    for (const [i, status] of [[30, '지원 완료'], [29, '미지원']] as const) {
-      expect((await page.request.post('/api/applications', { data: { company: '가상회사', roleTitle: `지난 공고 ${i}`, postingUrl: past[i]!.url, status }, headers: origin })).status()).toBe(201);
-    }
+    // 지난 공고 30은 지원 완료했어도 추천 목록에서는 빠진다(지원 현황에서 관리).
+    expect((await page.request.post('/api/applications', { data: { company: '가상회사', roleTitle: '지난 공고 30', postingUrl: past[30]!.url, status: '지원 완료' }, headers: { origin: new URL(page.url()).origin } })).status()).toBe(201);
     await page.goto('/recommendations');
     await expect(page.getByRole('heading', { name: '7일 안에 마감' })).toBeVisible();
     await expect(page.getByRole('listitem').filter({ hasText: '곧 마감 공고' })).toBeVisible();
-    const old = page.getByRole('listitem').filter({ hasText: '지난 공고 30' });
-    await expect(old).toContainText('마감');
-    await expect(old).not.toContainText('오늘');
-    await expect(page.getByRole('listitem').filter({ hasText: '지난 공고 29' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '마감 지남' })).toHaveCount(0);
+    await expect(page.getByRole('listitem').filter({ hasText: '지난 공고 30' })).toHaveCount(0);
     await expect(page.getByRole('listitem').filter({ hasText: '지난 공고 0' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '새로 가져오기' })).toBeDisabled();
     await expect(page.getByRole('status').filter({ hasText: '창을 닫아도 서버에서 계속합니다' })).toBeVisible();
