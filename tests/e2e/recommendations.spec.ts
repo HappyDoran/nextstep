@@ -84,11 +84,15 @@ test('추천 목록 표시·관심 없음·지원 현황 저장과 작업 실패
     await page.route('**/api/recommendations', route => route.fulfill({ json: { items: [item, excluded], lastJob: null } }));
     let feedbackBody: unknown;
     await page.route('**/api/recommendations/p2/feedback', route => { feedbackBody = route.request().postDataJSON(); return route.fulfill({ json: { feedback: null, restored: true, hidden: false } }); });
+    // 상세를 열면 원문 모집 상태를 확인한다(모의: 첫 공고는 마감, 나머지는 실제 중계로 가서 없음 404 → 저장된 상태 유지).
+    await page.route('**/api/recommendations/p1/check', route => route.fulfill({ json: { checked: true, postingStatus: '마감', checkedAt: '2026-11-24T12:00:00.000Z' } }));
     await page.reload();
     // 줄을 누르면 상세 창이 열리고 근거·행동은 창에서 본다.
     const row = (title: string) => page.getByRole('button', { name: new RegExp(title) });
     await row('가상 프론트엔드').click();
     const card = page.getByRole('dialog');
+    await expect(card.getByRole('status').filter({ hasText: '원문을 확인해 보니 마감된 공고예요' })).toBeVisible();
+    await page.unroute('**/api/recommendations/p1/check');
     await expect(card).toContainText('마감 미확인');
     await expect(card).toContainText('기업 유형·규모 미확인');
     await expect(card).toContainText('원티드 · 링크 판정');

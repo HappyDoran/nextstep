@@ -410,3 +410,22 @@ test('목록에서 빠진 노출 공고는 갱신 때 상세로 마감을 다시
     assert.deepEqual(calls, []);
   } finally { await s.done(); }
 });
+
+test('공고를 열 때 원문 모집 상태를 확인하고, 1시간 안에 확인한 공고는 다시 묻지 않는다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const b = await s.signup('b@example.com');
+    await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+    const db = openDatabase(s.path);
+    try { await runNext(db, createHandler(db, fakeDeps([]))); } finally { db.close(); }
+    const [item] = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items;
+    const check = cookie => s.app.inject({ method: 'POST', url: `/recommendations/${item.postingId}/check`, headers: { cookie } });
+    assert.equal((await check(b)).statusCode, 404);
+    // 방금 갱신으로 확인한 공고는 출처에 다시 묻지 않고 저장된 상태를 돌려준다.
+    assert.deepEqual({ ...(await check(a)).json(), checkedAt: undefined }, { checked: true, postingStatus: '모집중', checkedAt: undefined });
+    // 마감 표시한 공고는 묻지 않는다(checked false).
+    await s.app.inject({ method: 'PUT', url: `/recommendations/${item.postingId}/closed`, headers: { cookie: a }, payload: { closed: true } });
+    assert.deepEqual({ ...(await check(a)).json(), checkedAt: undefined }, { checked: false, postingStatus: '마감', checkedAt: undefined });
+  } finally { await s.done(); }
+});

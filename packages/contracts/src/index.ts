@@ -145,6 +145,8 @@ export const recommendationSchema = z.object({
 });
 export const recommendationFeedbackSchema = z.object({ feedback: z.enum(['up', 'down']).nullable().optional(), restored: z.boolean().optional() }).strict().refine(v => Object.keys(v).length > 0);
 export type Recommendation = z.infer<typeof recommendationSchema>;
+/** 공고를 열 때 원문 모집 상태 확인 결과. checked가 false면 출처에 닿지 못해 저장된 상태 그대로다. */
+export const postingCheckSchema = z.object({ checked: z.boolean(), postingStatus: postingStatusSchema, checkedAt: z.string() });
 export const recommendationListSchema = z.object({ items: z.array(recommendationSchema), lastJob: jobSchema.nullable() });
 // 데스크톱 상주 앱 알림용: 마지막 공고 갱신 작업과 그 작업이 판정한 기본·도전 건수(끝나기 전에는 null).
 export const latestRefreshSchema = z.object({ job: jobSchema.nullable(), counts: z.object({ basic: z.number().int(), challenge: z.number().int() }).nullable() });

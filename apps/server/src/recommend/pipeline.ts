@@ -149,6 +149,18 @@ async function candidateFacts(deps: PipelineDeps, basis: { profile: Profile; res
   return { ...c, careers, skills: [...c.skills, ...basis.profile.skills], text: basis.resume.text };
 }
 
+/** 공고 하나의 상세를 다시 읽어 마감·조건을 갱신한다. 없어진 공고(404·410)는 지금 마감으로 둔다. 확인했으면 true, 차단·연결·해석 실패면 false(다음에 다시 본다). */
+export async function recheckPosting(db: DatabaseSync, userId: string, p: { id: string; source: SourceId; source_id: string }, fetchOne = defaultDeps.fetchOne) {
+  try {
+    const fetched = await fetchOne[p.source](p.source_id);
+    if (!('code' in fetched)) { upsertPosting(db, fetched, 'auto', userId); return true; }
+    if (fetched.code !== 'not_found') return false;
+    const at = new Date().toISOString();
+    db.prepare('UPDATE postings SET closed_at = COALESCE(closed_at, ?), checked_at = ? WHERE id = ? AND owner_user_id = ?').run(at, at, p.id, userId);
+    return true;
+  } catch { return false; }
+}
+
 // 판정에 쓰는 저장된 공고 사실의 버전. 나중 수집에서 조건 추출·마감·경력 등이 바뀌면 다시 판정한다(규칙만 다시 돌고 공고 추출은 하지 않음).
 export function postingVersion(row: Pick<PostingRow, 'title' | 'deadline' | 'always_hire' | 'location' | 'remote' | 'careers' | 'company_type' | 'requirements' | 'body_failure' | 'closed_at'>) {
   const facts = [row.title, row.deadline, row.always_hire, row.location, row.remote, row.careers, row.company_type, row.requirements, row.body_failure, ...(row.closed_at ? [row.closed_at] : [])];
@@ -234,16 +246,7 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
       .all(job.userId, runAt) as { id: string; source: SourceId; source_id: string; deadline: string | null; always_hire: number }[])
       .filter(p => p.always_hire === 1 || !p.deadline || !(Date.parse(p.deadline) < started)).slice(0, RECHECK_LIMIT);
     let rechecked = 0;
-    for (const p of stale) {
-      try {
-        const fetched = await deps.fetchOne[p.source](p.source_id);
-        if ('code' in fetched) {
-          if (fetched.code === 'not_found') db.prepare('UPDATE postings SET closed_at = ?, checked_at = ? WHERE id = ? AND owner_user_id = ?').run(new Date().toISOString(), new Date().toISOString(), p.id, job.userId);
-          else continue;
-        } else upsertPosting(db, fetched, 'auto', job.userId);
-        rechecked++;
-      } catch { /* 해석 실패는 다음 실행에서 다시 본다 */ }
-    }
+    for (const p of stale) if (await recheckPosting(db, job.userId, p, deps.fetchOne)) rechecked++;
     const rows = db.prepare('SELECT p.* FROM postings p WHERE p.owner_user_id = ? ORDER BY p.checked_at DESC').all(job.userId) as PostingRow[];
     // 사용자 필터에 맞지 않는 공고는 판정하지 않는다(요금 절감). 사용자가 넣은 링크 공고는 거르지 않는다. 고용 형태는 본문 추출 결과로 거른다.
     const matching = rows.filter(row => row.acquired_by === 'link' || passesFilter(rowFacts(row), basis.profile));
