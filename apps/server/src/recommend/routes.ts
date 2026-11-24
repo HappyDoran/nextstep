@@ -11,11 +11,12 @@ type Row = {
   posting_id: string; source: string; acquired_by: string; url: string; external_apply_url: string | null; title: string; company: string;
   deadline: string | null; always_hire: number; company_type: string | null; employee_count: number | null; checked_at: string;
   classification: string; judgement: string; hidden: number; feedback: string | null; restored: number; evaluated_at: string;
-  location: string | null; remote: number | null; careers: string; requirements: string | null;
+  location: string | null; remote: number | null; careers: string; requirements: string | null; closed_at: string | null;
 };
 
 // 마감 근거가 없으면 임의로 종료하지 않고 미확인으로 둔다.
 function postingStatus(row: Row, now: string) {
+  if (row.closed_at) return '마감';
   if (row.always_hire) return '모집중';
   // 읽을 수 없는 마감 값(이전 수집분)도 미확인으로 둔다.
   const at = row.deadline ? Date.parse(row.deadline) : NaN;
@@ -73,7 +74,7 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     const user = requireUser(db, request, reply);
     if (!user) return reply;
     const now = new Date().toISOString();
-    const rows = db.prepare(`SELECT r.posting_id, p.source, p.acquired_by, p.url, p.external_apply_url, p.title, p.company, p.deadline, p.always_hire, p.company_type, p.employee_count, p.checked_at, p.location, p.remote, p.careers, p.requirements,
+    const rows = db.prepare(`SELECT r.posting_id, p.source, p.acquired_by, p.url, p.external_apply_url, p.title, p.company, p.deadline, p.always_hire, p.company_type, p.employee_count, p.checked_at, p.location, p.remote, p.careers, p.requirements, p.closed_at,
         r.classification, r.judgement, r.hidden, r.feedback, r.restored, r.evaluated_at
       FROM recommendations r JOIN postings p ON p.id = r.posting_id
       WHERE r.user_id = ? AND p.owner_user_id = ?
@@ -85,7 +86,7 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
       const j = JSON.parse(row.judgement) as { met: string[]; unmet: string[]; unknown: string[]; reason: string };
       return recommendationSchema.parse({
         postingId: row.posting_id, source: row.source, linkOnly: row.acquired_by === 'link', url: row.url, externalApplyUrl: row.external_apply_url,
-        title: row.title, company: row.company, deadline: row.deadline, alwaysHire: row.always_hire === 1, postingStatus: postingStatus(row, now),
+        title: row.title, company: row.company, deadline: row.deadline, alwaysHire: row.always_hire === 1, postingStatus: postingStatus(row, now), closedAt: row.closed_at,
         companyType: row.company_type, employeeCount: row.employee_count, checkedAt: row.checked_at,
         classification: row.classification, met: j.met, unmet: j.unmet, unknown: j.unknown, reason: j.reason, hidden: row.hidden === 1, feedback: row.feedback, restored: row.restored === 1, evaluatedAt: row.evaluated_at,
       });
@@ -101,6 +102,18 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     if (typeof hidden !== 'boolean') return reply.status(400).send({ message: '요청을 확인하세요.' });
     const r = db.prepare('UPDATE recommendations SET hidden = ? WHERE user_id = ? AND posting_id = ?').run(hidden ? 1 : 0, user.id, request.params.id);
     return r.changes === 1 ? { hidden } : reply.status(404).send({ message: '찾을 수 없습니다.' });
+  });
+
+  // 마감 확인: 사용자가 원문에서 마감을 보면 표시한다. 다시 수집해도 지우지 않고, 다음 판정에서 마감으로 제외된다. 잘못 누르면 취소한다.
+  app.put<{ Params: { id: string } }>('/recommendations/:id/closed', async (request, reply) => {
+    const user = requireUser(db, request, reply);
+    if (!user) return reply;
+    const closed = (request.body as { closed?: unknown } | undefined)?.closed;
+    if (typeof closed !== 'boolean') return reply.status(400).send({ message: '요청을 확인하세요.' });
+    const closedAt = closed ? new Date().toISOString() : null;
+    const r = db.prepare('UPDATE postings SET closed_at = ? WHERE id = ? AND owner_user_id = ? AND EXISTS (SELECT 1 FROM recommendations WHERE user_id = ? AND posting_id = ?)')
+      .run(closedAt, request.params.id, user.id, user.id, request.params.id);
+    return r.changes === 1 ? { closedAt } : reply.status(404).send({ message: '찾을 수 없습니다.' });
   });
 
   // 피드백·제외 복구: 그 사용자 목록에서만 순서·표시를 바꾼다. 별로(down)는 숨김으로도 처리한다. 다시 판정해도 유지된다.

@@ -160,6 +160,15 @@ test('링크 판정은 그 사용자 전용이고, 숨김·작업 조회는 본�
     assert.equal((await s.app.inject({ method: 'PUT', url: `/recommendations/${id}/hide`, headers: { cookie: b }, payload: { hidden: true } })).statusCode, 404);
     assert.equal((await s.app.inject({ method: 'PUT', url: `/recommendations/${id}/hide`, headers: { cookie: a }, payload: { hidden: true } })).statusCode, 200);
     assert.equal((await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items[0].hidden, true);
+    // 마감 확인 표시: 다른 사용자는 못 바꾸고, 표시하면 마감으로 보이며 취소할 수 있다.
+    assert.equal((await s.app.inject({ method: 'PUT', url: `/recommendations/${id}/closed`, headers: { cookie: b }, payload: { closed: true } })).statusCode, 404);
+    assert.equal((await s.app.inject({ method: 'PUT', url: `/recommendations/${id}/closed`, headers: { cookie: a }, payload: { closed: 'yes' } })).statusCode, 400);
+    assert.equal((await s.app.inject({ method: 'PUT', url: `/recommendations/${id}/closed`, headers: { cookie: a }, payload: { closed: true } })).statusCode, 200);
+    const closed = (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items[0];
+    assert.equal(closed.postingStatus, '마감');
+    assert.ok(closed.closedAt);
+    await s.app.inject({ method: 'PUT', url: `/recommendations/${id}/closed`, headers: { cookie: a }, payload: { closed: false } });
+    assert.equal((await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items[0].closedAt, null);
     // 계정 삭제 시 개인 링크 공고·추천·작업이 함께 지워진다.
     await s.app.inject({ method: 'DELETE', url: '/account', headers: { cookie: a } });
     const raw = new DatabaseSync(s.path);
@@ -345,5 +354,59 @@ test('저장된 마감 값을 읽을 수 없어도 추천 목록은 열리고 �
     const res = await s.app.inject({ url: '/recommendations', headers: { cookie: a } });
     assert.equal(res.statusCode, 200);
     assert.ok(res.json().items.every(i => i.postingStatus === '미확인'));
+  } finally { await s.done(); }
+});
+
+test('마감 확인 표시는 다시 수집해도 남고, 다음 갱신에서 마감으로 제외된다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const refresh = async () => {
+      await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+      const db = openDatabase(s.path);
+      try { await runNext(db, createHandler(db, fakeDeps([]))); } finally { db.close(); }
+      return (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items;
+    };
+    const [first] = await refresh();
+    assert.notEqual(first.classification, '제외');
+    await s.app.inject({ method: 'PUT', url: `/recommendations/${first.postingId}/closed`, headers: { cookie: a }, payload: { closed: true } });
+    // 출처는 여전히 마감일 2099년으로 내보내지만 표시는 유지되고, 다시 판정해 제외한다.
+    const after = (await refresh()).find(i => i.postingId === first.postingId);
+    assert.ok(after.closedAt);
+    assert.equal(after.postingStatus, '마감');
+    assert.equal(after.classification, '제외');
+  } finally { await s.done(); }
+});
+
+test('목록에서 빠진 노출 공고는 갱신 때 상세로 마감을 다시 확인하고, 없어진 공고는 마감으로 본다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const run = async deps => {
+      await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+      const db = openDatabase(s.path);
+      try { await runNext(db, createHandler(db, deps)); } finally { db.close(); }
+      return (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items;
+    };
+    await run(fakeDeps([]));
+    const calls = [];
+    const empty = async () => ({ postings: [], failures: [] });
+    const deps = fakeDeps([]);
+    // 두 번째 실행: 목록에는 아무것도 없고, 사람인 공고는 조기 마감(마감일이 지남), 잡코리아 공고는 사라짐.
+    deps.collect = { jobkorea: empty, saramin: empty, wanted: empty, jumpit: empty, jasoseol: empty };
+    deps.fetchOne = { ...deps.fetchOne,
+      saramin: async id => { calls.push(`saramin:${id}`); return { ...posting('saramin', id, '프론트엔드'), deadline: '2026-01-01T00:00:00+09:00' }; },
+      jobkorea: async id => { calls.push(`jobkorea:${id}`); return { source: 'jobkorea', code: 'not_found' }; } };
+    const items = await run(deps);
+    assert.deepEqual(calls.sort(), ['jobkorea:1', 'saramin:2']);
+    const bySource = Object.fromEntries(items.map(i => [i.source, i]));
+    assert.equal(bySource.saramin.postingStatus, '마감');
+    assert.equal(bySource.saramin.classification, '제외');
+    assert.ok(bySource.jobkorea.closedAt);
+    assert.equal(bySource.jobkorea.classification, '제외');
+    // 다음 실행에서는 이미 마감인 공고를 다시 요청하지 않는다.
+    calls.length = 0;
+    await run(deps);
+    assert.deepEqual(calls, []);
   } finally { await s.done(); }
 });

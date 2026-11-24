@@ -1,3 +1,4 @@
+import { ChevronDown } from 'lucide-react';
 import type { ButtonHTMLAttributes, InputHTMLAttributes, PropsWithChildren, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
 export const focus = 'focus-visible:outline focus-visible:outline-focus focus-visible:outline-ring focus-visible:outline-offset-focus';
@@ -37,7 +38,11 @@ export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTex
   return <textarea {...props} className={join(control, 'min-h-24 resize-y py-2.5', className)} />;
 }
 export function Select({ className, size = 'md', ...props }: Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> & { size?: 'md' | 'sm' }) {
-  return <select {...props} className={join(control, size === 'sm' ? 'h-control-sm w-auto text-caption' : 'h-control', 'cursor-pointer', className)} />;
+  // 브라우저 기본 화살표는 테두리에 붙어 보여(사용자 요청 2026-11-24) 숨기고 안쪽에 같은 모양을 둔다.
+  return <span className={join('relative', size === 'sm' ? 'inline-grid' : 'grid')}>
+    <select {...props} className={join(control, 'cursor-pointer appearance-none', size === 'sm' ? 'h-control-sm w-auto pr-8 text-caption' : 'h-control pr-10', className)} />
+    <ChevronDown aria-hidden="true" focusable="false" className={join('pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground', size === 'sm' ? 'right-2.5 size-3.5' : 'right-3.5 size-4')} />
+  </span>;
 }
 
 /** 켜고 끄는 설정. 네이티브 체크박스라 키보드·폼 동작을 그대로 쓴다. */

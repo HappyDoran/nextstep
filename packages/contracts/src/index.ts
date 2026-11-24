@@ -127,6 +127,8 @@ export const recommendationSchema = z.object({
   deadline: z.string().nullable(),
   alwaysHire: z.boolean(),
   postingStatus: postingStatusSchema,
+  // 사용자가 원문에서 마감을 확인해 표시한 시각(출처가 아직 모집중으로 보여도 마감으로 다룬다).
+  closedAt: z.string().nullable().default(null),
   companyType: z.string().nullable(),
   employeeCount: z.number().nullable(),
   checkedAt: z.string(),

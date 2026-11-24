@@ -46,6 +46,7 @@ export function Recommendations() {
 
 /** 마감 묶음: 남은 날로 나눈다. 상시·마감 미확인은 맨 뒤. */
 function laneOf(i: Recommendation, now: number) {
+  if (i.closedAt) return '마감 지남';
   if (i.alwaysHire) return '상시 채용';
   if (!i.deadline) return '마감 미확인';
   const days = Math.floor((Date.parse(i.deadline) - now) / DAY);
@@ -53,7 +54,7 @@ function laneOf(i: Recommendation, now: number) {
 }
 const DUE_LANES = ['7일 안에 마감', '2주 안에 마감', '그 이후', '상시 채용', '마감 미확인', '마감 지남'];
 const isBool = (v: unknown) => typeof v === 'boolean';
-const dueTime = (i: Recommendation) => (i.alwaysHire || !i.deadline ? Infinity : Date.parse(i.deadline));
+const dueTime = (i: Recommendation) => (i.closedAt ? Date.parse(i.closedAt) : i.alwaysHire || !i.deadline ? Infinity : Date.parse(i.deadline));
 
 function RecommendationList({ me }: { me: Me }) {
   const client = useQueryClient();
@@ -98,7 +99,7 @@ function RecommendationList({ me }: { me: Me }) {
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(id); }, []);
   const q = search.trim().toLowerCase();
   const matches = (i: Recommendation) => i.hidden === showHidden && (source === '전체' || i.source === source)
-    && (!soon || (!i.alwaysHire && i.deadline !== null && Date.parse(i.deadline) >= now && Date.parse(i.deadline) - now <= 7 * DAY))
+    && (!soon || (!i.closedAt && !i.alwaysHire && i.deadline !== null && Date.parse(i.deadline) >= now && Date.parse(i.deadline) - now <= 7 * DAY))
     && (!q || `${i.title} ${i.company}`.toLowerCase().includes(q));
   const visible = all.filter(matches);
   const counts = Object.fromEntries(GROUPS.map(g => [g, visible.filter(i => groupOf(i) === g).length])) as Record<Group, number>;
@@ -156,7 +157,7 @@ function RecommendationList({ me }: { me: Me }) {
                     <span className="block truncate text-caption text-muted-foreground">{item.company} · {SOURCE_NAMES[item.source]}{item.linkOnly ? ' · 링크 판정' : ''}{item.restored ? ' · 직접 복구' : ''}{item.feedback === 'up' ? ' · 좋아요' : ''}</span>
                   </RowTrigger>
                   <span className="line-clamp-2 text-caption text-muted-foreground">{item.reason}</span>
-                  <DueDate days={item.alwaysHire || !item.deadline ? null : Math.floor((Date.parse(item.deadline) - now) / DAY)} {...(item.deadline && !item.alwaysHire ? { date: monthDay(item.deadline) } : {})} />
+                  <DueDate days={item.closedAt ? -1 : item.alwaysHire || !item.deadline ? null : Math.floor((Date.parse(item.deadline) - now) / DAY)} {...(item.deadline && !item.alwaysHire ? { date: monthDay(item.deadline) } : {})} />
                 </Row>)}</RowList>
               </Lane>)}
               {items.length > limit && <div className="flex justify-center"><Button variant="secondary" onClick={() => setLimit(limit + PAGE)}>{PAGE}건 더 보기 <span className="tabular-nums text-primary">{shown.length} / {items.length}</span></Button></div>}
@@ -177,6 +178,8 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
   const client = useQueryClient();
   const hide = useMutation({ mutationFn: (hidden: boolean) => call(`recommendations/${item.postingId}/hide`, { method: 'PUT', body: JSON.stringify({ hidden }) }), onSuccess: () => client.invalidateQueries({ queryKey: listKey }) });
   // 피드백(좋아요는 같은 분류 안에서 위로, 별로는 숨김)과 제외 복구는 내 목록에만 반영된다.
+  // 원문에서 마감을 확인하면 표시한다(다음 갱신 판정에서 마감으로 제외). 잘못 눌렀으면 취소한다.
+  const close = useMutation({ mutationFn: (closed: boolean) => call(`recommendations/${item.postingId}/closed`, { method: 'PUT', body: JSON.stringify({ closed }) }), onSuccess: () => client.invalidateQueries({ queryKey: listKey }) });
   const feedback = useMutation({ mutationFn: (body: { feedback?: 'up' | 'down' | null; restored?: boolean }) => call(`recommendations/${item.postingId}/feedback`, { method: 'PUT', body: JSON.stringify(body) }), onSuccess: () => client.invalidateQueries({ queryKey: listKey }) });
   // 지원 현황에 미지원으로 저장만 한다. 지원 완료는 사용자가 직접 바꾼다.
   const track = useMutation({
@@ -186,19 +189,20 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
   // 이미 같은 공고 URL로 저장한 지원 건이 있으면 저장됨으로 보인다(서버도 같은 URL은 새로 만들지 않는다).
   const apps = useApplications(me, { refetchOnWindowFocus: false });
   const saved = track.isSuccess || Boolean(apps.data?.some(a => a.postingUrl === item.url));
-  const deadline = item.alwaysHire ? '상시채용' : item.deadline ? formatWhen(item.deadline, 'absolute') : '마감 미확인';
+  const deadline = item.closedAt ? `마감 확인 ${formatWhen(item.closedAt, 'absolute')}` : item.alwaysHire ? '상시채용' : item.deadline ? formatWhen(item.deadline, 'absolute') : '마감 미확인';
   const size = item.companyType || item.employeeCount ? [item.companyType, item.employeeCount ? `${item.employeeCount}명` : null].filter(Boolean).join(' · ') : '기업 유형·규모 미확인';
   const reasonTone = classTag[item.classification];
   const section = (title: string, mark: string, tone: string, values: string[]) => <section>
     <h3 className="mb-2 text-body-sm font-extrabold">{title} <span className="text-muted-foreground tabular-nums">{values.length}</span></h3>
     {values.length ? <ul className="grid gap-1.5 text-body-sm">{values.map(v => <li key={v} className="flex gap-2.5"><span aria-hidden="true" className={`w-4 shrink-0 text-center font-extrabold ${tone}`}>{mark}</span>{v}</li>)}</ul> : <p className="text-body-sm text-muted-foreground">없음</p>}
   </section>;
-  const error = hide.error ?? track.error ?? feedback.error;
+  const error = hide.error ?? track.error ?? feedback.error ?? close.error;
   return <Sheet open onClose={onClose} classification={item.classification} title={item.title}
     eyebrow={<div className="flex flex-wrap gap-1.5"><Tag classification={item.classification} />{item.restored && <Tag>직접 복구</Tag>}{item.feedback === 'up' && <Tag>좋아요</Tag>}</div>}
     meta={`${item.company} · ${SOURCE_NAMES[item.source]}${item.linkOnly ? ' · 링크 판정' : ''}`}
     footer={<>
       <Button variant="quiet" disabled={hide.isPending || feedback.isPending} onClick={() => item.feedback === 'down' ? feedback.mutate({ feedback: null }) : hide.mutate(!item.hidden)}>{item.hidden ? '숨김 해제' : '관심 없음'}</Button>
+      <Button variant="quiet" disabled={close.isPending} onClick={() => close.mutate(!item.closedAt)}>{item.closedAt ? '마감 표시 취소' : '마감됐어요'}</Button>
       <div className="ml-auto flex flex-wrap gap-2">
         <Button variant="secondary" disabled={track.isPending || saved} onClick={() => track.mutate()}>{saved ? '지원 현황에 저장됨' : '지원 현황에 저장'}</Button>
         {item.externalApplyUrl && <a href={item.url} target="_blank" rel="noopener noreferrer" className={buttonClass('secondary')}>원문 보기</a>}

@@ -90,8 +90,8 @@ export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: P
   else if (p.families && !families.length) out('exclude', `공고 직무(${p.families.join('·')})가 희망 직무(${seeker.jobFamilies.join('·')})와 다름`);
   const jobFamilies = families.length ? families : seeker.jobFamilies;
 
-  // 마감: 기준 시각보다 앞서면 제외(개인 불합격이 아님).
-  if (!p.alwaysHire && p.deadline && Date.parse(p.deadline) < Date.parse(evaluatedAt)) out('exclude', `공고 마감(${p.deadline.slice(0, 10)} 경과, 개인 불합격 아님)`);
+  // 마감: 기준 시각과 같거나 앞서면 제외(개인 불합격이 아님). 사용자가 방금 마감 표시한 공고도 같은 밀리초 판정에서 제외된다.
+  if (!p.alwaysHire && p.deadline && Date.parse(p.deadline) <= Date.parse(evaluatedAt)) out('exclude', `공고 마감(${p.deadline.slice(0, 10)} 경과, 개인 불합격 아님)`);
 
   // 근무지: 전면 원격은 원격 가능이면 지역과 무관. 미기재는 미확인.
   if (p.remote === '전면' && seeker.remoteOk) out('met', '전면 원격');

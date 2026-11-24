@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 19;
+export const SCHEMA_VERSION = 20;
 
 // 쓰기 트랜잭션(BEGIN IMMEDIATE)에서 fn을 동기로 실행한다. fn 안에서 await하지 않는다.
 // fn이 직접 ROLLBACK하고 돌아오면 COMMIT하지 않고, 예외면 되돌린 뒤 다시 던진다.
@@ -353,6 +353,12 @@ export function openDatabase(filename: string) {
         CREATE UNIQUE INDEX documents_active ON documents(user_id, kind) WHERE active = 1;
         CREATE INDEX documents_user_kind ON documents(user_id, kind, created_at);
         PRAGMA user_version = 19;`);
+    }
+    if (version < 20) {
+      // 사용자가 원문에서 마감을 확인한 시각. 출처가 마감을 늦게 반영(조기 마감)해도 다시 수집이 지우지 않는다.
+      // 이전 버전을 다시 실행하는 경우(시험의 버전 되돌림)에도 열을 두 번 만들지 않는다.
+      if (!db.prepare("SELECT 1 FROM pragma_table_info('postings') WHERE name = 'closed_at'").get()) db.exec('ALTER TABLE postings ADD COLUMN closed_at TEXT');
+      db.exec('PRAGMA user_version = 20');
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.
