@@ -378,7 +378,7 @@ test('마감 확인 표시는 다시 수집해도 남고, 다음 갱신에서 �
   } finally { await s.done(); }
 });
 
-test('매시간 재확인: 오래 확인 안 한 노출 공고를 상세로 다시 읽어 조기 마감·삭제를 반영하고, 마감된 공고는 다시 묻지 않는다', async () => {
+test('매일 밤 재확인: 오래 확인 안 한 노출 공고를 상세로 다시 읽어 조기 마감·삭제를 반영하고, 마감된 공고는 다시 묻지 않는다', async () => {
   const s = await setup();
   try {
     const a = await s.signup('a@example.com');
@@ -409,6 +409,9 @@ test('매시간 재확인: 오래 확인 안 한 노출 공고를 상세로 다�
     try {
       assert.equal(await recheckVisible(db, later + 7 * 60 * 60_000, fetchOne), 0);
       assert.deepEqual(calls, []);
+      // 공고 갱신이 실행 중이면 출처 요청이 겹치지 않게 건너뛴다(null, 0시 안에서 다시 시도).
+      db.prepare("UPDATE jobs SET status = '실행중' WHERE kind = 'refresh'").run();
+      assert.equal(await recheckVisible(db, later, fetchOne), null);
     } finally { db.close(); }
   } finally { await s.done(); }
 });

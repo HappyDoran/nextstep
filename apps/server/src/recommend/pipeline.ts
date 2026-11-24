@@ -14,6 +14,7 @@ import { extractCandidate, CANDIDATE_PROMPT_VERSION, type Candidate } from '../p
 import { classify, RULES_VERSION, type PostingInput } from './classify.js';
 import { reportProgress, type ClaimedJob, type JobOutcome } from './jobs.js';
 import { passesFilter } from '../sources/filter.js';
+import { seoulParts } from '../schedule.js';
 
 type Collected = { postings: CollectedPosting[]; failures: CollectFailure[] };
 export type PipelineDeps = {
@@ -34,9 +35,9 @@ export const defaultDeps: PipelineDeps = {
 const PER_FAMILY = 5;
 // 자소설닷컴은 직무별 목록에서 직무당 이 수만큼 상세를 읽는다.
 const JASOSEOL_PER_FAMILY = 5;
-// 노출 공고 마감 재확인: 매시간 사용자마다 이 시간보다 오래 확인 안 한 공고를 오래된 순으로 이만큼 다시 읽는다(요청당 2.5초).
-const RECHECK_PER_HOUR = 20;
+// 노출 공고 마감 재확인: 매일 0시(KST) 이 시간보다 오래 확인 안 한 노출 공고를 모두 다시 읽는다(요청당 2.5초, 21시 갱신에서 받은 공고는 건너뜀).
 const RECHECK_AFTER_MS = 3 * 60 * 60_000;
+const RECHECK_HOUR = 0;
 // 채용이 아닌 교육·부트캠프 모집은 공고로 받지 않는다(자소설닷컴 직무별 목록에 섞여 나온다).
 const NOT_HIRING = /교육생|수강생|훈련생|부트캠프|클래스메이트|국비\s*(?:지원|교육)|\d+기\s*모집/;
 export const isNotHiring = (title: string) => NOT_HIRING.test(title);
@@ -164,11 +165,11 @@ export async function recheckPosting(db: DatabaseSync, userId: string, p: { id: 
 
 /**
  * 노출 공고 마감 재확인(사용자 결정 2026-11-24): 목록에서 빠진 공고는 조기 마감돼도 저장된 마감일이 그대로라(사람인 조기 마감 확인) 상세를 다시 읽는다.
- * 공고를 열 때가 아니라 매시간 조금씩 미리 확인해, 마감된 공고는 사용자가 보기 전에 목록에서 빠진다. 숨김·제외·이미 마감인 공고는 건너뛴다.
- * 공고 갱신이 실행 중이면 출처 요청이 겹치지 않게 이번 회차를 건너뛴다. 확인한 공고 수를 돌려준다.
+ * 공고를 열 때가 아니라 매일 밤 미리 확인해, 마감된 공고는 사용자가 보기 전에 목록에서 빠진다. 숨김·제외·이미 마감인 공고는 건너뛴다.
+ * 공고 갱신이 실행 중이면 출처 요청이 겹치지 않게 null(건너뜀)을 돌려준다. 아니면 확인한 공고 수.
  */
-export async function recheckVisible(db: DatabaseSync, now = Date.now(), fetchOne = defaultDeps.fetchOne) {
-  if (db.prepare("SELECT 1 FROM jobs WHERE kind = 'refresh' AND status = '실행중'").get()) return 0;
+export async function recheckVisible(db: DatabaseSync, now = Date.now(), fetchOne = defaultDeps.fetchOne): Promise<number | null> {
+  if (db.prepare("SELECT 1 FROM jobs WHERE kind = 'refresh' AND status = '실행중'").get()) return null;
   resetBlockedHosts();
   const before = new Date(now - RECHECK_AFTER_MS).toISOString();
   const users = db.prepare('SELECT DISTINCT user_id FROM recommendations').all() as { user_id: string }[];
@@ -177,20 +178,25 @@ export async function recheckVisible(db: DatabaseSync, now = Date.now(), fetchOn
     const stale = (db.prepare(`SELECT p.id, p.source, p.source_id, p.deadline, p.always_hire FROM postings p JOIN recommendations r ON r.posting_id = p.id AND r.user_id = p.owner_user_id
         WHERE p.owner_user_id = ? AND p.checked_at < ? AND p.closed_at IS NULL AND r.hidden = 0 AND r.classification != '제외' ORDER BY p.checked_at`)
       .all(userId, before) as { id: string; source: SourceId; source_id: string; deadline: string | null; always_hire: number }[])
-      .filter(p => p.always_hire === 1 || !p.deadline || !(Date.parse(p.deadline) < now)).slice(0, RECHECK_PER_HOUR);
+      .filter(p => p.always_hire === 1 || !p.deadline || !(Date.parse(p.deadline) < now));
     for (const p of stale) if (await recheckPosting(db, userId, p, fetchOne)) rechecked++;
   }
   return rechecked;
 }
 
-/** 매시간 노출 공고 마감 재확인을 돈다(앞 회차가 길어지면 겹치지 않고 건너뜀). */
+/**
+ * 매일 0시(KST)에 노출 공고 마감 재확인을 한 번 돈다. 서버 안에서 따로 돌아 그 시각에 쓰는 사용자의 화면·요청을 막지 않는다.
+ * 1분마다 시각을 보고, 갱신 실행 중이라 건너뛰었으면 0시 안에서 다시 시도한다. 서버가 0시에 꺼져 있었으면 그날은 건너뛴다(다음 날 확인).
+ */
 export function startRecheck(db: DatabaseSync) {
   let running = false;
+  let doneDate = '';
   const timer = setInterval(() => {
-    if (running) return;
+    const { date, hour } = seoulParts(new Date());
+    if (running || hour !== RECHECK_HOUR || doneDate === date) return;
     running = true;
-    recheckVisible(db).catch(() => 0).finally(() => { running = false; });
-  }, 60 * 60_000);
+    recheckVisible(db).then(n => { if (n !== null) doneDate = date; }, () => { doneDate = date; }).finally(() => { running = false; });
+  }, 60_000);
   return () => clearInterval(timer);
 }
 
