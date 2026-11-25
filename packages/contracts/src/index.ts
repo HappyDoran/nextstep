@@ -212,6 +212,6 @@ export const connectionStatusSchema = z.object({
   checkedAt: z.string(),
   ai: z.object({ model: z.string(), status: z.enum(['정상', '모델 없음', '연결 실패']) }),
   mail: z.object({ status: z.enum(['정상', '인증 실패']), lastSuccessAt: z.string().nullable(), lastError: z.string().nullable() }).nullable(),
-  // 일부 실패: 공고는 받았지만 일부 상세를 읽지 못함. 실패: 받은 공고 없이 실패. collected는 기록이 없던 예전 작업이면 null.
-  sources: z.array(z.object({ source: sourceIdSchema, status: z.enum(['정상', '일부 실패', '실패', '확인 전']), failures: z.record(z.string(), z.number().int()), collected: z.number().int().nullable(), finishedAt: z.string().nullable() })),
+  // 일부 실패: 공고는 받았지만 일부 상세를 읽지 못함. 실패: 받은 공고 없이 실패. 중지: 운영자가 수집을 멈춘 출처. collected는 기록이 없던 예전 작업이면 null.
+  sources: z.array(z.object({ source: sourceIdSchema, status: z.enum(['정상', '일부 실패', '실패', '확인 전', '중지']), failures: z.record(z.string(), z.number().int()), collected: z.number().int().nullable(), finishedAt: z.string().nullable() })),
 });

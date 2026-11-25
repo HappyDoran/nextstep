@@ -4,6 +4,7 @@ import { automationSchema, automationStatusSchema, connectionStatusSchema, sourc
 import { ollamaModel, ollamaStatus } from './ai/llm.js';
 import { requireUser } from './auth.js';
 import { cancelQueuedScheduled } from './schedule.js';
+import { STOPPED_SOURCES } from './recommend/pipeline.js';
 
 function status(db: DatabaseSync, userId: string) {
   const row = db.prepare('SELECT auto_enabled FROM users WHERE id = ?').get(userId) as { auto_enabled: number };
@@ -30,6 +31,8 @@ export function registerUserSettings(app: FastifyInstance, db: DatabaseSync) {
       ai: { model: ollamaModel(), status: await ollamaStatus() },
       mail: mail ? { status: mail.status, lastSuccessAt: mail.last_success_at, lastError: mail.last_error } : null,
       sources: sourceIdSchema.options.map(source => {
+        // 수집을 멈춘 출처는 마지막 실행 결과 대신 중지로 보인다(멈추기 전 실패가 계속 보이지 않게).
+        if (STOPPED_SOURCES.includes(source)) return { source, status: '중지', failures: {}, collected: null, finishedAt: null };
         const counted: Record<string, number> = {};
         for (const f of failures) if (f.startsWith(`${source}:`)) { const code = f.slice(source.length + 1); counted[code] = (counted[code] ?? 0) + 1; }
         const collected = ran && parsed.sourceCollected ? parsed.sourceCollected[source] ?? 0 : null;

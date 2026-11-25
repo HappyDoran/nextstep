@@ -26,9 +26,9 @@ export function ConnectionPanel({ me }: { me: Me }) {
     for (const s of c.sources) {
       const failed = Object.entries(s.failures).map(([code, n]) => `${CODES[code] ?? code} ${n}`).join(', ');
       const got = s.collected === null ? '' : `공고 ${s.collected}건 받음`;
-      const detail = s.status === '확인 전' ? '아직 공고를 가져온 적이 없거나 마지막 갱신이 시작 전에 실패했습니다'
+      const detail = s.status === '중지' ? '사이트가 자동 수집을 막아 수집을 멈췄어요(이미 받은 공고는 마감일까지 보여요)' : s.status === '확인 전' ? '아직 공고를 가져온 적이 없거나 마지막 갱신이 시작 전에 실패했습니다'
         : s.status === '정상' ? got || '마지막 갱신에서 문제 없음' : s.status === '일부 실패' ? `${got} · 일부 상세 못 읽음(${failed})` : `공고를 받지 못함(${failed})`;
-      rows.push({ name: SOURCE_NAMES[s.source], ok: s.status === '확인 전' ? null : s.status === '일부 실패' ? 'partial' : s.status === '정상', label: s.status, detail: `${detail}${s.finishedAt ? ` · ${when(s.finishedAt)}` : ''}` });
+      rows.push({ name: SOURCE_NAMES[s.source], ok: s.status === '확인 전' || s.status === '중지' ? null : s.status === '일부 실패' ? 'partial' : s.status === '정상', label: s.status, detail: `${detail}${s.finishedAt ? ` · ${when(s.finishedAt)}` : ''}` });
     }
   }
   return <div className="grid gap-4">

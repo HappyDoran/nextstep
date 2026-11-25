@@ -96,7 +96,9 @@ test('갱신 작업: 세 출처를 수집하고 원문 없이 조건·판정을 
     assert.ok(saramin.collected > 0);
     assert.equal(Object.values(saramin.failures).reduce((a, b) => a + b, 0), 1);
     assert.equal(conn.sources.find(x => x.source === 'jobkorea').status, '정상');
-    assert.deepEqual((await s.app.inject({ url: '/settings/connections', headers: { cookie: other } })).json().sources.map(x => x.status), ['확인 전', '확인 전', '확인 전', '확인 전', '확인 전']);
+    // 수집을 멈춘 자소설닷컴은 마지막 결과와 관계없이 중지로 보인다.
+    assert.equal(conn.sources.find(x => x.source === 'jasoseol').status, '중지');
+    assert.deepEqual((await s.app.inject({ url: '/settings/connections', headers: { cookie: other } })).json().sources.map(x => x.status), ['확인 전', '확인 전', '중지', '확인 전', '확인 전']);
     assert.equal((await s.app.inject({ url: '/settings/connections' })).statusCode, 401);
     // 모든 출처가 막혀 갱신이 실패(collect_failed)해도 출처별 실패로 보인다(확인 전이 아니다).
     const blockedDb = new DatabaseSync(s.path);
