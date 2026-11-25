@@ -1,7 +1,7 @@
 ---
 title: 개발 가이드
 kind: guide
-last_verified: 2026-11-22
+last_verified: 2026-11-25
 ---
 
 # NextStep 개발 가이드
@@ -57,7 +57,7 @@ sh scripts/home-deploy.sh   # 받기·설치·서버/웹 빌드·서비스 재�
 | `pnpm --filter @nextstep/server verify:saramin` | 사람인 네 직무 공개 검색 목록 1회·상세 3건 조회(요청 간 2.5초). 원문 없이 추출 결과·본문 길이·실패 구분만 출력 |
 | `pnpm --filter @nextstep/server verify:wanted` | 원티드 네 직무 공개 목록·상세 각 3건 조회 |
 | `pnpm --filter @nextstep/server verify:jumpit` | 점핏 개발 직무(프론트엔드·앱 개발·백엔드·QA) 공개 목록·상세 각 3건 조회. 원문 없이 추출 결과·본문 길이·실패만 출력 |
-| `pnpm --filter @nextstep/server verify:jasoseol` | 자소설닷컴 네 직무 공개 직무별 목록·상세 각 2건 조회 |
+| `pnpm --filter @nextstep/server verify:jasoseol` | 자소설닷컴 네 직무 공개 직무별 목록·상세 각 2건 조회(2026-11-25 수집 중지, 차단이 풀렸는지 볼 때만) |
 | `pnpm --filter @nextstep/server verify:recommend-flow [--all-families] [링크…]` | 임시 DB·합성 이력서로 실제 출처 수집과 로컬 AI 조건·지원자 추출, 규칙 분류를 한 번 실행하고 공개 공고 제목·분류·근거 요약만 출력 후 삭제. `--all-families`는 여섯 직무 전체. 출처 요청 발생 |
 | `pnpm --filter @nextstep/server verify:mail-sync [-- --ai]` | 임시 DB·임시 사용자로 실제 네이버 증분 동기화를 3회(`--ai`면 로컬 AI 해석 포함 1회) 실행해 건수·분류 분포·중복 수만 출력하고 임시 DB를 삭제. `NAVER_IMAP_USER`·`NAVER_IMAP_PASSWORD` 필요 |
 | `pnpm --filter @nextstep/server verify:naver` | 네이버 IMAP 읽기 전용(EXAMINE) 조회. 제목·주소·본문 없이 편지함별 위치·건수·출처 도메인과 알림 메일의 공고 링크 확보 건수 집계만 출력. 원티드 추적 링크는 최대 5건 리다이렉트 위치만 확인 |

@@ -78,7 +78,7 @@ function RecommendationList({ me }: { me: Me }) {
   if (latest && ACTIVE_JOB.includes(latest.status) && latest.id !== jobId && !running) setJobId(latest.id);
   const refresh = useMutation({ mutationFn: async () => jobSchema.parse(await call('postings/refresh', { method: 'POST' })), onSuccess: j => setJobId(j.id) });
   const link = useMutation({
-    mutationFn: async (url: string) => jobSchema.parse(await call('postings/link', { method: 'POST', body: JSON.stringify({ url }), messages: { 400: '사람인·잡코리아·자소설닷컴·원티드·점핏 공고 상세 링크(https)를 넣으세요.', 409: '앞서 넣은 링크를 처리하는 중이에요. 끝난 뒤 다시 넣으세요.' } })),
+    mutationFn: async (url: string) => jobSchema.parse(await call('postings/link', { method: 'POST', body: JSON.stringify({ url }), messages: { 400: '사람인·잡코리아·원티드·점핏 공고 상세 링크(https)를 넣으세요.', 409: '앞서 넣은 링크를 처리하는 중이에요. 끝난 뒤 다시 넣으세요.' } })),
     onSuccess: j => { setJobId(j.id); setLinkOpen(false); },
   });
   const [linkOpen, setLinkOpen] = useState(false);
@@ -165,7 +165,7 @@ function RecommendationList({ me }: { me: Me }) {
             </>}
 
     {opened && <Detail item={opened} me={me} listKey={key} onClose={() => setOpenId(null)} />}
-    <Sheet open={linkOpen} onClose={() => setLinkOpen(false)} size="sm" title="공고 링크로 판정" meta="사람인·잡코리아·자소설닷컴·원티드·점핏 공고 상세 링크">
+    <Sheet open={linkOpen} onClose={() => setLinkOpen(false)} size="sm" title="공고 링크로 판정" meta="사람인·잡코리아·원티드·점핏 공고 상세 링크">
       <form onSubmit={submitLink} className="grid gap-4">
         <Field label="공고 링크" {...(link.isError ? { error: link.error.message } : {})}><Input name="url" type="url" required pattern="https://.*" placeholder="https://www.saramin.co.kr/zf_user/jobs/view?rec_idx=…" aria-invalid={link.isError} /></Field>
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setLinkOpen(false)}>취소</Button><Button type="submit" disabled={busy}>판정</Button></div>

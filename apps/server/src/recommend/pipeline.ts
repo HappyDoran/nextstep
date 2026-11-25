@@ -8,7 +8,7 @@ import { collectWanted, fetchWanted } from '../sources/wanted.js';
 import { collectSaramin, fetchSaramin } from '../sources/saramin.js';
 import { collectJumpit, fetchJumpit } from '../sources/jumpit.js';
 import { DEV_FAMILIES } from '../sources/types.js';
-import { collectJasoseol, fetchJasoseol } from '../sources/jasoseol.js';
+import { fetchJasoseol } from '../sources/jasoseol.js';
 import { extractRequirements, REQUIREMENTS_PROMPT_VERSION, type Requirements } from '../prompts/requirements.js';
 import { extractCandidate, CANDIDATE_PROMPT_VERSION, type Candidate } from '../prompts/candidate.js';
 import { classify, RULES_VERSION, type PostingInput } from './classify.js';
@@ -18,14 +18,14 @@ import { seoulParts } from '../schedule.js';
 
 type Collected = { postings: CollectedPosting[]; failures: CollectFailure[] };
 export type PipelineDeps = {
-  collect: { saramin: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; wanted: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jumpit: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jobkorea: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jasoseol: (f: JobFamily[], cap: number) => Promise<Collected> };
+  collect: { saramin: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; wanted: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jumpit: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jobkorea: (f: JobFamily, n: number, p: Profile) => Promise<Collected> };
   fetchOne: Record<SourceId, (id: string) => Promise<CollectedPosting | CollectFailure>>;
   extract: (posting: { title: string; company: string; body: string }) => Promise<Requirements>;
   candidate: (text: string) => Promise<Candidate>;
 };
 export const defaultDeps: PipelineDeps = {
-  // 자동 수집 출처(기획서 0.2.4): 사람인·잡코리아·원티드·자소설닷컴·점핏. 점핏은 개발 직무만.
-  collect: { saramin: collectSaramin, jobkorea: collectJobkorea, wanted: collectWanted, jumpit: collectJumpit, jasoseol: collectJasoseol },
+  // 자동 수집 출처: 사람인·잡코리아·원티드·점핏(점핏은 개발 직무만). 자소설닷컴은 수집 중지(STOPPED_SOURCES).
+  collect: { saramin: collectSaramin, jobkorea: collectJobkorea, wanted: collectWanted, jumpit: collectJumpit },
   fetchOne: { saramin: fetchSaramin, jobkorea: fetchJobkorea, wanted: fetchWanted, jumpit: fetchJumpit, jasoseol: fetchJasoseol },
   extract: extractRequirements,
   candidate: extractCandidate,
@@ -33,8 +33,9 @@ export const defaultDeps: PipelineDeps = {
 
 // 실행당 요청·판정 상한(출처 부담·요금 제한).
 const PER_FAMILY = 5;
-// 자소설닷컴은 직무별 목록에서 직무당 이 수만큼 상세를 읽는다.
-const JASOSEOL_PER_FAMILY = 5;
+// 수집을 멈춘 출처(사용자 결정 2026-11-25): 자소설닷컴은 2026-11-23부터 Cloudflare가 자동 요청을 403으로 막는다.
+// 차단을 우회하지 않고 목록 수집·링크 판정·마감 재확인 요청을 보내지 않는다. 해석 코드(sources/jasoseol.ts)는 다시 열 때를 위해 둔다.
+const STOPPED_SOURCES: readonly SourceId[] = ['jasoseol'];
 // 노출 공고 마감 재확인: 매일 0시(KST) 이 시간보다 오래 확인 안 한 노출 공고를 모두 다시 읽는다(요청당 2.5초, 21시 갱신에서 받은 공고는 건너뜀).
 const RECHECK_AFTER_MS = 3 * 60 * 60_000;
 const RECHECK_HOUR = 0;
@@ -61,7 +62,6 @@ export function parsePostingLink(raw: string): { source: SourceId; id: string } 
   if (host === 'www.saramin.co.kr' || host === 'm.saramin.co.kr') { const id = url.searchParams.get('rec_idx'); return id && /^\d+$/.test(id) && url.pathname.startsWith('/zf_user/jobs/') ? { source: 'saramin', id } : undefined; }
   if (host === 'www.jobkorea.co.kr' || host === 'm.jobkorea.co.kr') { const id = match(/^\/Recruit\/GI_Read\/(\d+)/i); return id ? { source: 'jobkorea', id } : undefined; }
   if (host === 'www.wanted.co.kr' || host === 'wanted.co.kr') { const id = match(/^\/wd\/(\d+)/); return id ? { source: 'wanted', id } : undefined; }
-  if (host === 'jasoseol.com' || host === 'www.jasoseol.com') { const id = match(/^\/recruit\/(\d+)/); return id ? { source: 'jasoseol', id } : undefined; }
   return undefined;
 }
 
@@ -178,7 +178,7 @@ export async function recheckVisible(db: DatabaseSync, now = Date.now(), fetchOn
     const stale = (db.prepare(`SELECT p.id, p.source, p.source_id, p.deadline, p.always_hire FROM postings p JOIN recommendations r ON r.posting_id = p.id AND r.user_id = p.owner_user_id
         WHERE p.owner_user_id = ? AND p.checked_at < ? AND p.closed_at IS NULL AND r.hidden = 0 AND r.classification != '제외' ORDER BY p.checked_at`)
       .all(userId, before) as { id: string; source: SourceId; source_id: string; deadline: string | null; always_hire: number }[])
-      .filter(p => p.always_hire === 1 || !p.deadline || !(Date.parse(p.deadline) < now));
+      .filter(p => !STOPPED_SOURCES.includes(p.source)).filter(p => p.always_hire === 1 || !p.deadline || !(Date.parse(p.deadline) < now));
     for (const p of stale) if (await recheckPosting(db, userId, p, fetchOne)) rechecked++;
   }
   return rechecked;
@@ -253,7 +253,6 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
       runs.push(['wanted', () => deps.collect.wanted(family, PER_FAMILY, basis.profile)]);
       if (DEV_FAMILIES.includes(family)) runs.push(['jumpit', () => deps.collect.jumpit(family, PER_FAMILY, basis.profile)]);
     }
-    runs.push(['jasoseol', () => deps.collect.jasoseol(families, JASOSEOL_PER_FAMILY)]);
     // 출처끼리는 순서대로 요청한다(같은 출처에 동시 요청을 만들지 않는다).
     // 진행: 끝낸 출처·직무 묶음 수와 지금까지 걸린 시간으로 남은 시간을 어림한다(공고 수·AI 속도가 묶음마다 달라 대략값).
     const started = Date.now();
