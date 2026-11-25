@@ -1,9 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { politeGet, nextData } from '../dist/sources/http.js';
+import { politeGet } from '../dist/sources/http.js';
 import * as wanted from '../dist/sources/wanted.js';
-import * as jasoseol from '../dist/sources/jasoseol.js';
 
 const page = data => `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: data } })}</script></html>`;
 
@@ -39,23 +38,6 @@ test('원티드 상세에서 마감·상시·경력·원격·외부 지원 URL�
   assert.equal(always.careers[0].type, 'ANY');
   assert.deepEqual(wanted.parseDetail('2', page({ initialData: base })), { code: 'parse_failed' });
   assert.deepEqual(wanted.listIds('{"data":[{"id":5},{"id":"x"}]}'), ['5']);
-});
-
-test('자소설닷컴 상세의 모집 분야·이미지 본문을 구분한다', () => {
-  const detail = { id: 7, name: '가상회사', title: '2026 하반기 채용', start_time: '2026-11-01', end_time: '2026-11-15', employment_page_url: 'https://careers.example.com', content: '<img src="a.png">', company_group: { business_size: 'middle_market' }, employments: [{ field: 'iOS 앱 개발', division: 2 }, { field: 'UX/UI 디자이너', division: 1 }] };
-  const parsed = jasoseol.parseDetail('7', page({ initialEmploymentCompany: detail }));
-  assert.deepEqual(parsed.fields.map(f => f.name), ['iOS 앱 개발', 'UX/UI 디자이너']);
-  assert.deepEqual(parsed.body, { code: 'body_image_only' });
-  assert.equal(parsed.companyType, '중견기업');
-  assert.equal(parsed.deadline, '2026-11-15T23:59:59+09:00');
-  assert.deepEqual(jasoseol.parseDetail('7', '<html></html>'), { code: 'parse_failed' });
-  assert.equal(nextData('<html></html>'), undefined);
-});
-
-test('자소설닷컴 직무별 목록에서 공고 ID를 읽는다', () => {
-  assert.deepEqual(jasoseol.dutyListIds('[{"id":107053,"name":"x"},{"id":"bad"},{}]'), ['107053']);
-  assert.deepEqual(jasoseol.dutyListIds('{"error":"x"}'), []);
-  assert.deepEqual(jasoseol.DUTY_GROUPS['앱 개발'], [161, 172, 173]);
 });
 
 test('사용자 선호 필터: 출처 요청 조건과 수집 후 지역·경력·고용 형태 거르기', async () => {

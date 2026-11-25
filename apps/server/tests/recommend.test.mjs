@@ -21,10 +21,8 @@ function fakeDeps(calls) {
       wanted: async () => ({ postings: [], failures: [] }),
       // 점핏 공고 ID는 사람인 공고 번호와 같아 사람인으로 이미 받은 공고는 다시 저장하지 않는다.
       jumpit: async family => { calls.push(`jumpit:${family}`); return { postings: [posting('jumpit', '2', '점핏 중복 공고')], failures: [] }; },
-      // 자소설닷컴은 수집을 멈췄다(사이트 차단). 불리면 순서 검사에 드러난다.
-      jasoseol: async () => { calls.push('jasoseol'); return { postings: [], failures: [] }; },
     },
-    fetchOne: { saramin: async id => posting('saramin', id, '링크'), jobkorea: async () => ({ source: 'jobkorea', code: 'not_found' }), wanted: async id => posting('wanted', id, '링크 공고'), jasoseol: async id => posting('jasoseol', id, '링크') },
+    fetchOne: { saramin: async id => posting('saramin', id, '링크'), jobkorea: async () => ({ source: 'jobkorea', code: 'not_found' }), wanted: async id => posting('wanted', id, '링크 공고')},
     extract: async p => { calls.push(`extract:${p.title}`); return { jobFamilies: ['프론트엔드'], required: [{ text: 'React 실무 3년', type: 'skill', keys: ['React'], years: 3, practical: true }], preferred: [], remote: '없음', portfolioRequired: false, employmentTypes: ['정규직'] }; },
     // 지원자 사실 추출은 갱신 작업당 한 번이며, 공고 원문이 아니라 서류만 받는다.
     candidate: async text => { calls.push('candidate'); assert.equal(text.includes('필수: React'), false); return { careers: [{ family: '프론트엔드', months: 36, stack: ['React'] }], skills: ['React'], experiences: [], roles: [], education: '대졸' }; },
@@ -64,7 +62,7 @@ test('갱신 작업: 세 출처를 수집하고 원문 없이 조건·판정을 
       assert.equal(await runNext(db, createHandler(db, fakeDeps(calls))), false);
     } finally { db.close(); }
     assert.equal(seen[0].done, 1);
-    assert.equal(seen[0].total, 4, '직무 1개 × 출처 4곳(자소설닷컴 수집 중지)');
+    assert.equal(seen[0].total, 4, '직무 1개 × 출처 4곳');
     assert.equal(typeof seen[0].etaSeconds, 'number');
     // 출처는 순서대로 수집하고, 판정 순서는 확인 시각이 같으면 정해지지 않는다.
     assert.deepEqual(calls, ['saramin:프론트엔드', 'extract:프론트엔드', 'jobkorea:프론트엔드', 'extract:프론트엔드 개발자', 'jumpit:프론트엔드', 'candidate']);
@@ -96,9 +94,7 @@ test('갱신 작업: 세 출처를 수집하고 원문 없이 조건·판정을 
     assert.ok(saramin.collected > 0);
     assert.equal(Object.values(saramin.failures).reduce((a, b) => a + b, 0), 1);
     assert.equal(conn.sources.find(x => x.source === 'jobkorea').status, '정상');
-    // 수집을 멈춘 자소설닷컴은 마지막 결과와 관계없이 중지로 보인다.
-    assert.equal(conn.sources.find(x => x.source === 'jasoseol').status, '중지');
-    assert.deepEqual((await s.app.inject({ url: '/settings/connections', headers: { cookie: other } })).json().sources.map(x => x.status), ['확인 전', '확인 전', '중지', '확인 전', '확인 전']);
+    assert.deepEqual((await s.app.inject({ url: '/settings/connections', headers: { cookie: other } })).json().sources.map(x => x.status), ['확인 전', '확인 전', '확인 전', '확인 전']);
     assert.equal((await s.app.inject({ url: '/settings/connections' })).statusCode, 401);
     // 모든 출처가 막혀 갱신이 실패(collect_failed)해도 출처별 실패로 보인다(확인 전이 아니다).
     const blockedDb = new DatabaseSync(s.path);
@@ -207,7 +203,7 @@ test('공고 링크 해석은 지원 출처 상세만 받는다', () => {
   assert.deepEqual(parsePostingLink('https://jumpit.saramin.co.kr/position/55566561?x=1'), { source: 'jumpit', id: '55566561' });
   assert.deepEqual(parsePostingLink('https://www.jobkorea.co.kr/Recruit/GI_Read/50050518?Oem_Code=C1'), { source: 'jobkorea', id: '50050518' });
   assert.deepEqual(parsePostingLink('https://www.wanted.co.kr/wd/397013'), { source: 'wanted', id: '397013' });
-  // 자소설닷컴은 사이트 차단으로 수집을 멈춰 링크도 받지 않는다(2026-11-25).
+  // 자소설닷컴은 출처에서 뺐다(2026-11-25, 사이트 차단).
   assert.equal(parsePostingLink('https://jasoseol.com/recruit/107128'), undefined);
   for (const bad of ['http://www.wanted.co.kr/wd/1', 'https://evil.example/wd/1', 'https://www.wanted.co.kr.evil.example/wd/1', 'https://jasoseol.com/career/1', 'https://www.saramin.co.kr/zf_user/company-info/view?rec_idx=1', 'https://www.saramin.co.kr/zf_user/jobs/view?rec_idx=1x', 'not a url']) assert.equal(parsePostingLink(bad), undefined);
 });

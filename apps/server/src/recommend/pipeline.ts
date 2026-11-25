@@ -8,7 +8,6 @@ import { collectWanted, fetchWanted } from '../sources/wanted.js';
 import { collectSaramin, fetchSaramin } from '../sources/saramin.js';
 import { collectJumpit, fetchJumpit } from '../sources/jumpit.js';
 import { DEV_FAMILIES } from '../sources/types.js';
-import { fetchJasoseol } from '../sources/jasoseol.js';
 import { extractRequirements, REQUIREMENTS_PROMPT_VERSION, type Requirements } from '../prompts/requirements.js';
 import { extractCandidate, CANDIDATE_PROMPT_VERSION, type Candidate } from '../prompts/candidate.js';
 import { classify, RULES_VERSION, type PostingInput } from './classify.js';
@@ -24,22 +23,19 @@ export type PipelineDeps = {
   candidate: (text: string) => Promise<Candidate>;
 };
 export const defaultDeps: PipelineDeps = {
-  // 자동 수집 출처: 사람인·잡코리아·원티드·점핏(점핏은 개발 직무만). 자소설닷컴은 수집 중지(STOPPED_SOURCES).
+  // 자동 수집 출처: 사람인·잡코리아·원티드·점핏(점핏은 개발 직무만). 자소설닷컴은 사이트 차단으로 제거(2026-11-25).
   collect: { saramin: collectSaramin, jobkorea: collectJobkorea, wanted: collectWanted, jumpit: collectJumpit },
-  fetchOne: { saramin: fetchSaramin, jobkorea: fetchJobkorea, wanted: fetchWanted, jumpit: fetchJumpit, jasoseol: fetchJasoseol },
+  fetchOne: { saramin: fetchSaramin, jobkorea: fetchJobkorea, wanted: fetchWanted, jumpit: fetchJumpit },
   extract: extractRequirements,
   candidate: extractCandidate,
 };
 
 // 실행당 요청·판정 상한(출처 부담·요금 제한).
 const PER_FAMILY = 5;
-// 수집을 멈춘 출처(사용자 결정 2026-11-25): 자소설닷컴은 2026-11-23부터 Cloudflare가 자동 요청을 403으로 막는다.
-// 차단을 우회하지 않고 목록 수집·링크 판정·마감 재확인 요청을 보내지 않는다. 해석 코드(sources/jasoseol.ts)는 다시 열 때를 위해 둔다.
-export const STOPPED_SOURCES: readonly SourceId[] = ['jasoseol'];
 // 노출 공고 마감 재확인: 매일 0시(KST) 이 시간보다 오래 확인 안 한 노출 공고를 모두 다시 읽는다(요청당 2.5초, 21시 갱신에서 받은 공고는 건너뜀).
 const RECHECK_AFTER_MS = 3 * 60 * 60_000;
 const RECHECK_HOUR = 0;
-// 채용이 아닌 교육·부트캠프 모집은 공고로 받지 않는다(자소설닷컴 직무별 목록에 섞여 나온다).
+// 채용이 아닌 교육·부트캠프 모집은 공고로 받지 않는다(직무별 목록에 섞여 나온다).
 const NOT_HIRING = /교육생|수강생|훈련생|부트캠프|클래스메이트|국비\s*(?:지원|교육)|\d+기\s*모집/;
 export const isNotHiring = (title: string) => NOT_HIRING.test(title);
 // 실패 원인 코드만 센다(요청 본문은 남기지 않는다).
@@ -178,7 +174,7 @@ export async function recheckVisible(db: DatabaseSync, now = Date.now(), fetchOn
     const stale = (db.prepare(`SELECT p.id, p.source, p.source_id, p.deadline, p.always_hire FROM postings p JOIN recommendations r ON r.posting_id = p.id AND r.user_id = p.owner_user_id
         WHERE p.owner_user_id = ? AND p.checked_at < ? AND p.closed_at IS NULL AND r.hidden = 0 AND r.classification != '제외' ORDER BY p.checked_at`)
       .all(userId, before) as { id: string; source: SourceId; source_id: string; deadline: string | null; always_hire: number }[])
-      .filter(p => !STOPPED_SOURCES.includes(p.source)).filter(p => p.always_hire === 1 || !p.deadline || !(Date.parse(p.deadline) < now));
+      .filter(p => p.always_hire === 1 || !p.deadline || !(Date.parse(p.deadline) < now));
     for (const p of stale) if (await recheckPosting(db, userId, p, fetchOne)) rechecked++;
   }
   return rechecked;

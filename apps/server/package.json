@@ -14,7 +14,6 @@
     "verify:saramin": "tsx src/verify/saramin.ts",
     "verify:jumpit": "tsx src/verify/jumpit.ts",
     "verify:wanted": "tsx src/verify/wanted.ts",
-    "verify:jasoseol": "tsx src/verify/jasoseol.ts",
     "invite": "tsx src/invite.ts",
     "eval:recommend": "tsx --env-file-if-exists=.env.local src/verify/eval-recommend.ts",
     "verify:mail-accuracy": "tsx src/verify/mail-accuracy.ts",

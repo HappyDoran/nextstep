@@ -45,7 +45,7 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     if (!user) return reply;
     const body = linkRequestSchema.safeParse(request.body);
     const link = body.success ? parsePostingLink(body.data.url) : undefined;
-    if (!body.success || !link) return reply.status(400).send({ message: '사람인·잡코리아·원티드·점핏 공고 상세 링크를 넣으세요(자소설닷컴은 사이트 차단으로 중지).' });
+    if (!body.success || !link) return reply.status(400).send({ message: '사람인·잡코리아·원티드·점핏 공고 상세 링크를 넣으세요.' });
     // 링크 작업은 사용자당 하나씩 처리한다. 다른 링크를 처리하는 중이면 조용히 버리지 않고 알린다.
     const job = enqueue(db, user.id, 'link', { url: body.data.url });
     const queued = db.prepare('SELECT payload FROM jobs WHERE id = ? AND user_id = ?').get(job.id, user.id) as { payload: string | null } | undefined;

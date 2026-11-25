@@ -100,7 +100,7 @@ export const useDraftNotice = (me: Me) => useQuery({ queryKey: noticeKey(me), qu
 
 /** 처리 중인 작업 상태. */
 export const ACTIVE_JOB: string[] = ['대기', '실행중'];
-export const SOURCE_NAMES = { saramin: '사람인', jobkorea: '잡코리아', jasoseol: '자소설닷컴', wanted: '원티드', jumpit: '점핏' } as const;
+export const SOURCE_NAMES = { saramin: '사람인', jobkorea: '잡코리아', wanted: '원티드', jumpit: '점핏' } as const;
 /** 목록·창의 버튼 아이콘 크기. */
 export const buttonIcon = 'size-icon-base shrink-0 stroke-emphasis';
 export const monthDay = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}`; };
