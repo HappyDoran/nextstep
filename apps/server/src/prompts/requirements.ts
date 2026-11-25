@@ -4,20 +4,22 @@ import { dataBlock, MAX_INPUT_CHARS, structured } from '../ai/llm.js';
 // 공고 본문에서 구조화 사실만 뽑는다. 원문은 저장하지 않고 이 결과만 저장한다.
 // 분류는 하지 않는다. 기본·도전·미확인·제외는 recommend/classify.ts 규칙이 정한다(기술 설계 D절).
 export const POSTING_FAMILIES = ['프론트엔드', '앱 개발', '디자인', '기획', '백엔드', 'QA', '기타'] as const;
+// 배열 개수 상한(maxItems)은 구조화 출력 문법이 강제한다. 작은 모델이 같은 키를 끝없이 반복해 출력 한도에서 JSON이 잘리던 문제를 막는다
+// (2026-11-25 원티드 iOS 공고: keys에 'iOS SDK 개발자' 반복, 두 번 모두 1,536토큰에서 잘림).
 export const requirementSchema = z.object({
   text: z.string(),
   type: z.enum(['career', 'skill', 'experience', 'portfolio', 'role', 'education', 'other']),
-  keys: z.array(z.string()),
+  keys: z.array(z.string()).max(6),
   years: z.number().nullable(),
   practical: z.boolean(),
 }).strict();
 export const requirementsSchema = z.object({
-  jobFamilies: z.array(z.enum(POSTING_FAMILIES)),
-  required: z.array(requirementSchema),
-  preferred: z.array(z.object({ text: z.string(), keys: z.array(z.string()) }).strict()),
+  jobFamilies: z.array(z.enum(POSTING_FAMILIES)).max(3),
+  required: z.array(requirementSchema).max(15),
+  preferred: z.array(z.object({ text: z.string(), keys: z.array(z.string()).max(6) }).strict()).max(15),
   remote: z.enum(['전면', '부분', '없음', '미기재']),
   portfolioRequired: z.boolean(),
-  employmentTypes: z.array(z.enum(['정규직', '계약직', '인턴', '프리랜서', '미기재'])),
+  employmentTypes: z.array(z.enum(['정규직', '계약직', '인턴', '프리랜서', '미기재'])).max(5),
 }).strict();
 export type Requirement = z.infer<typeof requirementSchema>;
 export type Requirements = z.infer<typeof requirementsSchema>;

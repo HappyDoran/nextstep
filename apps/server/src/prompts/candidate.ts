@@ -8,10 +8,10 @@ import { dataBlock, MAX_INPUT_CHARS, structured } from '../ai/llm.js';
 // 그래서 직무는 열거형(대상 직무 6개 + 기타)으로 묶고, 모델은 시작·종료 연월만 옮겨 적게 한 뒤 개월은 코드가 센다.
 export const careerFamilySchema = z.enum([...jobFamilySchema.options, '기타']);
 export const candidateSchema = z.object({
-  careers: z.array(z.object({ company: z.string(), family: careerFamilySchema, start: z.string(), end: z.string(), stack: z.array(z.string()) }).strict()),
-  skills: z.array(z.string()),
-  experiences: z.array(z.string()),
-  roles: z.array(z.string()),
+  careers: z.array(z.object({ company: z.string(), family: careerFamilySchema, start: z.string(), end: z.string(), stack: z.array(z.string()).max(15) }).strict()).max(15),
+  skills: z.array(z.string()).max(40),
+  experiences: z.array(z.string()).max(20),
+  roles: z.array(z.string()).max(10),
   education: z.enum(['고졸', '초대졸', '대졸', '석사', '박사', '미기재']),
 }).strict();
 // 판정·프로필이 쓰는 모양: 직무별 실무 개월(코드가 계산). text: 서류 원문(규칙이 추출 누락을 원문 대조로 보완할 때만 쓴다. 모델 출력이 아님).
