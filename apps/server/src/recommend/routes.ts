@@ -2,7 +2,9 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
 import { linkRequestSchema, profileDraftSchema, profileSchema, recommendationFeedbackSchema, recommendationListSchema, recommendationSchema, latestRefreshSchema } from '@nextstep/contracts';
 import { requireUser } from '../auth.js';
-import { suggestProfile } from '../prompts/profile.js';
+import { profileFromCandidate } from '../prompts/profile.js';
+import { extractCandidate } from '../prompts/candidate.js';
+import { candidateFor } from '../ai/remote.js';
 import { enqueue, getJob, latestJob, runNext, type ClaimedJob, type JobOutcome } from './jobs.js';
 import { documentsText, parsePostingLink, rowFacts } from './pipeline.js';
 import { passesFilter } from '../sources/filter.js';
@@ -29,7 +31,8 @@ export function createSuggestHandler(db: DatabaseSync) {
   return async (job: ClaimedJob): Promise<JobOutcome> => {
     const docs = documentsText(db, job.userId);
     if (!docs) return { status: '실패', errorCode: 'no_resume', result: {} };
-    return { status: '성공', result: { profile: await suggestProfile(docs.text) } };
+    // 추천과 같은 저장된 지원자 사실(내 AI 결과 우선)을 쓴다. 없으면 로컬로 뽑아 저장한다.
+    return { status: '성공', result: { profile: profileFromCandidate((await candidateFor(db, job.userId, docs.text, extractCandidate)).facts) } };
   };
 }
 

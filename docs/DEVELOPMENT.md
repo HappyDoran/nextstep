@@ -10,7 +10,7 @@ last_verified: 2026-11-25
 
 ## 현재 구현 범위
 
-기획 범위와의 차이(2026-11-14 개정 기준): AI는 서버의 로컬 LLM(Ollama qwen3:1.7b) 하나로 공고·서류·메일 정보 추출만 하고 추천 분류는 서버 규칙이 한다(사용자별 OpenAI 키 기능은 2026-11-15 제거). 자동 수집 다섯 곳·직무 여섯 개는 구현했으나 백엔드·QA·점핏은 실제 추천 흐름 검증 전이고, 메일은 네이버(가입 시점부터 조회·매시간 조회·과거 범위 넓히기 구현, 정기 누락 확인은 보류)이고, 추천 고급 필터·좋아요/별로·제외 복구, 지원 건 잠금, 확인 요청 보류·회사별 묶음·연결 제안, 지원 현황 CSV 가져오기를 구현했으며 서버는 아직 운영자 컴퓨터의 로컬 서버다. 데스크톱 상주 앱(Electron)은 macOS 개발 실행과 설치용 앱(`NextStep.app`) 실행을 확인했고, Windows용 압축 파일은 만들었으나 Windows 실행은 아직 확인하지 않았다. 단계별 상태는 [백로그](spec/백로그.md)가 소유한다.
+기획 범위와의 차이(2026-11-14 개정 기준): AI는 각 사용자가 연결한 내 AI(데스크톱 앱이 그 기기의 Codex 계정으로 실행, 2026-11-26)를 먼저 쓰고 없거나 늦으면 서버의 로컬 LLM(Ollama qwen3:1.7b)이 공고·서류·메일 정보 추출을 하며, 추천 분류는 서버 규칙이 한다(메일은 아직 로컬만). 자동 수집 네 곳·직무 여섯 개는 구현했으나 백엔드·QA·점핏은 실제 추천 흐름 검증 전이고, 메일은 네이버(가입 시점부터 조회·매시간 조회·과거 범위 넓히기 구현, 정기 누락 확인은 보류)이고, 추천 고급 필터·좋아요/별로·제외 복구, 지원 건 잠금, 확인 요청 보류·회사별 묶음·연결 제안, 지원 현황 CSV 가져오기를 구현했으며 서버는 아직 운영자 컴퓨터의 로컬 서버다. 데스크톱 상주 앱(Electron)은 macOS 개발 실행과 설치용 앱(`NextStep.app`) 실행을 확인했고, Windows용 압축 파일은 만들었으나 Windows 실행은 아직 확인하지 않았다. 단계별 상태는 [백로그](spec/백로그.md)가 소유한다.
 
 pnpm/Turborepo 모노레포, 웹 개발 화면, API·SQLite 준비 확인, DB 버전 관리, 공통 계약·UI·토큰과 Storybook을 구성했다. 디자인 기초는 원시 값·의미 색상·타입·간격·radius·그림자·모션 시간·이징·Lucide React 아이콘을 제공하며 선택한 브랜드와 Light/Dark를 카탈로그에서 비교할 수 있다. 구글 로그인(미등록 계정은 운영자 Discord로 초대 코드 요청 후 코드 입력, 이메일·비밀번호 로그인 없음)·로그아웃·계정 삭제·개인정보처리방침(`/privacy`), 지원 현황(직접 등록·검색·상태 필터·상세·상태/열람 수정과 변경 이력·삭제), 설정(계정·자동 갱신 ON/OFF 저장·연결 확인)이 웹에서 동작한다. 공고 열기는 기본 브라우저로 이동만 하고 지원 상태를 바꾸지 않는다. 서버에는 P1-01 기술 검증용 텍스트 PDF/MD 이력서 추출 모듈과 잡코리아 공고·네이버 IMAP 읽기 전용 검증 명령이 있으며 API에 연결하지 않았다. 서버 하나를 운영자와 초대 사용자가 쓰며, 공고는 갱신한 사용자 자료로만 저장한다.
 
@@ -37,7 +37,7 @@ sh scripts/home-deploy.sh   # 받기·설치·서버/웹 빌드·서비스 재�
 
 홈서버를 쓸 수 없을 때만 Mac에서 launchd로 띄운다(`pnpm build` 후 `sh scripts/mac-service.sh install`, `restart`·`uninstall`, 로그 `~/Library/Logs/nextstep/`). 홈서버와 동시에 켜면 예약 처리가 두 곳에서 돌므로 함께 쓰지 않는다.
 
-로컬 AI(Ollama)를 쓰려면 `brew install ollama && brew services start ollama && ollama pull qwen3:1.7b`(Ubuntu는 Ollama 설치 스크립트). 모든 AI 처리는 이 로컬 모델로만 하며 외부 AI를 호출하지 않는다(사용자 키 없음).
+로컬 AI(Ollama, 폴백)를 쓰려면 `brew install ollama && brew services start ollama && ollama pull qwen3:1.7b`(Ubuntu는 Ollama 설치 스크립트). 서버는 외부 AI를 호출하지 않는다. 내 AI 연결을 쓰려면 사용자 기기에서 `npm install -g @openai/codex && codex login`을 한 번 하고 데스크톱 앱을 켜 둔다(설정 → 내 AI 연결에서 상태 확인). 실행기는 앱이 1분마다 서버를 볼 때 분석할 일을 받아 처리한다.
 
 서류의 이미지 쪽 글자 인식(OCR)은 시스템 도구를 쓴다. 없으면 OCR 없이 글자 없는 쪽만 경고한다. macOS: `brew install poppler tesseract tesseract-lang`, Ubuntu: `sudo apt install poppler-utils tesseract-ocr tesseract-ocr-kor`.
 

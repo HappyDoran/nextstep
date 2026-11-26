@@ -3,7 +3,8 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 
-// 홈서버 로컬 LLM(Ollama) 호출. 모든 AI 처리를 이 모델 하나로 하고 외부 AI로 보내지 않는다(기획서 3절, P1-10).
+// 홈서버 로컬 LLM(Ollama) 호출. 각 사용자가 연결한 내 AI(Codex 등, ai/remote.ts)가 없거나 늦을 때의 폴백이다(기획서 3절).
+// 서버는 사용자 자료를 외부 AI로 직접 보내지 않는다. 내 AI 분석은 사용자 기기의 실행기가 그 사람 계정으로 한다.
 // SDK 없이 fetch로 JSON Schema 구조화 출력을 받고 zod로 다시 검증한다. 요청 본문(이력서·공고·메일)은 로그에 남기지 않는다.
 export type AiFailure = 'ai_model_unavailable' | 'ai_http' | 'ai_invalid_output' | 'ai_network' | 'ai_timeout';
 export class AiError extends Error {
@@ -103,9 +104,22 @@ async function requestOllama<T extends z.ZodType>(schema: T, instructions: strin
   throw new AiError('ai_invalid_output');
 }
 
-function jsonSchema(schema: z.ZodType) {
+export function jsonSchema(schema: z.ZodType) {
   const out = z.toJSONSchema(schema, { target: 'draft-7' }) as Record<string, unknown>;
   delete out.$schema;
+  return out;
+}
+
+/** OpenAI 구조화 출력(codex exec --output-schema)이 요구하는 엄격한 형태: 객체마다 모든 속성 required, 추가 속성 금지(2026-11-26 실측). */
+export function strictJsonSchema(schema: z.ZodType) {
+  const fix = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    const o = node as Record<string, unknown>;
+    if (o.type === 'object' && o.properties) { o.required = Object.keys(o.properties as object); o.additionalProperties = false; }
+    for (const v of Object.values(o)) fix(v);
+  };
+  const out = jsonSchema(schema);
+  fix(out);
   return out;
 }
 

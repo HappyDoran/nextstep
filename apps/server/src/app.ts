@@ -8,7 +8,9 @@ import { registerProfile } from './profile.js';
 import { registerDocuments, removeUserFiles } from './documents/routes.js';
 import { dirname, join } from 'node:path';
 import { createSuggestHandler, registerRecommendations } from './recommend/routes.js';
-import { createHandler, startRecheck } from './recommend/pipeline.js';
+import { createHandler, documentsText, rejudge, startRecheck } from './recommend/pipeline.js';
+import { registerAi, startAiSweeper } from './ai/remote.js';
+import { extractCandidate } from './prompts/candidate.js';
 import { startWorker, type ClaimedJob } from './recommend/jobs.js';
 import { startScheduler } from './schedule.js';
 import { loadSecretKey } from './secrets.js';
@@ -35,6 +37,8 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
   // 연결 비밀정보 키는 DB와 다른 파일(또는 환경 변수)에 둔다.
   const secretKey = loadSecretKey(join(dirname(databasePath), 'secret.key'));
   registerRecommendations(app, db);
+  // 내 AI 연결: 사용자 기기 실행기가 자기 Codex로 분석할 일을 받고 결과를 올린다. 결과가 들어오면 그 사용자 판정을 다시 한다.
+  registerAi(app, db, { documents: userId => documentsText(db, userId)?.text, onApplied: userId => { void rejudge(db, userId).catch(() => 0); } });
   // AI는 서버의 로컬 LLM 하나로 처리한다. 설정 화면에는 모델 이름만 보여 준다.
   const mailSource = options.mailSource ?? naverSource;
   const mailBodies = options.mailBodies ?? naverBodies;
@@ -49,7 +53,8 @@ export function createApp(databasePath: string, options: { secureCookie?: boolea
     // 예약 실행은 작업자와 같은 서버 프로세스에서 돈다. 브라우저를 닫아도 계속된다.
     const stopSchedule = startScheduler(db, options.scheduleHour ?? 21);
     const stopRecheck = startRecheck(db);
-    app.addHook('onClose', async () => { stop(); stopSchedule(); stopRecheck(); });
+    const stopSweeper = startAiSweeper(db, extractCandidate);
+    app.addHook('onClose', async () => { stop(); stopSchedule(); stopRecheck(); stopSweeper(); });
   }
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     // 4xx는 Fastify가 판정한 클라이언트 오류이므로 상태를 유지한다. 내부 메시지는 노출하지 않는다.

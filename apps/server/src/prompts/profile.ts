@@ -1,5 +1,5 @@
 import { jobFamilySchema, profileSchema, type JobFamily, type Profile } from '@nextstep/contracts';
-import { extractCandidate, type Candidate } from './candidate.js';
+import type { Candidate } from './candidate.js';
 
 // 프로필 초안은 추천 판정이 쓰는 지원자 추출(candidate)에서 만든다. 같은 서류면 갱신과 결과를 공유해 다시 부르지 않고(서버 메모리 캐시),
 // 직무별 실무 기간을 합쳐 경력 연수를 낸다. 화면은 지금 프로필에 더하기만 한다(빼지 않음).
@@ -23,7 +23,3 @@ export function profileFromCandidate(c: Pick<Candidate, 'careers' | 'skills'>): 
   });
 }
 
-/** 서류(이력서·경력기술서·포트폴리오를 합친 글)에서 프로필 초안을 만든다. 저장은 사용자가 확인·수정한 뒤에만 한다. */
-export async function suggestProfile(documentsText: string) {
-  return profileFromCandidate(await extractCandidate(documentsText));
-}

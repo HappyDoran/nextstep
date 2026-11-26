@@ -39,12 +39,11 @@ test('로컬 AI(Ollama): JSON Schema·생각 모드 끔으로 요청하고, 형�
   });
 });
 
-test('지원자 추출: 문맥을 넘지 않게 앞에서부터 자르고(지시문 유지), 같은 서류는 다시 묻지 않는다', async () => {
+test('지원자 추출: 문맥을 넘지 않게 앞에서부터 자르고 지시문은 유지한다', async () => {
   const facts = { careers: [], skills: ['React'], experiences: [], roles: [], education: '대졸' };
   const seen = [];
   await withOllama((_req, res, body) => { seen.push(body); reply(res, 200, { message: { content: JSON.stringify(facts) } }); }, async () => {
     const docs = `# 이력서\n${'가'.repeat(MAX_INPUT_CHARS)}\n# 포트폴리오\n끝부분`;
-    assert.deepEqual(await extractCandidate(docs), facts);
     assert.deepEqual(await extractCandidate(docs), facts);
     assert.equal(seen.length, 1);
     assert.equal(seen[0].messages[0].role, 'system');

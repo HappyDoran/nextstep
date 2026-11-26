@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 
 // 쓰기 트랜잭션(BEGIN IMMEDIATE)에서 fn을 동기로 실행한다. fn 안에서 await하지 않는다.
 // fn이 직접 ROLLBACK하고 돌아오면 COMMIT하지 않고, 예외면 되돌린 뒤 다시 던진다.
@@ -364,6 +364,37 @@ export function openDatabase(filename: string) {
       // 자소설닷컴 출처 제거(사용자 결정 2026-11-25, 사이트가 자동 요청 차단): 받아 둔 자소설닷컴 공고와 그 추천(외래키로 함께)을 지운다.
       // 지원 현황·메일 기록은 개인 자료라 남긴다.
       db.exec("DELETE FROM postings WHERE source = 'jasoseol'; PRAGMA user_version = 21;");
+    }
+    if (version < 22) {
+      // 내 AI 연결(사용자 결정 2026-11-26): 각 사용자의 기기 실행기가 자기 Codex·Claude 계정으로 분석할 일과 그 결과.
+      // ai_tasks.input에는 모델 입력(공고 본문·서류 글)이 들어가므로 끝나면 지우고 최대 3일만 둔다(retention.ts).
+      // fallback_at: 이 시각까지 아무도 끝내지 않으면 서버 로컬 모델로 처리. null이면 로컬 결과가 이미 있고 내 AI 결과로 바꿀 일(승격).
+      // candidate_facts: 서류 묶음(지시문 버전+본문 해시)별 지원자 사실. 서류가 바뀔 때만 다시 뽑는다.
+      db.exec(`CREATE TABLE IF NOT EXISTS ai_tasks (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL,
+          ref TEXT NOT NULL,
+          input TEXT NOT NULL,
+          status TEXT NOT NULL,
+          lease_until TEXT,
+          fallback_at TEXT,
+          created_at TEXT NOT NULL
+        ) STRICT;
+        CREATE UNIQUE INDEX IF NOT EXISTS ai_tasks_ref ON ai_tasks(user_id, kind, ref);
+        CREATE TABLE IF NOT EXISTS candidate_facts (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          docs_key TEXT NOT NULL,
+          facts TEXT NOT NULL,
+          provider TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, docs_key)
+        ) STRICT;`);
+      // 이전 버전을 다시 실행하는 경우(시험의 버전 되돌림)에도 열을 두 번 만들지 않는다.
+      for (const column of ['ai_settings', 'ai_runner', 'ai_runner_seen_at', 'ai_usage']) {
+        if (!db.prepare("SELECT 1 FROM pragma_table_info('users') WHERE name = ?").get(column)) db.exec(`ALTER TABLE users ADD COLUMN ${column} TEXT`);
+      }
+      db.exec('PRAGMA user_version = 22');
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

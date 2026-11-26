@@ -13,6 +13,7 @@ import { extractCandidate, CANDIDATE_PROMPT_VERSION, type Candidate } from '../p
 import { classify, RULES_VERSION, type PostingInput } from './classify.js';
 import { reportProgress, type ClaimedJob, type JobOutcome } from './jobs.js';
 import { passesFilter } from '../sources/filter.js';
+import { aiState, candidateFor, docsKey, isRemote, POSTING_WAIT_MS, postingTaskInput, queueDocuments, queueTask, saveRequirements, waitTasks, type AiState } from '../ai/remote.js';
 import { seoulParts } from '../schedule.js';
 
 type Collected = { postings: CollectedPosting[]; failures: CollectFailure[] };
@@ -21,6 +22,8 @@ export type PipelineDeps = {
   fetchOne: Record<SourceId, (id: string) => Promise<CollectedPosting | CollectFailure>>;
   extract: (posting: { title: string; company: string; body: string }) => Promise<Requirements>;
   candidate: (text: string) => Promise<Candidate>;
+  // 내 AI 결과를 기다리는 최대 시간(테스트는 짧게).
+  waitMs?: number;
 };
 export const defaultDeps: PipelineDeps = {
   // 자동 수집 출처: 사람인·잡코리아·원티드·점핏(점핏은 개발 직무만). 자소설닷컴은 사이트 차단으로 제거(2026-11-25).
@@ -83,17 +86,42 @@ function upsertPosting(db: DatabaseSync, p: CollectedPosting, acquiredBy: 'auto'
   return id;
 }
 
-// 원문은 조건 추출에만 쓰고 버린다. 추출 결과(구조화 사실)만 저장한다.
-async function storeRequirements(db: DatabaseSync, deps: PipelineDeps, userId: string, postingId: string, p: CollectedPosting, counts: Counts) {
+// 원문은 조건 추출에만 쓴다. 추출 결과(구조화 사실)만 저장하고, 내 AI 분석을 기다리는 동안만 원문을 일(ai_tasks)에 둔다.
+// 내 AI(실행기)를 지금 쓸 수 있으면 일로 올리고 ID를 돌려준다(갱신이 10분 기다린 뒤 남은 것만 로컬로).
+// 아니면 바로 로컬로 뽑고, 실행기를 쓰는 사용자면 나중에 내 AI로 다시 뽑을 일(승격)을 쌓는다.
+async function storeRequirements(db: DatabaseSync, deps: PipelineDeps, userId: string, postingId: string, p: CollectedPosting, counts: Counts, ai: AiState): Promise<string | undefined> {
   const row = db.prepare('SELECT requirements FROM postings WHERE id = ? AND owner_user_id = ?').get(postingId, userId) as { requirements: string | null } | undefined;
-  if (!row) return;
-  if (row.requirements && JSON.parse(row.requirements).version === REQUIREMENTS_PROMPT_VERSION) return;
-  if (!p.body) return;
-  try {
-    const req = await deps.extract({ title: p.title, company: p.company, body: p.body });
-    db.prepare('UPDATE postings SET requirements = ? WHERE id = ? AND owner_user_id = ?').run(JSON.stringify({ version: REQUIREMENTS_PROMPT_VERSION, ...req }), postingId, userId);
-  } catch (error) {
-    countFailure(counts, error);
+  if (!row || !p.body) return undefined;
+  const current = row.requirements ? JSON.parse(row.requirements) as { version?: string; provider?: string } : null;
+  const fresh = current?.version === REQUIREMENTS_PROMPT_VERSION;
+  const send = ai.registered && ai.settings.sendPostings;
+  if (fresh && (isRemote(current?.provider) || !send)) return undefined;
+  const input = postingTaskInput({ id: postingId, title: p.title, company: p.company, body: p.body });
+  if (ai.active && ai.settings.sendPostings) return queueTask(db, userId, 'posting', postingId, input, new Date(Date.now() + (deps.waitMs ?? POSTING_WAIT_MS)).toISOString());
+  if (!fresh) await extractLocal(db, deps, userId, postingId, { title: p.title, company: p.company, body: p.body }, counts);
+  if (send) queueTask(db, userId, 'posting', postingId, input, null);
+  return undefined;
+}
+
+async function extractLocal(db: DatabaseSync, deps: PipelineDeps, userId: string, postingId: string, p: { title: string; company: string; body: string }, counts: Counts) {
+  try { saveRequirements(db, userId, postingId, await deps.extract(p), 'local'); } catch (error) { countFailure(counts, error); }
+}
+
+/** 내 AI 일을 기다린 뒤, 끝나지 않은 공고는 로컬로 뽑고 그 일은 승격 일로 남긴다. */
+async function settleRemote(db: DatabaseSync, deps: PipelineDeps, userId: string, ids: string[], counts: Counts) {
+  if (!ids.length) return;
+  const rest = await waitTasks(db, userId, ids, deps.waitMs ?? POSTING_WAIT_MS);
+  for (const id of rest) {
+    const task = db.prepare("SELECT kind, ref, input FROM ai_tasks WHERE id = ? AND user_id = ?").get(id, userId) as { kind: string; ref: string; input: string } | undefined;
+    if (!task) continue;
+    if (task.kind === 'posting') {
+      const has = db.prepare('SELECT requirements FROM postings WHERE id = ? AND owner_user_id = ?').get(task.ref, userId) as { requirements: string | null } | undefined;
+      if (has && !(has.requirements && JSON.parse(has.requirements).version === REQUIREMENTS_PROMPT_VERSION)) {
+        const { title, company, body } = JSON.parse(task.input) as { title: string; company: string; body: string };
+        await extractLocal(db, deps, userId, task.ref, { title, company, body }, counts);
+      }
+    }
+    db.prepare('UPDATE ai_tasks SET fallback_at = NULL WHERE id = ? AND user_id = ?').run(id, userId);
   }
 }
 
@@ -113,8 +141,9 @@ function loadUserBasis(db: DatabaseSync, userId: string) {
   // 서류를 고치면(교체·MD 수정) 본문 해시가 바뀌어 다시 판정한다.
   const resume = { id: `${combined.ids.join('+')}:${createHash('sha256').update(text).digest('hex').slice(0, 16)}`, text };
   const profile = profileSchema.parse(JSON.parse(profileRow.data));
-  // 프로필·이력서·추출 지시·규칙이 바뀌면 다시 판정한다. 과거 판정을 새 기준으로 위장하지 않는다.
-  return { profile, resume, basis: `${profileRow.updated_at}|${resume.id}|${CANDIDATE_PROMPT_VERSION}|${REQUIREMENTS_PROMPT_VERSION}|${RULES_VERSION}` };
+  // 프로필·이력서·추출 지시·규칙과 저장된 지원자 사실(로컬 → 내 AI로 바뀌면)이 바뀌면 다시 판정한다. 과거 판정을 새 기준으로 위장하지 않는다.
+  const facts = db.prepare('SELECT provider, created_at FROM candidate_facts WHERE user_id = ? AND docs_key = ?').get(userId, docsKey(text)) as { provider: string; created_at: string } | undefined;
+  return { profile, resume, basis: `${profileRow.updated_at}|${resume.id}|${CANDIDATE_PROMPT_VERSION}|${REQUIREMENTS_PROMPT_VERSION}|${RULES_VERSION}|${facts ? `${facts.provider}@${facts.created_at}` : 'none'}` };
 }
 
 // 필터용 공고 사실(저장된 값만 쓴다).
@@ -137,10 +166,9 @@ function postingInput(row: PostingRow): PostingInput {
   };
 }
 
-// 지원자 사실은 갱신마다 서류에서 한 번 뽑는다. 사용자가 확인한 프로필 직무 경력이 있으면 그 기간을 쓴다.
-// ponytail: 갱신마다 1회 호출. 로컬 LLM이 느려 부담되면 서류 ID별로 저장해 재사용한다.
-async function candidateFacts(deps: PipelineDeps, basis: { profile: Profile; resume: { text: string } }): Promise<Candidate> {
-  const c = await deps.candidate(basis.resume.text);
+// 지원자 사실은 서류 묶음별로 저장한 것(내 AI 우선)을 쓰고 없을 때만 로컬로 뽑는다. 사용자가 확인한 프로필 직무 경력이 있으면 그 기간을 쓴다.
+async function candidateFacts(db: DatabaseSync, userId: string, deps: PipelineDeps, basis: { profile: Profile; resume: { text: string } }): Promise<Candidate> {
+  const { facts: c } = await candidateFor(db, userId, basis.resume.text, deps.candidate);
   const confirmed = basis.profile.experiences.map(e => ({ family: e.jobFamily, months: Math.round(e.years * 12) }));
   const careers = c.careers.map(r => ({ ...r, months: confirmed.find(e => e.family === r.family)?.months ?? r.months }));
   for (const e of confirmed) if (!careers.some(r => r.family === e.family)) careers.push({ ...e, stack: [] });
@@ -151,7 +179,16 @@ async function candidateFacts(deps: PipelineDeps, basis: { profile: Profile; res
 export async function recheckPosting(db: DatabaseSync, userId: string, p: { id: string; source: SourceId; source_id: string }, fetchOne = defaultDeps.fetchOne) {
   try {
     const fetched = await fetchOne[p.source](p.source_id);
-    if (!('code' in fetched)) { upsertPosting(db, fetched, 'auto', userId); return true; }
+    if (!('code' in fetched)) {
+      upsertPosting(db, fetched, 'auto', userId);
+      // 본문을 다시 읽은 김에, 로컬로 뽑은 조건은 내 AI로 다시 뽑을 일로 올린다(실행기를 쓰는 사용자만).
+      const ai = aiState(db, userId);
+      const row = db.prepare('SELECT requirements FROM postings WHERE id = ? AND owner_user_id = ?').get(p.id, userId) as { requirements: string | null } | undefined;
+      if (fetched.body && ai.registered && ai.settings.sendPostings && !isRemote(row?.requirements ? (JSON.parse(row.requirements) as { provider?: string }).provider : null)) {
+        queueTask(db, userId, 'posting', p.id, postingTaskInput({ id: p.id, title: fetched.title, company: fetched.company, body: fetched.body }), null);
+      }
+      return true;
+    }
     if (fetched.code !== 'not_found') return false;
     const at = new Date().toISOString();
     db.prepare('UPDATE postings SET closed_at = COALESCE(closed_at, ?), checked_at = ? WHERE id = ? AND owner_user_id = ?').run(at, at, p.id, userId);
@@ -208,7 +245,7 @@ async function judgeFor(db: DatabaseSync, deps: PipelineDeps, userId: string, ba
   const pending = rows.filter(row => (db.prepare('SELECT basis FROM recommendations WHERE user_id = ? AND posting_id = ?').get(userId, row.id) as { basis: string } | undefined)?.basis !== keyOf(row));
   if (!pending.length) return;
   let candidate: Candidate;
-  try { candidate = await candidateFacts(deps, basis); } catch (error) { countFailure(counts, error); return; }
+  try { candidate = await candidateFacts(db, userId, deps, basis); } catch (error) { countFailure(counts, error); return; }
   const seeker = { jobFamilies: basis.profile.jobFamilies, regions: basis.profile.regions, remoteOk: basis.profile.remoteOk };
   for (const row of pending) {
     const j = classify(at, seeker, candidate, postingInput(row));
@@ -229,6 +266,11 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     // 차단 기록은 실행 단위로 둔다. 다음 실행에서는 다시 한 번 시도한다.
     resetBlockedHosts();
     const counts = { collected: 0, judged: 0, notHiring: 0, filteredOut: 0, aiFailures: 0, aiFailureCodes: {} as Record<string, number>, sourceFailures: [] as CollectFailure[], sourceCollected: {} as Record<string, number> };
+    // 내 AI(실행기)를 지금 쓸 수 있으면 서류·새 공고를 일로 올리고 수집 뒤 최대 10분 기다린다. 남은 것은 로컬로 처리한다.
+    const ai = aiState(db, job.userId);
+    const waiting: string[] = [];
+    const doc = ai.active ? queueDocuments(db, job.userId, basis.resume.text, ai) : null;
+    if (doc) waiting.push(doc);
 
     if (job.kind === 'link') {
       const link = parsePostingLink((job.payload as { url: string }).url);
@@ -236,8 +278,10 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
       const fetched = await deps.fetchOne[link.source](link.id);
       if ('code' in fetched) return { status: '실패', errorCode: `fetch_${fetched.code}`, result: {} };
       const id = upsertPosting(db, fetched, 'link', job.userId);
-      await storeRequirements(db, deps, job.userId, id, fetched, counts);
-      await judgeFor(db, deps, job.userId, basis, [db.prepare('SELECT * FROM postings WHERE id = ? AND owner_user_id = ?').get(id, job.userId) as PostingRow], counts);
+      const task = await storeRequirements(db, deps, job.userId, id, fetched, counts, ai);
+      if (task) waiting.push(task);
+      await settleRemote(db, deps, job.userId, waiting, counts);
+      await judgeFor(db, deps, job.userId, loadUserBasis(db, job.userId) ?? basis, [db.prepare('SELECT * FROM postings WHERE id = ? AND owner_user_id = ?').get(id, job.userId) as PostingRow], counts);
       return { status: counts.aiFailures ? '일부 실패' : '성공', result: { postingId: id, judged: counts.judged, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes } };
     }
 
@@ -267,16 +311,20 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
         const twin = SAME_POSTING[p.source];
         if (twin && db.prepare('SELECT 1 FROM postings WHERE source = ? AND source_id = ? AND owner_user_id = ?').get(twin, p.sourceId, job.userId)) continue;
         const id = upsertPosting(db, p, 'auto', job.userId);
-        await storeRequirements(db, deps, job.userId, id, p, counts);
+        const task = await storeRequirements(db, deps, job.userId, id, p, counts, ai);
+        if (task) waiting.push(task);
         counts.collected++;
       }
       progress(index + 1);
     }
+    await settleRemote(db, deps, job.userId, waiting, counts);
+    // 기다리는 동안 내 AI 서류 결과가 들어왔으면 판정 기준도 바뀐다.
+    const judged = loadUserBasis(db, job.userId) ?? basis;
     const rows = db.prepare('SELECT p.* FROM postings p WHERE p.owner_user_id = ? ORDER BY p.checked_at DESC').all(job.userId) as PostingRow[];
     // 사용자 필터에 맞지 않는 공고는 판정하지 않는다(요금 절감). 사용자가 넣은 링크 공고는 거르지 않는다. 고용 형태는 본문 추출 결과로 거른다.
-    const matching = rows.filter(row => row.acquired_by === 'link' || passesFilter(rowFacts(row), basis.profile));
+    const matching = rows.filter(row => row.acquired_by === 'link' || passesFilter(rowFacts(row), judged.profile));
     counts.filteredOut = rows.length - matching.length;
-    await judgeFor(db, deps, job.userId, basis, matching, counts);
+    await judgeFor(db, deps, job.userId, judged, matching, counts);
     const failed = counts.sourceFailures.length > 0 || counts.aiFailures > 0;
     const result = { collected: counts.collected, judged: counts.judged, notHiring: counts.notHiring, filteredOut: counts.filteredOut, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes, sourceFailures: counts.sourceFailures.map(f => `${f.source}:${f.code}`),
       // 출처별로 받은 공고 수(일부 실패와 전체 실패를 가르는 데 씀)와 실패한 공고 번호(원인 확인용, 원문 아님).
@@ -284,4 +332,19 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     if (counts.collected === 0 && failed) return { status: '실패', errorCode: 'collect_failed', result };
     return { status: failed ? '일부 실패' : '성공', result };
   };
+}
+
+/**
+ * 내 AI 결과가 들어오면 그 사용자 공고를 다시 판정한다(규칙만, AI 호출 없음). 지원자 사실이 아직 없으면 넘어간다.
+ * 공고 갱신·링크 판정이 실행 중이면 그 작업이 판정하므로 건너뛴다.
+ */
+export async function rejudge(db: DatabaseSync, userId: string) {
+  if (db.prepare("SELECT 1 FROM jobs WHERE user_id = ? AND kind IN ('refresh', 'link') AND status = '실행중'").get(userId)) return 0;
+  const basis = loadUserBasis(db, userId);
+  if (!basis) return 0;
+  const rows = db.prepare('SELECT p.* FROM postings p WHERE p.owner_user_id = ?').all(userId) as PostingRow[];
+  const matching = rows.filter(row => row.acquired_by === 'link' || passesFilter(rowFacts(row), basis.profile));
+  const counts = { judged: 0, aiFailures: 0, aiFailureCodes: {} as Record<string, number> };
+  await judgeFor(db, { ...defaultDeps, candidate: async () => { throw new Error('candidate_not_ready'); } }, userId, basis, matching, counts);
+  return counts.judged;
 }

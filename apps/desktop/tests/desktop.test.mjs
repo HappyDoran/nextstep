@@ -52,3 +52,14 @@ test('갱신 알림 조건: 모두·기본 추천 있을 때·실패만·끄기'
   assert.equal(wanted(bad, { notify: 'failures' }), true);
   assert.equal(wanted(bad, { notify: 'off' }), false);
 });
+
+test('내 AI 실행기: 셸 시작 문구가 섞여도 PATH는 마지막 줄, 실패 원인은 메시지로 가른다', async () => {
+  const { lastLine, classify } = await import('../dist/runner.js');
+  assert.equal(lastLine('Welcome!\n\n/usr/local/bin:/usr/bin\n'), '/usr/local/bin:/usr/bin');
+  assert.equal(lastLine(''), undefined);
+  const r = (stderr, extra = {}) => ({ code: 1, stdout: '', stderr, timedOut: false, ...extra });
+  assert.equal(classify(r('', { timedOut: true })), 'timeout');
+  assert.equal(classify(r('ERROR: You have hit your usage limit. Try again later.')), 'usage_limit');
+  assert.equal(classify(r('Not logged in. Run codex login')), 'not_logged_in');
+  assert.equal(classify(r('something else')), 'failed');
+});

@@ -10,6 +10,7 @@ import { GeneralSetting } from './general';
 import { ProfileSetting } from './profile';
 import { MailSetting } from './mail';
 import { ConnectionPanel } from './connections';
+import { AiSetting } from './ai';
 import { AuthLayout, LoadingScreen } from '../frame';
 
 // 설정은 어느 화면에서든 여는 창이다(2026-11-19 결정). 한 번에 한 구역만 보여 준다(기획서 4절).
@@ -19,6 +20,7 @@ const SECTIONS = [
   { value: 'general', label: '일반' },
   { value: 'profile', label: '프로필·필터' },
   { value: 'documents', label: '서류' },
+  { value: 'ai', label: '내 AI 연결' },
   { value: 'mail', label: '네이버 메일' },
   { value: 'automation', label: '자동 갱신' },
   { value: 'status', label: '연결 상태' },
@@ -64,6 +66,7 @@ export function SettingsDialog({ me, section, onSection, onClose }: { me: Me; se
     documents: block('documents', '서류', '이력서는 꼭 필요해요. 여러 번 올리면 버전으로 남고, 고른 버전으로 추천해요.', <DocumentsSetting me={me} />),
     profile: block('profile', '프로필·필터', '필터는 공고를 가져올 때와 추천 목록에 그대로 써요.', <ProfileSetting me={me} />),
     automation: block('automation', '자동 갱신', null, <AutomationSetting me={me} />),
+    ai: block('ai', '내 AI 연결', '내 Codex 계정으로 공고·서류를 분석하면 더 정확하고 빨라요. 데스크톱 앱이 이 컴퓨터에서 처리해요.', <AiSetting me={me} />),
     status: block('status', '연결 상태', '공고·메일을 가져오는 데 필요한 연결을 확인해요. 문제가 있으면 하단 상태바에도 표시돼요.', <ConnectionPanel me={me} />),
   } satisfies Record<Section, ReactNode>;
   return <Sheet open onClose={onClose} size="lg" title="설정" meta="화면·프로필·서류·메일·계정을 관리해요">

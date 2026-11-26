@@ -1,12 +1,15 @@
 import { app, BrowserWindow, dialog, Menu, nativeImage, nativeTheme, Notification, session, shell, Tray } from 'electron';
 import { randomBytes } from 'node:crypto';
 import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { serviceUrl, isServiceNavigation, isExternalUrl, googleLoginUrl, desktopLoginPath } from './security.js';
 import { noticeFor, wanted, type LatestRefresh, type NotifyPrefs } from './notify.js';
+import { codexStatus, runCodex, type Claim, type CodexStatus } from './runner.js';
 
 // 상주 앱: 창은 홈서버 웹을 그대로 열고, 창을 닫아도 메뉴 막대(macOS)·알림 영역(Windows) 아이콘으로 남아
-// 서버의 마지막 공고 갱신 결과를 1분마다 확인해 OS 알림을 보낸다. 서버 작업은 서버가 한다(기술 설계 E절).
+// 서버의 마지막 공고 갱신 결과를 1분마다 확인해 OS 알림을 보낸다. 수집·판정은 서버가 하고,
+// 앱은 그때 '내 AI 실행기'로 서버가 나눠 준 분석을 이 기기 사용자의 Codex 계정으로 처리한다(기술 설계 D·E절).
 const POLL_MS = 60_000;
 const mac = process.platform === 'darwin';
 const PARTITION = 'persist:nextstep';
@@ -89,6 +92,45 @@ function showWindow(path?: string) {
   window!.focus();
 }
 
+// 서버 API는 창의 웹 페이지에서 같은 출처로 부른다(로그인 쿠키·교차 출처 변경 차단을 그대로 통과). 실패하면 null.
+async function page<T>(path: string, body?: unknown): Promise<T | null> {
+  const init = body === undefined ? '{ method: "POST" }' : `{ method: "POST", headers: { "content-type": "application/json" }, body: ${JSON.stringify(JSON.stringify(body))} }`;
+  return await window!.webContents.executeJavaScript(`fetch(${JSON.stringify(path)}, ${init}).then(r => r.ok ? r.json() : null).catch(() => null)`) as T | null;
+}
+
+// 내 AI 실행기: 1분 조회 때 이 기기의 Codex 상태를 서버에 알리고, 서버가 나눠 준 분석이 있으면 처리해 결과를 올린다.
+// Codex 상태는 10분마다(로그인 전이면 5분마다) 다시 본다. 사용량 한도에 걸리면 1시간 쉰다. 한 번에 하나만 돈다.
+let ai = '확인 전';
+let runnerBusy = false;
+let codex: CodexStatus | undefined;
+let codexCheckedAt = 0;
+let pausedUntil = 0;
+async function runnerTick() {
+  if (runnerBusy || loadFailed) return;
+  runnerBusy = true;
+  try {
+    const stale = Date.now() - codexCheckedAt > (codex?.loggedIn ? 10 : 5) * 60_000;
+    if (!codex || stale) { codex = await codexStatus(); codexCheckedAt = Date.now(); }
+    const state = await page<{ active: boolean; settings: { enabled: boolean } }>('/api/ai/runner', { device: hostname().slice(0, 100), codex });
+    ai = !codex.installed ? 'Codex 설치 필요' : !codex.loggedIn ? 'Codex 로그인 필요' : !state?.settings.enabled ? '꺼짐' : Date.now() < pausedUntil ? '사용량 한도로 쉬는 중' : '연결됨';
+    if (!state?.active || Date.now() < pausedUntil) return;
+    for (let i = 0; i < 20; i++) {
+      const claim = await page<Claim>('/api/ai/tasks/claim');
+      if (!claim?.kind) break;
+      ai = '분석 중';
+      updateTray();
+      const result = await runCodex(claim);
+      await page('/api/ai/tasks/submit', { provider: 'codex', taskIds: claim.taskIds, ...result });
+      if ('error' in result) {
+        if (result.error === 'usage_limit') pausedUntil = Date.now() + 60 * 60_000;
+        if (result.error === 'not_logged_in') codex = { ...codex, loggedIn: false };
+        break;
+      }
+    }
+    ai = codex.loggedIn ? (Date.now() < pausedUntil ? '사용량 한도로 쉬는 중' : '연결됨') : 'Codex 로그인 필요';
+  } catch { ai = '확인 실패'; } finally { runnerBusy = false; updateTray(); }
+}
+
 async function refreshNow() {
   // 웹 화면과 같은 출처에서 요청해야 웹의 교차 출처 변경 차단을 통과한다.
   if (!window) createWindow();
@@ -113,6 +155,7 @@ async function poll() {
     if (seq !== pollSeq) return;
     if (code === 401) { status = '로그인 필요'; return; }
     if (!body) { status = '서비스 응답 오류'; return; }
+    void runnerTick();
     const job = body.job;
     status = !job ? '아직 가져온 적 없음' : !job.finishedAt ? '가져오는 중' : `마지막: ${job.status} · ${new Date(job.finishedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
     const settings = readSettings();
@@ -145,6 +188,7 @@ function updateTray() {
     ...(signedOut ? [] : [
       { label: '지금 공고 가져오기', enabled: status !== '가져오는 중', click: () => void refreshNow() },
       { label: status, enabled: false },
+      { label: `내 AI: ${ai}`, enabled: false },
     ]),
     { type: 'separator' },
     // OS 알림 권한은 앱이 읽을 수 없어, 직접 보내 보고 꺼져 있으면 시스템 설정의 이 앱 알림 화면으로 바로 간다.

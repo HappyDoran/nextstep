@@ -215,3 +215,44 @@ export const connectionStatusSchema = z.object({
   // 일부 실패: 공고는 받았지만 일부 상세를 읽지 못함. 실패: 받은 공고 없이 실패. collected는 기록이 없던 예전 작업이면 null.
   sources: z.array(z.object({ source: sourceIdSchema, status: z.enum(['정상', '일부 실패', '실패', '확인 전']), failures: z.record(z.string(), z.number().int()), collected: z.number().int().nullable(), finishedAt: z.string().nullable() })),
 });
+
+// 내 AI 연결(사용자 결정 2026-11-26): 각 사용자가 자기 기기 실행기(데스크톱 앱)에서 자기 Codex 계정으로 공고·서류를 분석한다.
+// 서버는 AI 로그인 정보를 보관하지 않는다. 기본값: 공고·서류 보냄, 메일 안 보냄, 하루 30번.
+export const aiSettingsSchema = z.object({
+  enabled: z.boolean(),
+  sendPostings: z.boolean(),
+  sendDocuments: z.boolean(),
+  sendMail: z.boolean(),
+  dailyLimit: z.number().int().min(1).max(200),
+}).strict();
+export const AI_SETTINGS_DEFAULT: z.infer<typeof aiSettingsSchema> = { enabled: true, sendPostings: true, sendDocuments: true, sendMail: false, dailyLimit: 30 };
+/** 실행기가 1분마다 알리는 그 기기의 상태(설치·로그인 여부만, 로그인 정보는 보내지 않음). */
+export const aiRunnerReportSchema = z.object({
+  device: z.string().max(100),
+  codex: z.object({ installed: z.boolean(), loggedIn: z.boolean(), version: z.string().max(80).nullable() }).strict(),
+}).strict();
+export const aiStatusSchema = z.object({
+  settings: aiSettingsSchema,
+  runner: aiRunnerReportSchema.nullable(),
+  seenAt: z.string().nullable(),
+  // 지금 내 AI로 분석할 수 있음(실행기가 3분 안에 알렸고 Codex 로그인됨, 켜짐).
+  active: z.boolean(),
+  usage: z.object({ date: z.string(), calls: z.number().int() }),
+  pending: z.number().int(),
+  remotePostings: z.number().int(),
+  remoteDocuments: z.boolean(),
+});
+/** 실행기가 받아 가는 분석 한 번(모델 호출 한 번). prompt·schema는 서버가 만든다. 일이 없으면 kind null. */
+export const aiClaimSchema = z.object({
+  kind: z.enum(['posting', 'candidate']).nullable(),
+  taskIds: z.array(z.string()),
+  prompt: z.string(),
+  schema: z.record(z.string(), z.unknown()),
+});
+export const aiSubmitSchema = z.object({
+  provider: z.enum(['codex']),
+  taskIds: z.array(z.string()).min(1).max(10),
+  // 성공이면 모델 결과(JSON) 그대로. 서버가 일 종류 스키마로 다시 검증한다. 실패면 error 코드만.
+  output: z.unknown().optional(),
+  error: z.enum(['not_logged_in', 'usage_limit', 'timeout', 'invalid_output', 'failed']).optional(),
+}).strict();
