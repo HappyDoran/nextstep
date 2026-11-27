@@ -49,11 +49,18 @@ test('이력서 등록·버전 되돌리기·실패 시 유지·프로필 저장
     await expect(page.getByText(/Ollama|qwen|로컬 AI/)).toHaveCount(0);
     await page.getByRole('checkbox', { name: '앱 개발' }).check();
     await page.getByLabel('업무·도구·기술 (쉼표로 구분)').fill('React, Swift');
+    // 선호: 연봉 하한·관심 회사·선호 회사 유형도 함께 저장된다.
+    await page.getByLabel(/희망 연봉 하한/).fill('4500');
+    await page.getByLabel(/관심 회사/).fill('가상회사, 다른회사');
+    await page.getByRole('checkbox', { name: '벤처·스타트업' }).check();
     await page.getByRole('button', { name: '프로필 저장' }).click();
     await expect(page.getByRole('status').filter({ hasText: '마지막 저장' })).toBeVisible();
     await page.reload();
     await expect(page.getByRole('checkbox', { name: '앱 개발' })).toBeChecked();
     await expect(page.getByLabel('업무·도구·기술 (쉼표로 구분)')).toHaveValue('React, Swift');
+    await expect(page.getByLabel(/희망 연봉 하한/)).toHaveValue('4500');
+    await expect(page.getByLabel(/관심 회사/)).toHaveValue('가상회사, 다른회사');
+    await expect(page.getByRole('checkbox', { name: '벤처·스타트업' })).toBeChecked();
     await page.goto('/recommendations');
     await expect(page.getByRole('link', { name: /이력서 올리기.*완료/ })).toBeVisible();
     await expect(page.getByRole('button', { name: '공고 가져오기' })).toBeEnabled();
@@ -109,6 +116,10 @@ test('추천 목록 표시·관심 없음·지원 현황 저장과 작업 실패
     await card.getByRole('button', { name: '닫기' }).click();
     // 분류별 건수와 고급 필터(출처·검색).
     await expect(page.getByRole('button', { name: '제외 1' })).toBeVisible();
+    // 목록 줄에서 바로 지원 현황에 저장한다(상세를 열지 않음).
+    const backend = page.getByRole('listitem').filter({ hasText: '가상 백엔드' });
+    await backend.getByRole('button', { name: '저장', exact: true }).click();
+    await expect(backend.getByRole('button', { name: '저장됨' })).toBeDisabled();
     await page.getByLabel('출처').selectOption('jobkorea');
     await expect(row('가상 프론트엔드')).toHaveCount(0);
     // 보기 조건(출처·정렬)은 이 기기에 기억해 다시 열어도 유지된다.

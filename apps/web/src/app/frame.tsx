@@ -183,11 +183,12 @@ function RefreshState({ me }: { me: Me }) {
     return <><LoaderCircle className={`${small} animate-spin motion-reduce:animate-none`} aria-hidden="true" focusable="false" /><span>{job.status === '대기' ? '공고 가져오기 대기 중' : progressText(job.result)}</span>
       {p && p.total > 0 && <progress value={p.done} max={p.total} aria-label="공고 가져오기 진행" className="h-1.5 w-28 overflow-hidden rounded-full [&::-moz-progress-bar]:bg-primary [&::-webkit-progress-bar]:bg-muted [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-primary" />}</>;
   }
-  const counts = latest.data?.counts;
+  // 새로 들어온 공고 수와 지금 보이는 기본 추천 수(그 회차 판정 수는 0이 자주 나와 헷갈림, 사용자 의견 2026-11-25).
+  const overview = latest.data?.overview;
   const failed = job.status === '실패' || job.status === '일부 실패';
   return <>
     {failed ? <AlertCircle className={`${small} text-destructive`} aria-hidden="true" focusable="false" /> : <Check className={`${small} text-success`} aria-hidden="true" focusable="false" />}
-    <span className={failed ? 'text-destructive' : undefined}>공고 가져오기 {job.status === '성공' ? '끝' : job.status}{job.finishedAt ? ` · ${time(job.finishedAt)}` : ''}{counts ? ` · 기본 ${counts.basic} · 도전 ${counts.challenge}` : ''}</span>
+    <span className={failed ? 'text-destructive' : undefined}>공고 가져오기 {job.status === '성공' ? '끝' : job.status}{job.finishedAt ? ` · ${time(job.finishedAt)}` : ''}{overview ? ` · 새 공고 ${overview.newPostings} · 지금 기본 ${overview.basicNow}` : ''}</span>
     {/* 같은 화면에서도 구역이 바뀌도록 해시 이동은 일반 링크로 한다(Next 링크는 hashchange를 내지 않음). */}
     {failed ? <a href="#settings-status" className="font-bold text-primary">연결 확인</a> : null}
   </>;

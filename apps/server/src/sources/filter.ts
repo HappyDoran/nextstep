@@ -2,7 +2,7 @@ import type { Profile } from '@nextstep/contracts';
 import type { Career } from './types.js';
 
 // 사용자가 고른 선호 필터. 출처 요청에 넣을 수 있는 것은 넣고, 나머지는 판정 전에 여기서 거른다.
-export type PostingFacts = { location: string | null; remote: boolean | null; careers: Career[]; employmentTypes?: string[] | undefined };
+export type PostingFacts = { location: string | null; remote: boolean | null; careers: Career[]; employmentTypes?: string[] | undefined; company?: string };
 
 const SIDO: Record<string, string> = { 서울특별시: '서울', 경기도: '경기', 인천광역시: '인천', 부산광역시: '부산', 대구광역시: '대구', 대전광역시: '대전', 광주광역시: '광주', 울산광역시: '울산', 세종특별자치시: '세종' };
 const norm = (text: string) => text.trim().split(/\s+/).map(w => SIDO[w] ?? w).join(' ');
@@ -26,4 +26,13 @@ export function employmentOk(p: PostingFacts, f: Pick<Profile, 'employmentTypes'
   return !f.employmentTypes.length || !known.length || known.some(t => (f.employmentTypes as string[]).includes(t));
 }
 
-export const passesFilter = (p: PostingFacts, f: Profile) => regionOk(p, f) && careerOk(p, f) && employmentOk(p, f);
+// 회사 이름 비교: (주)·㈜·주식회사·공백·대소문자를 무시하고 사용자가 적은 이름이 들어 있으면 같은 회사로 본다.
+const companyKey = (name: string) => name.replace(/\(주\)|㈜|주식회사|\(유\)|\s+/g, '').toLowerCase();
+export const companyMatches = (company: string, names: string[]) => names.some(n => companyKey(n) && companyKey(company).includes(companyKey(n)));
+
+// 제외 회사(2026-11-27): 판정·목록에서 뺀다.
+export function companyOk(p: PostingFacts, f: Pick<Profile, 'excludeCompanies'>) {
+  return !p.company || !f.excludeCompanies.length || !companyMatches(p.company, f.excludeCompanies);
+}
+
+export const passesFilter = (p: PostingFacts, f: Profile) => regionOk(p, f) && careerOk(p, f) && employmentOk(p, f) && companyOk(p, f);

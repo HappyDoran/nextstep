@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 
 // 쓰기 트랜잭션(BEGIN IMMEDIATE)에서 fn을 동기로 실행한다. fn 안에서 await하지 않는다.
 // fn이 직접 ROLLBACK하고 돌아오면 COMMIT하지 않고, 예외면 되돌린 뒤 다시 던진다.
@@ -400,6 +400,11 @@ export function openDatabase(filename: string) {
       // 별로 이유(P1-19 ② 정확도 측정, 2026-11-27): 판정이 어디서 틀렸는지 모은다. 별로를 지우면 함께 지운다.
       if (!db.prepare("SELECT 1 FROM pragma_table_info('recommendations') WHERE name = 'feedback_reason'").get()) db.exec('ALTER TABLE recommendations ADD COLUMN feedback_reason TEXT');
       db.exec('PRAGMA user_version = 23');
+    }
+    if (version < 24) {
+      // 새 공고 표시(P1-19 ④, 2026-11-27): 그 사용자 자료로 처음 들어온 시각. 기존 공고는 마지막 확인 시각으로 채운다.
+      if (!db.prepare("SELECT 1 FROM pragma_table_info('postings') WHERE name = 'first_seen_at'").get()) db.exec('ALTER TABLE postings ADD COLUMN first_seen_at TEXT; UPDATE postings SET first_seen_at = checked_at');
+      db.exec('PRAGMA user_version = 24');
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

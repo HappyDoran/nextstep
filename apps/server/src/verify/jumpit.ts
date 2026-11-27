@@ -6,7 +6,7 @@ import { collectJumpit } from '../sources/jumpit.js';
 import { DEV_FAMILIES } from '../sources/types.js';
 
 async function main() {
-  const profile: Profile = { jobFamilies: DEV_FAMILIES, experiences: [], regions: [], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '' };
+  const profile: Profile = { jobFamilies: DEV_FAMILIES, experiences: [], regions: [], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '', salaryMin: null, excludeCompanies: [], favoriteCompanies: [], preferredSkills: [], avoidSkills: [], companyTypes: [] };
   const report: Record<string, unknown> = {};
   for (const family of DEV_FAMILIES) {
     const { postings, failures } = await collectJumpit(family, 3, profile);

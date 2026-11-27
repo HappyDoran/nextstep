@@ -98,6 +98,9 @@ function RecommendationList({ me }: { me: Me }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(id); }, []);
   // 마감된 공고는 목록에서 뺀다. 지원한 공고는 공고가 마감돼도 전형이 이어지므로 지원 현황에서 마감 표시 없이 관리한다(사용자 요청 2026-11-24).
+  // 목록 줄의 '저장' 표시: 같은 공고 URL로 저장한 지원 건이 있으면 저장됨.
+  const savedApps = useApplications(me, { refetchOnWindowFocus: false });
+  const savedUrls = new Set((savedApps.data ?? []).map(a => a.postingUrl));
   const q = search.trim().toLowerCase();
   const matches = (i: Recommendation) => i.hidden === showHidden && laneOf(i, now) !== '마감 지남' && (source === '전체' || i.source === source)
     && (!soon || (!i.closedAt && !i.alwaysHire && i.deadline !== null && Date.parse(i.deadline) >= now && Date.parse(i.deadline) - now <= 7 * DAY))
@@ -106,8 +109,9 @@ function RecommendationList({ me }: { me: Me }) {
   const counts = Object.fromEntries(GROUPS.map(g => [g, visible.filter(i => groupOf(i) === g).length])) as Record<Group, number>;
   const items = visible.filter(i => !filter || groupOf(i) === filter)
     // 마감순은 그리는 묶음 순서(마감 지남이 맨 뒤)대로 먼저 나눠야 앞 30건이 화면 위 묶음부터 채워진다.
-    .sort((a, b) => sort === '분류순' ? GROUPS.indexOf(groupOf(a)) - GROUPS.indexOf(groupOf(b)) || dueTime(a) - dueTime(b)
-      : DUE_LANES.indexOf(laneOf(a, now)) - DUE_LANES.indexOf(laneOf(b, now)) || dueTime(a) - dueTime(b));
+    // 같은 묶음 안에서는 선호(관심 회사·선호 기술 등, 서버가 계산한 boost)가 높은 공고를 먼저, 그다음 마감순.
+    .sort((a, b) => sort === '분류순' ? GROUPS.indexOf(groupOf(a)) - GROUPS.indexOf(groupOf(b)) || b.boost - a.boost || dueTime(a) - dueTime(b)
+      : DUE_LANES.indexOf(laneOf(a, now)) - DUE_LANES.indexOf(laneOf(b, now)) || b.boost - a.boost || dueTime(a) - dueTime(b));
   const shown = items.slice(0, limit);
   const lanes = (sort === '마감순' ? DUE_LANES : [...GROUPS]).map(name => ({
     name,
@@ -151,14 +155,15 @@ function RecommendationList({ me }: { me: Me }) {
           : items.length === 0 ? <p role="status" className="py-10 text-center text-muted-foreground">조건에 맞는 추천이 없습니다.</p>
             : <>
               {lanes.map(l => <Lane key={l.name} title={l.name} count={`${l.total}건`}>
-                <RowList>{l.rows.map(item => <Row key={item.postingId} classification={item.classification} className="grid-cols-[4.5rem_minmax(0,1fr)_minmax(0,16rem)_5rem]">
+                <RowList>{l.rows.map(item => <Row key={item.postingId} classification={item.classification} className="grid-cols-[4.5rem_minmax(0,1fr)_minmax(0,14rem)_5rem_auto]">
                   <ClassLabel classification={item.classification} />
                   <RowTrigger onClick={() => setOpenId(item.postingId)}>
                     <span className="block truncate text-body font-bold">{item.title}</span>
-                    <span className="block truncate text-caption text-muted-foreground">{item.company} · {SOURCE_NAMES[item.source]}{item.linkOnly ? ' · 링크 판정' : ''}{item.restored ? ' · 직접 복구' : ''}{item.feedback === 'up' ? ' · 좋아요' : ''}</span>
+                    <span className="block truncate text-caption text-muted-foreground">{isNew(item, now) && <b className="mr-1 font-bold text-primary">새 공고</b>}{item.company} · {SOURCE_NAMES[item.source]}{item.linkOnly ? ' · 링크 판정' : ''}{item.restored ? ' · 직접 복구' : ''}{item.feedback === 'up' ? ' · 좋아요' : ''}{item.signals.map(sig => ` · ${sig}`).join('')}</span>
                   </RowTrigger>
                   <span className="line-clamp-2 text-caption text-muted-foreground">{item.reason}</span>
                   <DueDate days={item.closedAt ? -1 : item.alwaysHire || !item.deadline ? null : Math.floor((Date.parse(item.deadline) - now) / DAY)} {...(item.deadline && !item.alwaysHire ? { date: monthDay(item.deadline) } : {})} />
+                  <RowActions item={item} me={me} listKey={key} saved={savedUrls.has(item.url)} />
                 </Row>)}</RowList>
               </Lane>)}
               {items.length > limit && <div className="flex justify-center"><Button variant="secondary" onClick={() => setLimit(limit + PAGE)}>{PAGE}건 더 보기 <span className="tabular-nums text-primary">{shown.length} / {items.length}</span></Button></div>}
@@ -172,6 +177,23 @@ function RecommendationList({ me }: { me: Me }) {
       </form>
     </Sheet>
   </Frame>;
+}
+
+// 이 사용자 자료로 24시간 안에 처음 들어온 공고.
+const isNew = (i: Recommendation, now: number) => i.firstSeenAt !== null && now - Date.parse(i.firstSeenAt) < DAY;
+
+// 목록 줄에서 바로: 지원 현황에 저장(미지원으로), 관심 없음(숨김). 줄 전체를 덮는 열기 버튼 위에 놓는다.
+function RowActions({ item, me, listKey, saved }: { item: Recommendation; me: Me; listKey: string[]; saved: boolean }) {
+  const client = useQueryClient();
+  const hide = useMutation({ mutationFn: () => call(`recommendations/${item.postingId}/hide`, { method: 'PUT', body: JSON.stringify({ hidden: !item.hidden }) }), onSuccess: () => client.invalidateQueries({ queryKey: listKey }) });
+  const track = useMutation({
+    mutationFn: () => call('applications', { method: 'POST', body: JSON.stringify({ company: item.company.slice(0, 200), roleTitle: item.title.slice(0, 200), postingUrl: item.url }) }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['applications', me.id] }),
+  });
+  return <div className="relative z-10 flex gap-1">
+    <Button size="sm" variant="quiet" disabled={saved || track.isPending} onClick={() => track.mutate()}>{saved || track.isSuccess ? '저장됨' : '저장'}</Button>
+    <Button size="sm" variant="quiet" disabled={hide.isPending} onClick={() => hide.mutate()}>{item.hidden ? '숨김 해제' : '관심 없음'}</Button>
+  </div>;
 }
 
 function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; listKey: string[]; onClose: () => void }) {
@@ -200,7 +222,7 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
   </section>;
   const error = hide.error ?? track.error ?? feedback.error ?? close.error;
   return <Sheet open onClose={onClose} classification={item.classification} title={item.title}
-    eyebrow={<div className="flex flex-wrap gap-1.5"><Tag classification={item.classification} />{item.restored && <Tag>직접 복구</Tag>}{item.feedback === 'up' && <Tag>좋아요</Tag>}</div>}
+    eyebrow={<div className="flex flex-wrap gap-1.5"><Tag classification={item.classification} />{item.signals.map(sig => <Tag key={sig}>{sig}</Tag>)}{item.restored && <Tag>직접 복구</Tag>}{item.feedback === 'up' && <Tag>좋아요</Tag>}</div>}
     meta={`${item.company} · ${SOURCE_NAMES[item.source]}${item.linkOnly ? ' · 링크 판정' : ''}`}
     footer={<>
       <Button variant="quiet" disabled={hide.isPending || feedback.isPending} onClick={() => item.feedback === 'down' ? feedback.mutate({ feedback: null }) : hide.mutate(!item.hidden)}>{item.hidden ? '숨김 해제' : '관심 없음'}</Button>

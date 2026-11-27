@@ -109,3 +109,14 @@ test('제목에 직무가 분명하면 모델 직무 분류를 보정한다(앱 
   assert.deepEqual(withTitleFamilies('Flutter 개발자 (바로더 POS/테이블오더)', ['앱 개발']), ['앱 개발']);
   assert.equal(withTitleFamilies('Responsive Designer', null), null);
 });
+
+test('희망 연봉 하한: 공고가 밝힌 상한이 낮으면 제외하고, 미기재·하한 없음은 따지지 않는다', () => {
+  const s = { ...seeker, salaryMin: 4500 };
+  const go = salary => classify(at, s, cand, { ...base, salary });
+  assert.equal(go({ min: 3000, max: 4000 }).classification, '제외');
+  assert.ok(go({ min: 3000, max: 4000 }).unmet.some(t => t.includes('연봉 상한')));
+  assert.equal(go({ min: 5000, max: null }).classification, '기본');
+  assert.ok(go({ min: 5000, max: null }).met.some(t => t.includes('연봉 5,000만원 이상')));
+  assert.equal(go(null).classification, '기본');
+  assert.equal(classify(at, seeker, cand, { ...base, salary: { min: null, max: 3000 } }).classification, '기본');
+});

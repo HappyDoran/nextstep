@@ -7,7 +7,7 @@ import type { Judgement } from '../prompts/recommend.js';
 // 추천 분류 규칙(기술 설계 D절, 사용자 확정 2026-11-07). 모델은 사실만 뽑고 분류는 여기서 정한다.
 // 우선순위: 제외 > 도전 > 미확인 > 기본. 같은 입력이면 같은 분류가 나온다.
 // 규칙을 바꾸면 반드시 올린다. 저장된 추천은 이 값이 바뀌어야 다시 판정된다(2026-11-15 올리지 않아 재판정 누락).
-export const RULES_VERSION = 'rules-2026-11-27';
+export const RULES_VERSION = 'rules-2026-11-27b';
 
 // 제목에 직무 이름이 분명하면 그 직무를 더한다(2026-11-27 평가: 로컬 모델이 iOS 공고를 프론트엔드로, 앱 공고를 본문 '웹뷰'로 프론트엔드로 봄).
 // 모델이 '기타'로 둔 공고도 제목이 대상 직무를 말하면 그 직무로 본다. 제목이 앱만 말하면 모델의 프론트엔드는 뺀다. 본문 추출이 없으면 제목 직무만 쓴다.
@@ -26,7 +26,7 @@ export function withTitleFamilies(title: string, families: string[] | null): str
   return named.includes('앱 개발') && !named.includes('프론트엔드') ? merged.filter(f => f !== '프론트엔드') : merged;
 }
 
-export type Seeker = { jobFamilies: string[]; regions: string[]; remoteOk: boolean };
+export type Seeker = { jobFamilies: string[]; regions: string[]; remoteOk: boolean; salaryMin?: number | null };
 export type PostingInput = {
   title?: string;
   families: string[] | null;
@@ -39,6 +39,7 @@ export type PostingInput = {
   alwaysHire: boolean;
   companyType: string | null;
   bodyNote: string | null;
+  salary?: { min: number | null; max: number | null } | null;
 };
 
 const ALIASES: Record<string, string> = { ts: 'typescript', js: 'javascript', rn: 'reactnative' };
@@ -111,6 +112,12 @@ export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: P
 
   // 마감: 기준 시각과 같거나 앞서면 제외(개인 불합격이 아님). 사용자가 방금 마감 표시한 공고도 같은 밀리초 판정에서 제외된다.
   if (!p.alwaysHire && p.deadline && Date.parse(p.deadline) <= Date.parse(evaluatedAt)) out('exclude', `공고 마감(${p.deadline.slice(0, 10)} 경과, 개인 불합격 아님)`);
+
+  // 연봉: 공고가 밝힌 상한이 희망 하한보다 낮으면 제외. 하한만 있으면 희망 이상일 때 맞음으로 적는다. 미기재는 따지지 않는다.
+  if (seeker.salaryMin && p.salary) {
+    if (p.salary.max !== null && p.salary.max < seeker.salaryMin) out('exclude', `연봉 상한(${p.salary.max.toLocaleString('ko-KR')}만원)이 희망(${seeker.salaryMin.toLocaleString('ko-KR')}만원)보다 낮음`);
+    else if (p.salary.min !== null && p.salary.min >= seeker.salaryMin) out('met', `연봉 ${p.salary.min.toLocaleString('ko-KR')}만원 이상`);
+  }
 
   // 근무지: 전면 원격은 원격 가능이면 지역과 무관. 미기재는 미확인.
   if (p.remote === '전면' && seeker.remoteOk) out('met', '전면 원격');

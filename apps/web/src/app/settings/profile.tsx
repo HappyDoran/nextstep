@@ -3,13 +3,14 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { LoaderCircle } from 'lucide-react';
 import { Button, Field, Input, Loading, Textarea } from '@nextstep/design-system';
-import { jobFamilySchema, jobSchema, profileSchema, type JobFamily, type Me, type Profile } from '@nextstep/contracts';
+import { companyTypeSchema, jobFamilySchema, jobSchema, profileSchema, type JobFamily, type Me, type Profile } from '@nextstep/contracts';
 import { ACTIVE_JOB, AI_CAUSES, buttonIcon, call, draftKey, noticeKey, RequestError, useProfile, useProfileDraft, useWhen } from '../api-client';
 
 const FAMILIES = jobFamilySchema.options;
 const EMPLOYMENT = ['정규직', '계약직', '인턴', '프리랜서'] as const;
 // 선호(지역·원격·고용 형태·요구 경력)는 기본값 없이 비워 둔다. 비어 있으면 제한 없음.
-const EMPTY: Profile = { jobFamilies: ['프론트엔드'], experiences: [], regions: [], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '' };
+const EMPTY: Profile = { jobFamilies: ['프론트엔드'], experiences: [], regions: [], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '', salaryMin: null, excludeCompanies: [], favoriteCompanies: [], preferredSkills: [], avoidSkills: [], companyTypes: [] };
+const CHIP = 'inline-flex h-control-sm cursor-pointer items-center gap-2 rounded-full border border-border-strong bg-card px-3 text-body-sm text-muted-foreground has-[:checked]:border-primary has-[:checked]:bg-secondary has-[:checked]:font-semibold has-[:checked]:text-secondary-foreground has-[:focus-visible]:outline has-[:focus-visible]:outline-focus has-[:focus-visible]:outline-ring';
 const list = (text: string) => text.split(',').map(s => s.trim()).filter(Boolean);
 
 // 저장한 값만 추천 기준이 된다. 초안은 서버가 만들어 두고(화면을 떠나도 계속), 사용자가 바뀌는 항목을 보고 저장한다.
@@ -28,7 +29,10 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
   const [form, setForm] = useState<Profile>(initial);
   const [regions, setRegions] = useState(initial.regions.join(', '));
   const [skills, setSkills] = useState(initial.skills.join(', '));
-  const current = (): Profile => ({ ...form, regions: list(regions), skills: list(skills) });
+  // 쉼표로 적는 선호 목록은 입력 중 글자를 그대로 두고 저장할 때 나눈다.
+  const [texts, setTexts] = useState({ excludeCompanies: initial.excludeCompanies.join(', '), favoriteCompanies: initial.favoriteCompanies.join(', '), preferredSkills: initial.preferredSkills.join(', '), avoidSkills: initial.avoidSkills.join(', ') });
+  const current = (): Profile => ({ ...form, regions: list(regions), skills: list(skills), excludeCompanies: list(texts.excludeCompanies), favoriteCompanies: list(texts.favoriteCompanies), preferredSkills: list(texts.preferredSkills), avoidSkills: list(texts.avoidSkills) });
+  const text = (name: keyof typeof texts, label: string, placeholder: string) => <Field label={label}><Input value={texts[name]} placeholder={placeholder} onChange={e => setTexts({ ...texts, [name]: e.target.value })} /></Field>;
   const clearDraft = () => { client.setQueryData(draftKey(me), null); client.setQueryData(noticeKey(me), null); };
   // 초안을 입력칸에 채웠으면 그 저장으로 초안을 받아들인 것이다. 필터만 고쳐 저장하면 받지 않은 초안은 남긴다.
   const [filledId, setFilledId] = useState<string | null>(null);
@@ -89,6 +93,17 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
         {EMPLOYMENT.map(type => <label key={type} className="inline-flex h-control-sm cursor-pointer items-center gap-2 rounded-full border border-border-strong bg-card px-3 text-body-sm text-muted-foreground has-[:checked]:border-primary has-[:checked]:bg-secondary has-[:checked]:font-semibold has-[:checked]:text-secondary-foreground has-[:focus-visible]:outline has-[:focus-visible]:outline-focus has-[:focus-visible]:outline-ring"><input type="checkbox" checked={form.employmentTypes.includes(type)} onChange={() => setForm({ ...form, employmentTypes: toggle(form.employmentTypes, type) })} className="size-icon-sm accent-primary" />{type}</label>)}
       </fieldset>
       <Field label="요구 경력 상한(년) · 이 연차를 넘게 요구하는 경력직 공고는 빼고 가져옵니다. 비우면 제한 없음"><Input type="number" min={0} max={30} step={1} value={form.careerMax ?? ''} onChange={e => setForm({ ...form, careerMax: e.target.value === '' ? null : Number(e.target.value) })} placeholder="제한 없음" className="!w-32" /></Field>
+    </fieldset>
+    <fieldset className="flex flex-col gap-4 rounded-surface border border-border bg-background p-5"><legend className="px-1 text-body-sm font-extrabold">선호 (연봉·회사·기술)</legend>
+      <p className="text-body-sm text-muted-foreground">연봉과 제외 회사는 공고를 거르고, 나머지는 추천 목록에서 위아래 순서만 바꿔요. 비워 두면 쓰지 않아요.</p>
+      <Field label="희망 연봉 하한(만원) · 공고가 밝힌 연봉 상한이 이보다 낮으면 빼요. 연봉을 안 밝힌 공고는 그대로 둬요"><Input type="number" min={0} max={100000} step={100} value={form.salaryMin ?? ''} onChange={e => setForm({ ...form, salaryMin: e.target.value === '' ? null : Number(e.target.value) })} placeholder="예: 4000" /></Field>
+      {text('excludeCompanies', '제외 회사 (쉼표로 구분) · 이름이 들어간 회사 공고를 빼요', '예: 다녔던 회사')}
+      {text('favoriteCompanies', '관심 회사 (쉼표로 구분) · 목록에서 위로 올리고 표시해요', '예: 토스, 당근')}
+      {text('preferredSkills', '쓰고 싶은 기술 (쉼표로 구분) · 공고 조건에 있으면 위로', '예: TypeScript, React Native')}
+      {text('avoidSkills', '피하고 싶은 기술 (쉼표로 구분) · 필수 조건에 있으면 아래로', '예: jQuery')}
+      <fieldset className="flex flex-wrap gap-2"><legend className="mb-2 text-body-sm font-semibold">선호 회사 유형 (공고가 밝힌 경우만 비교, 위로만 올려요)</legend>
+        {companyTypeSchema.options.map(type => <label key={type} className={CHIP}><input type="checkbox" checked={form.companyTypes.includes(type)} onChange={() => setForm({ ...form, companyTypes: toggle(form.companyTypes, type) })} className="size-icon-sm accent-primary" />{type}</label>)}
+      </fieldset>
     </fieldset>
     <Field label="업무·도구·기술 (쉼표로 구분)"><Input value={skills} onChange={e => setSkills(e.target.value)} /></Field>
     <Field label="경력 요약"><Textarea value={form.summary} maxLength={2000} rows={3} onChange={e => setForm({ ...form, summary: e.target.value })} /></Field>

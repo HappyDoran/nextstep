@@ -80,7 +80,7 @@ test('갱신 작업: 세 출처를 수집하고 원문 없이 조건·판정을 
     assert.equal(latest.job.id, first.id);
     assert.deepEqual(latest.counts, { basic: list.items.filter(i => i.classification === '기본').length, challenge: list.items.filter(i => i.classification === '도전').length });
     const other = await s.signup('latest-other@example.com');
-    assert.deepEqual((await s.app.inject({ url: '/jobs/latest', headers: { cookie: other } })).json(), { job: null, counts: null });
+    assert.deepEqual((await s.app.inject({ url: '/jobs/latest', headers: { cookie: other } })).json(), { job: null, counts: null, overview: null });
     assert.equal((await s.app.inject({ url: '/jobs/latest' })).statusCode, 401);
     // 연결 상태: 출처는 마지막 갱신의 실패로(가짜 사람인 상세 실패), AI는 닿지 않는 주소면 연결 실패, 메일은 연결 전.
     process.env.NEXTSTEP_OLLAMA_URL = 'http://127.0.0.1:9';
@@ -446,5 +446,32 @@ test('공고 갱신: 이미 분석한 공고는 수집기가 건너뛰게 하고
     await run();
     assert.equal(seen[1].skipKnown, true);
     assert.equal(calls.filter(c => c.startsWith('extract:')).length, 5);
+  } finally { await s.done(); }
+});
+
+test('선호: 제외 회사는 목록에서 빠지고, 관심 회사·선호 기술은 위로 올리며 근거를 보이고, 상단 막대에 새 공고·지금 기본 수를 준다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+    const db = openDatabase(s.path);
+    try { await runNext(db, createHandler(db, fakeDeps([]))); } finally { db.close(); }
+    const base = { jobFamilies: ['프론트엔드'], experiences: [{ jobFamily: '프론트엔드', years: 3 }], regions: ['서울'], remoteOk: true, employmentTypes: ['정규직'], skills: ['React'], summary: '' };
+    const save = extra => s.app.inject({ method: 'PUT', url: '/profile', headers: { cookie: a }, payload: { ...base, ...extra } });
+    const list = async () => (await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items;
+    assert.equal((await save({ favoriteCompanies: ['(주)가상회사'], preferredSkills: ['react'], avoidSkills: [] })).statusCode, 200);
+    const [item] = await list();
+    assert.equal(item.boost, 4);
+    assert.deepEqual(item.signals, ['관심 회사', '선호 기술: react']);
+    assert.ok(item.firstSeenAt);
+    // 피하는 기술이 필수 조건에 있으면 아래로(빼지는 않음).
+    await save({ avoidSkills: ['React'] });
+    assert.equal((await list())[0].boost, -2);
+    // 제외 회사는 목록에서 빠진다.
+    await save({ excludeCompanies: ['가상 회사'] });
+    assert.deepEqual(await list(), []);
+    const latest = (await s.app.inject({ url: '/jobs/latest', headers: { cookie: a } })).json();
+    assert.equal(latest.overview.newPostings, 2);
+    assert.equal(typeof latest.overview.basicNow, 'number');
   } finally { await s.done(); }
 });

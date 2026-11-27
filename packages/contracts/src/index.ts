@@ -85,6 +85,7 @@ export const documentVersionSchema = z.object({ id: z.string(), filename: z.stri
 // 선호(지역·원격·고용 형태·요구 경력)는 사용자만 고른다. 빈 목록·null은 제한 없음(전국·전체)이다.
 export const jobFamilySchema = z.enum(['프론트엔드', '앱 개발', '디자인', '기획', '백엔드', 'QA']);
 export type JobFamily = z.infer<typeof jobFamilySchema>;
+export const companyTypeSchema = z.enum(['대기업', '중견기업', '중소기업', '벤처·스타트업']);
 export const profileSchema = z.object({
   jobFamilies: z.array(jobFamilySchema).min(1).max(6),
   experiences: z.array(z.object({ jobFamily: jobFamilySchema, years: z.number().min(0).max(50) })).max(6),
@@ -95,6 +96,17 @@ export const profileSchema = z.object({
   careerMax: z.number().int().min(0).max(30).nullable().default(null),
   skills: z.array(z.string().trim().min(1).max(60)).max(60),
   summary: z.string().trim().max(2000),
+  // 선호(P1-19 ④, 2026-11-27). 이전 저장분 호환을 위해 모두 기본값이 있다.
+  // 희망 연봉 하한(만원): 공고가 밝힌 연봉 상한이 이보다 낮으면 제외. 미기재 공고는 통과.
+  salaryMin: z.number().int().min(0).max(100000).nullable().default(null),
+  // 제외 회사: 이름이 들어간 공고는 판정·목록에서 뺀다. 관심 회사: 목록에서 위로, 표시.
+  excludeCompanies: z.array(z.string().trim().min(1).max(60)).max(50).default([]),
+  favoriteCompanies: z.array(z.string().trim().min(1).max(60)).max(50).default([]),
+  // 쓰고 싶은 기술은 위로, 피하고 싶은 기술이 필수인 공고는 아래로(빼지는 않음).
+  preferredSkills: z.array(z.string().trim().min(1).max(60)).max(30).default([]),
+  avoidSkills: z.array(z.string().trim().min(1).max(60)).max(30).default([]),
+  // 선호 회사 유형(공고가 밝힌 경우만 비교, 위로 올리기만 한다).
+  companyTypes: z.array(companyTypeSchema).max(4).default([]),
 }).strict();
 export type Profile = z.infer<typeof profileSchema>;
 
@@ -143,6 +155,11 @@ export const recommendationSchema = z.object({
   // 사용자 피드백(좋아요는 위로, 별로는 숨김)과 제외 복구. 그 사용자 목록에만 쓰고 회사·직무 전체 차단으로 해석하지 않는다.
   feedback: z.enum(['up', 'down']).nullable().default(null),
   feedbackReason: feedbackReasonSchema.nullable().default(null),
+  // 선호로 정한 순서 보정값과 그 근거 표시(관심 회사·선호 기술·피하는 기술·선호 유형). 클수록 위.
+  boost: z.number().default(0),
+  signals: z.array(z.string()).default([]),
+  // 이 사용자 자료로 처음 들어온 시각(새 공고 표시).
+  firstSeenAt: z.string().nullable().default(null),
   restored: z.boolean().default(false),
   evaluatedAt: z.string(),
 });
@@ -151,7 +168,9 @@ export const recommendationFeedbackSchema = z.object({ feedback: z.enum(['up', '
 export type Recommendation = z.infer<typeof recommendationSchema>;
 export const recommendationListSchema = z.object({ items: z.array(recommendationSchema), lastJob: jobSchema.nullable() });
 // 데스크톱 상주 앱 알림용: 마지막 공고 갱신 작업과 그 작업이 판정한 기본·도전 건수(끝나기 전에는 null).
-export const latestRefreshSchema = z.object({ job: jobSchema.nullable(), counts: z.object({ basic: z.number().int(), challenge: z.number().int() }).nullable() });
+export const latestRefreshSchema = z.object({ job: jobSchema.nullable(), counts: z.object({ basic: z.number().int(), challenge: z.number().int() }).nullable(),
+  // 상단 막대: 마지막 갱신으로 새로 들어온 공고 수와 지금 보이는 기본 추천 수(마감·숨김 제외).
+  overview: z.object({ newPostings: z.number().int(), basicNow: z.number().int() }).nullable().default(null) });
 
 // 네이버 메일 연결: 애플리케이션 비밀번호는 서버에서 암호화 저장하고 다시 내보내지 않는다.
 export const mailConnectRequestSchema = z.object({

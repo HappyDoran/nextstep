@@ -9,7 +9,7 @@ const PER_ROLE = 3;
 
 async function main() {
   // 필터 없는 기본 검색으로 확인한다.
-  const profile: Profile = { jobFamilies: jobFamilySchema.options, experiences: [], regions: [], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '' };
+  const profile: Profile = { jobFamilies: jobFamilySchema.options, experiences: [], regions: [], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '', salaryMin: null, excludeCompanies: [], favoriteCompanies: [], preferredSkills: [], avoidSkills: [], companyTypes: [] };
   const report: Record<string, unknown> = {};
   for (const family of jobFamilySchema.options) {
     const list = await politeGet(saraminSearchUrl(family, profile));

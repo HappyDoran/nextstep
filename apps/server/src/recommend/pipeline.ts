@@ -84,8 +84,8 @@ function upsertPosting(db: DatabaseSync, p: CollectedPosting, acquiredBy: 'auto'
     return existing.id;
   }
   const id = randomUUID();
-  db.prepare('INSERT INTO postings (id, source, source_id, owner_user_id, url, title, company, deadline, always_hire, location, remote, careers, company_type, employee_count, external_apply_url, body_failure, acquired_by, checked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(id, p.source, p.sourceId, ownerUserId, ...values);
+  db.prepare('INSERT INTO postings (id, source, source_id, owner_user_id, url, title, company, deadline, always_hire, location, remote, careers, company_type, employee_count, external_apply_url, body_failure, acquired_by, checked_at, first_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(id, p.source, p.sourceId, ownerUserId, ...values, at);
   return id;
 }
 
@@ -155,9 +155,9 @@ function loadUserBasis(db: DatabaseSync, userId: string) {
 }
 
 // 필터용 공고 사실(저장된 값만 쓴다).
-export function rowFacts(row: Pick<PostingRow, 'location' | 'remote' | 'careers' | 'requirements'>) {
+export function rowFacts(row: Pick<PostingRow, 'location' | 'remote' | 'careers' | 'requirements' | 'company'>) {
   const req = row.requirements ? JSON.parse(row.requirements) as Partial<Requirements> : null;
-  return { location: row.location, remote: row.remote === null ? (req?.remote === '전면' ? true : null) : row.remote === 1, careers: JSON.parse(row.careers), employmentTypes: req?.employmentTypes };
+  return { location: row.location, remote: row.remote === null ? (req?.remote === '전면' ? true : null) : row.remote === 1, careers: JSON.parse(row.careers), employmentTypes: req?.employmentTypes, company: row.company };
 }
 
 // 저장된 공고 사실을 규칙 입력으로 바꾼다. 이전 형식 추출 결과는 본문 조건 미확인으로 둔다(다시 수집하면 새로 추출).
@@ -170,6 +170,7 @@ function postingInput(row: PostingRow): PostingInput {
     remote: row.remote === null ? (req?.remote ?? null) : row.remote ? '전면' : '없음',
     // 사용자가 마감을 확인했으면 그 시각을 마감으로 본다(규칙이 마감으로 제외).
     title: row.title, deadline: row.closed_at ?? row.deadline, alwaysHire: !row.closed_at && row.always_hire === 1, companyType: row.company_type,
+    salary: req?.salary ?? null,
     bodyNote: req ? null : `본문 조건 미확인(${BODY_FAILURES[row.body_failure ?? ''] ?? '본문을 읽지 못함'})`,
   };
 }
@@ -254,7 +255,7 @@ async function judgeFor(db: DatabaseSync, deps: PipelineDeps, userId: string, ba
   if (!pending.length) return;
   let candidate: Candidate;
   try { candidate = await candidateFacts(db, userId, deps, basis); } catch (error) { countFailure(counts, error); return; }
-  const seeker = { jobFamilies: basis.profile.jobFamilies, regions: basis.profile.regions, remoteOk: basis.profile.remoteOk };
+  const seeker = { jobFamilies: basis.profile.jobFamilies, regions: basis.profile.regions, remoteOk: basis.profile.remoteOk, salaryMin: basis.profile.salaryMin };
   for (const row of pending) {
     const j = classify(at, seeker, candidate, postingInput(row));
     // 판정 중 계정이 삭제되면 외래키가 저장을 거부해 추천이 되살아나지 않는다.

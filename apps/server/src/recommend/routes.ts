@@ -1,20 +1,41 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { FastifyInstance } from 'fastify';
-import { linkRequestSchema, profileDraftSchema, profileSchema, recommendationFeedbackSchema, recommendationListSchema, recommendationSchema, latestRefreshSchema } from '@nextstep/contracts';
+import { type Profile, linkRequestSchema, profileDraftSchema, profileSchema, recommendationFeedbackSchema, recommendationListSchema, recommendationSchema, latestRefreshSchema } from '@nextstep/contracts';
 import { requireUser } from '../auth.js';
 import { profileFromCandidate } from '../prompts/profile.js';
 import { extractCandidate } from '../prompts/candidate.js';
 import { candidateFor } from '../ai/remote.js';
 import { enqueue, getJob, latestJob, runNext, type ClaimedJob, type JobOutcome } from './jobs.js';
 import { documentsText, parsePostingLink, rowFacts } from './pipeline.js';
-import { passesFilter } from '../sources/filter.js';
+import { companyMatches, passesFilter } from '../sources/filter.js';
+import { norm } from './classify.js';
 
 type Row = {
   posting_id: string; source: string; acquired_by: string; url: string; external_apply_url: string | null; title: string; company: string;
   deadline: string | null; always_hire: number; company_type: string | null; employee_count: number | null; checked_at: string;
   classification: string; judgement: string; hidden: number; feedback: string | null; feedback_reason: string | null; restored: number; evaluated_at: string;
-  location: string | null; remote: number | null; careers: string; requirements: string | null; closed_at: string | null;
+  location: string | null; remote: number | null; careers: string; requirements: string | null; closed_at: string | null; first_seen_at: string | null;
 };
+
+// 선호로 목록 순서만 조금 바꾼다(판정은 그대로, P1-19 ④): 관심 회사 +3, 선호 회사 유형 +1, 공고 조건에 든 선호 기술 하나당 +1(최대 3),
+// 필수 조건에 든 피하는 기술 하나당 -2. 근거는 목록에 표시한다.
+function preference(row: Row, profile: Profile | null) {
+  if (!profile) return { boost: 0, signals: [] as string[] };
+  const signals: string[] = [];
+  let boost = 0;
+  if (profile.favoriteCompanies.length && companyMatches(row.company, profile.favoriteCompanies)) { boost += 3; signals.push('관심 회사'); }
+  const type = row.company_type ?? '';
+  if (type && profile.companyTypes.some(t => (t === '벤처·스타트업' ? /벤처|스타트업/.test(type) : type.startsWith(t)))) { boost += 1; signals.push('선호 회사 유형'); }
+  const req = row.requirements ? JSON.parse(row.requirements) as { required?: { keys?: string[] }[]; preferred?: { keys?: string[] }[] } : null;
+  const keys = (list?: { keys?: string[] }[]) => new Set((list ?? []).flatMap(r => r.keys ?? []).map(norm));
+  const required = keys(req?.required);
+  const any = new Set([...required, ...keys(req?.preferred)]);
+  const liked = profile.preferredSkills.filter(s => any.has(norm(s)));
+  const avoided = profile.avoidSkills.filter(s => required.has(norm(s)));
+  if (liked.length) { boost += Math.min(3, liked.length); signals.push(`선호 기술: ${liked.slice(0, 3).join('·')}`); }
+  if (avoided.length) { boost -= 2 * avoided.length; signals.push(`피하는 기술: ${avoided.slice(0, 3).join('·')}`); }
+  return { boost, signals };
+}
 
 // 마감 근거가 없으면 임의로 종료하지 않고 미확인으로 둔다.
 function postingStatus(row: Row, now: string) {
@@ -64,7 +85,13 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     const window = job?.finishedAt ? db.prepare('SELECT started_at FROM jobs WHERE id = ? AND user_id = ?').get(job.id, user.id) as { started_at: string | null } : undefined;
     const counts = job?.finishedAt && window?.started_at ? db.prepare(`SELECT COALESCE(SUM(classification = '기본'), 0) AS basic, COALESCE(SUM(classification = '도전'), 0) AS challenge
       FROM recommendations WHERE user_id = ? AND evaluated_at BETWEEN ? AND ?`).get(user.id, window.started_at, job.finishedAt) as { basic: number; challenge: number } : null;
-    return latestRefreshSchema.parse({ job, counts: counts ? { basic: Number(counts.basic), challenge: Number(counts.challenge) } : null });
+    // 상단 막대: 마지막 갱신으로 새로 들어온 공고 수와, 지금 목록에 보이는 기본 추천 수(숨김·마감 제외).
+    const now = Date.now();
+    const basicNow = (db.prepare(`SELECT p.deadline, p.always_hire FROM recommendations r JOIN postings p ON p.id = r.posting_id
+      WHERE r.user_id = ? AND p.owner_user_id = ? AND r.classification = '기본' AND r.hidden = 0 AND p.closed_at IS NULL`).all(user.id, user.id) as { deadline: string | null; always_hire: number }[])
+      .filter(p => p.always_hire === 1 || !p.deadline || !(Date.parse(p.deadline) <= now)).length;
+    const collected = job?.finishedAt ? Number((job.result as { collected?: number } | null)?.collected ?? 0) : 0;
+    return latestRefreshSchema.parse({ job, counts: counts ? { basic: Number(counts.basic), challenge: Number(counts.challenge) } : null, overview: job?.finishedAt ? { newPostings: collected, basicNow } : null });
   });
 
   app.get<{ Params: { id: string } }>('/jobs/:id', async (request, reply) => {
@@ -77,7 +104,7 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     const user = requireUser(db, request, reply);
     if (!user) return reply;
     const now = new Date().toISOString();
-    const rows = db.prepare(`SELECT r.posting_id, p.source, p.acquired_by, p.url, p.external_apply_url, p.title, p.company, p.deadline, p.always_hire, p.company_type, p.employee_count, p.checked_at, p.location, p.remote, p.careers, p.requirements, p.closed_at,
+    const rows = db.prepare(`SELECT r.posting_id, p.source, p.acquired_by, p.url, p.external_apply_url, p.title, p.company, p.deadline, p.always_hire, p.company_type, p.employee_count, p.checked_at, p.location, p.remote, p.careers, p.requirements, p.closed_at, p.first_seen_at,
         r.classification, r.judgement, r.hidden, r.feedback, r.feedback_reason, r.restored, r.evaluated_at
       FROM recommendations r JOIN postings p ON p.id = r.posting_id
       WHERE r.user_id = ? AND p.owner_user_id = ?
@@ -87,11 +114,13 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     const profile = profileRow ? profileSchema.parse(JSON.parse(profileRow.data)) : null;
     const items = rows.filter(row => !profile || row.acquired_by === 'link' || passesFilter(rowFacts(row), profile)).map(row => {
       const j = JSON.parse(row.judgement) as { met: string[]; unmet: string[]; unknown: string[]; reason: string };
+      const pref = preference(row, profile);
       return recommendationSchema.parse({
         postingId: row.posting_id, source: row.source, linkOnly: row.acquired_by === 'link', url: row.url, externalApplyUrl: row.external_apply_url,
         title: row.title, company: row.company, deadline: row.deadline, alwaysHire: row.always_hire === 1, postingStatus: postingStatus(row, now), closedAt: row.closed_at,
         companyType: row.company_type, employeeCount: row.employee_count, checkedAt: row.checked_at,
         classification: row.classification, met: j.met, unmet: j.unmet, unknown: j.unknown, reason: j.reason, hidden: row.hidden === 1, feedback: row.feedback, feedbackReason: row.feedback_reason, restored: row.restored === 1, evaluatedAt: row.evaluated_at,
+        boost: pref.boost, signals: pref.signals, firstSeenAt: row.first_seen_at,
       });
     });
     return recommendationListSchema.parse({ items, lastJob: latestJob(db, user.id, 'refresh') });
