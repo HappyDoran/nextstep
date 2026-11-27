@@ -12,7 +12,7 @@ import { passesFilter } from '../sources/filter.js';
 type Row = {
   posting_id: string; source: string; acquired_by: string; url: string; external_apply_url: string | null; title: string; company: string;
   deadline: string | null; always_hire: number; company_type: string | null; employee_count: number | null; checked_at: string;
-  classification: string; judgement: string; hidden: number; feedback: string | null; restored: number; evaluated_at: string;
+  classification: string; judgement: string; hidden: number; feedback: string | null; feedback_reason: string | null; restored: number; evaluated_at: string;
   location: string | null; remote: number | null; careers: string; requirements: string | null; closed_at: string | null;
 };
 
@@ -78,7 +78,7 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     if (!user) return reply;
     const now = new Date().toISOString();
     const rows = db.prepare(`SELECT r.posting_id, p.source, p.acquired_by, p.url, p.external_apply_url, p.title, p.company, p.deadline, p.always_hire, p.company_type, p.employee_count, p.checked_at, p.location, p.remote, p.careers, p.requirements, p.closed_at,
-        r.classification, r.judgement, r.hidden, r.feedback, r.restored, r.evaluated_at
+        r.classification, r.judgement, r.hidden, r.feedback, r.feedback_reason, r.restored, r.evaluated_at
       FROM recommendations r JOIN postings p ON p.id = r.posting_id
       WHERE r.user_id = ? AND p.owner_user_id = ?
       ORDER BY CASE r.classification WHEN '기본' THEN 0 WHEN '도전' THEN 1 WHEN '미확인' THEN 2 ELSE 3 END, r.feedback = 'up' DESC, p.checked_at DESC`).all(user.id, user.id) as Row[];
@@ -91,7 +91,7 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
         postingId: row.posting_id, source: row.source, linkOnly: row.acquired_by === 'link', url: row.url, externalApplyUrl: row.external_apply_url,
         title: row.title, company: row.company, deadline: row.deadline, alwaysHire: row.always_hire === 1, postingStatus: postingStatus(row, now), closedAt: row.closed_at,
         companyType: row.company_type, employeeCount: row.employee_count, checkedAt: row.checked_at,
-        classification: row.classification, met: j.met, unmet: j.unmet, unknown: j.unknown, reason: j.reason, hidden: row.hidden === 1, feedback: row.feedback, restored: row.restored === 1, evaluatedAt: row.evaluated_at,
+        classification: row.classification, met: j.met, unmet: j.unmet, unknown: j.unknown, reason: j.reason, hidden: row.hidden === 1, feedback: row.feedback, feedbackReason: row.feedback_reason, restored: row.restored === 1, evaluatedAt: row.evaluated_at,
       });
     });
     return recommendationListSchema.parse({ items, lastJob: latestJob(db, user.id, 'refresh') });
@@ -130,8 +130,10 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     const feedback = body.data.feedback === undefined ? current.feedback : body.data.feedback;
     const restored = body.data.restored === undefined ? current.restored : body.data.restored ? 1 : 0;
     const hidden = body.data.feedback === 'down' ? 1 : body.data.feedback !== undefined && current.feedback === 'down' ? 0 : current.hidden;
-    db.prepare('UPDATE recommendations SET feedback = ?, restored = ?, hidden = ? WHERE user_id = ? AND posting_id = ?').run(feedback, restored, hidden, user.id, request.params.id);
-    return { feedback, restored: restored === 1, hidden: hidden === 1 };
+    // 이유는 별로일 때만 남긴다(별로를 지우거나 좋아요로 바꾸면 지움). 이유 없이 다른 값만 바꾸면 기존 이유를 둔다.
+    const reason = feedback !== 'down' ? null : body.data.reason !== undefined ? body.data.reason : (db.prepare('SELECT feedback_reason FROM recommendations WHERE user_id = ? AND posting_id = ?').get(user.id, request.params.id) as { feedback_reason: string | null }).feedback_reason;
+    db.prepare('UPDATE recommendations SET feedback = ?, feedback_reason = ?, restored = ?, hidden = ? WHERE user_id = ? AND posting_id = ?').run(feedback, reason, restored, hidden, user.id, request.params.id);
+    return { feedback, reason, restored: restored === 1, hidden: hidden === 1 };
   });
 
   // 이력서에서 프로필 초안을 만든다. 화면을 떠나도 서버가 끝까지 만들고, 결과는 GET /profile/draft로 읽는다.

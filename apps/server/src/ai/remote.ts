@@ -88,8 +88,11 @@ export async function waitTasks(db: DatabaseSync, userId: string, ids: string[],
   return rest;
 }
 
-const batchSchema = z.object({ items: z.array(z.object({ id: z.string(), result: requirementsSchema }).strict()).max(BATCH) }).strict();
+export const batchSchema = z.object({ items: z.array(z.object({ id: z.string(), result: requirementsSchema }).strict()).max(BATCH) }).strict();
 const POSTING_BATCH_NOTE = '\n- 공고는 <posting> 블록마다 JSON(id·title·company·body)으로 온다. 블록마다 결과 하나를 items에 넣고, id는 그 블록의 id를 그대로 쓴다.';
+
+/** 공고 묶음 지시문(실행기·평가 공용). inputs는 postingTaskInput 결과. */
+export const postingBatchPrompt = (inputs: string[]) => `${REQUIREMENTS_INSTRUCTIONS}${POSTING_BATCH_NOTE}\n\n${inputs.map(input => dataBlock('posting', input)).join('\n')}`;
 
 /** 실행기가 받아 갈 분석 한 번. 서류를 먼저, 그다음 공고를 최대 10건 묶는다. 하루 상한을 넘으면 주지 않는다. */
 export function claim(db: DatabaseSync, userId: string, now = Date.now()) {
@@ -107,7 +110,7 @@ export function claim(db: DatabaseSync, userId: string, now = Date.now()) {
   db.prepare('UPDATE users SET ai_usage = ? WHERE id = ?').run(JSON.stringify({ date: state.usage.date, calls: state.usage.calls + 1 }), userId);
   return aiClaimSchema.parse(kind === 'candidate'
     ? { kind, taskIds: [tasks[0]!.id], prompt: `${CANDIDATE_INSTRUCTIONS}\n\n${dataBlock('candidate', tasks[0]!.input)}`, schema: strictJsonSchema(candidateSchema) }
-    : { kind, taskIds: tasks.map(t => t.id), prompt: `${REQUIREMENTS_INSTRUCTIONS}${POSTING_BATCH_NOTE}\n\n${tasks.map(t => dataBlock('posting', t.input)).join('\n')}`, schema: strictJsonSchema(batchSchema) });
+    : { kind, taskIds: tasks.map(t => t.id), prompt: postingBatchPrompt(tasks.map(t => t.input)), schema: strictJsonSchema(batchSchema) });
 }
 
 /** 실행기 결과 반영. 검증에 실패하거나 실패를 알리면 일을 대기로 돌린다. 반영한 수를 돌려준다. */

@@ -94,3 +94,18 @@ test('JS·TS 같은 줄임말은 별칭으로 맞추고, 비어 버린 키끼리
   assert.equal(matches(['(필수)'], ['(우대)']), false);
   assert.equal(matches(['JS'], ['TypeScript']), false);
 });
+
+test('제목에 직무가 분명하면 모델 직무 분류를 보정한다(앱 공고를 프론트엔드로 본 경우 등)', async () => {
+  const { withTitleFamilies } = await import('../dist/recommend/classify.js');
+  assert.deepEqual(withTitleFamilies('iOS 개발자 (iOS SDK)', ['프론트엔드']), ['앱 개발']);
+  assert.deepEqual(withTitleFamilies('크로스플랫폼 앱 개발자(Flutter) 채용', ['기타']), ['앱 개발']);
+  assert.deepEqual(withTitleFamilies('[AI 클라우드 SW] 백엔드/프론트엔드/앱 개발자 채용', ['백엔드']), ['백엔드', '앱 개발', '프론트엔드']);
+  assert.deepEqual(withTitleFamilies('플랫폼개발실 InDSP TF 서버개발자', ['기타']), ['백엔드']);
+  assert.deepEqual(withTitleFamilies('[알라미] Product Manager', ['기타']), ['기획']);
+  // 직무 이름이 없으면 모델 결과 그대로, 본문 추출이 없으면 제목 직무만.
+  assert.deepEqual(withTitleFamilies('ERP 회계 컨설턴트', ['기타']), ['기타']);
+  assert.deepEqual(withTitleFamilies('웹프론트엔드 엔지니어', null), ['프론트엔드']);
+  // 영문 단어 안의 글자(Pos, Spoon, iOSX 등)는 직무로 보지 않는다.
+  assert.deepEqual(withTitleFamilies('Flutter 개발자 (바로더 POS/테이블오더)', ['앱 개발']), ['앱 개발']);
+  assert.equal(withTitleFamilies('Responsive Designer', null), null);
+});

@@ -93,6 +93,13 @@ test('추천 목록 표시·관심 없음·지원 현황 저장과 작업 실패
     await expect(card).toContainText('기업 유형·규모 미확인');
     await expect(card).toContainText('원티드 · 링크 판정');
     await expect(card.getByRole('link', { name: /지원 페이지 열기/ })).toHaveAttribute('href', 'https://www.wanted.co.kr/wd/1');
+    // 별로예요는 이유를 고르게 하고, 고른 이유를 함께 보낸다(판정 정확도 측정용).
+    let downBody: unknown;
+    await page.route('**/api/recommendations/p1/feedback', route => { downBody = route.request().postDataJSON(); return route.fulfill({ json: { feedback: 'down', reason: '직무가 달라요', restored: false, hidden: true } }); });
+    await card.getByRole('button', { name: '별로예요' }).click();
+    await card.getByRole('group', { name: '별로인 이유' }).getByRole('button', { name: '직무가 달라요' }).click();
+    await expect.poll(() => downBody).toEqual({ feedback: 'down', reason: '직무가 달라요' });
+    await page.unroute('**/api/recommendations/p1/feedback');
     await card.getByRole('button', { name: '지원 현황에 저장' }).click();
     await expect(card.getByRole('button', { name: '지원 현황에 저장됨' })).toBeVisible();
     await card.getByRole('button', { name: '닫기' }).click();

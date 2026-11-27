@@ -7,7 +7,24 @@ import type { Judgement } from '../prompts/recommend.js';
 // 추천 분류 규칙(기술 설계 D절, 사용자 확정 2026-11-07). 모델은 사실만 뽑고 분류는 여기서 정한다.
 // 우선순위: 제외 > 도전 > 미확인 > 기본. 같은 입력이면 같은 분류가 나온다.
 // 규칙을 바꾸면 반드시 올린다. 저장된 추천은 이 값이 바뀌어야 다시 판정된다(2026-11-15 올리지 않아 재판정 누락).
-export const RULES_VERSION = 'rules-2026-11-22';
+export const RULES_VERSION = 'rules-2026-11-27';
+
+// 제목에 직무 이름이 분명하면 그 직무를 더한다(2026-11-27 평가: 로컬 모델이 iOS 공고를 프론트엔드로, 앱 공고를 본문 '웹뷰'로 프론트엔드로 봄).
+// 모델이 '기타'로 둔 공고도 제목이 대상 직무를 말하면 그 직무로 본다. 제목이 앱만 말하면 모델의 프론트엔드는 뺀다. 본문 추출이 없으면 제목 직무만 쓴다.
+const TITLE_FAMILIES: [string, RegExp][] = [
+  ['앱 개발', /(?<![a-z])(ios|android)(?![a-z])|안드로이드|아이폰|flutter|플러터|react\s*native|모바일\s*앱|앱\s*개발/i],
+  ['프론트엔드', /프론트\s*엔드|front[\s-]*end|웹\s*퍼블리/i],
+  ['백엔드', /백엔드|back[\s-]*end|서버\s*개발/i],
+  ['디자인', /ui\s*\/?\s*ux|ux\s*\/?\s*ui|프로덕트\s*디자이너|product\s+designer/i],
+  ['기획', /서비스\s*기획|(?<![a-z])(pm|po)(?![a-z])|product\s+(manager|owner)|프로덕트\s*(매니저|오너)/i],
+  ['QA', /(?<![a-z])qa(?![a-z])|품질\s*보증|테스트\s*엔지니어/i],
+];
+export function withTitleFamilies(title: string, families: string[] | null): string[] | null {
+  const named = TITLE_FAMILIES.filter(([, re]) => re.test(title)).map(([family]) => family);
+  if (!named.length) return families;
+  const merged = [...new Set([...(families ?? []).filter(f => f !== '기타'), ...named])];
+  return named.includes('앱 개발') && !named.includes('프론트엔드') ? merged.filter(f => f !== '프론트엔드') : merged;
+}
 
 export type Seeker = { jobFamilies: string[]; regions: string[]; remoteOk: boolean };
 export type PostingInput = {
@@ -84,10 +101,12 @@ export function classify(evaluatedAt: string, seeker: Seeker, c: Candidate, p: P
   };
 
   // 직무: 희망 직무 중 하나만 맞아도 된다(OR). 제목이 대상 아닌 직무명이면 모델 분류와 상관없이 제외한다.
+  // 제목이 직무를 밝히면 모델 분류를 제목으로 보정한다(어느 AI 경로든 같은 실수를 막음).
   const off = p.title?.match(NOT_TARGET)?.[0];
-  const families = off ? [] : p.families?.filter(f => seeker.jobFamilies.includes(f)) ?? [];
+  const postingFamilies = p.title ? withTitleFamilies(p.title, p.families) : p.families;
+  const families = off ? [] : postingFamilies?.filter(f => seeker.jobFamilies.includes(f)) ?? [];
   if (off) out('exclude', `공고 직무(${off})가 대상 직무가 아님`);
-  else if (p.families && !families.length) out('exclude', `공고 직무(${p.families.join('·')})가 희망 직무(${seeker.jobFamilies.join('·')})와 다름`);
+  else if (postingFamilies && !families.length) out('exclude', `공고 직무(${postingFamilies.join('·')})가 희망 직무(${seeker.jobFamilies.join('·')})와 다름`);
   const jobFamilies = families.length ? families : seeker.jobFamilies;
 
   // 마감: 기준 시각과 같거나 앞서면 제외(개인 불합격이 아님). 사용자가 방금 마감 표시한 공고도 같은 밀리초 판정에서 제외된다.

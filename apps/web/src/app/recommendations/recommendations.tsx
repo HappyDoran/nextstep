@@ -3,7 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Check, ExternalLink, LoaderCircle, RefreshCw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, buttonClass, ClassLabel, classTag, DueDate, Field, Input, Lane, Row, RowList, RowTrigger, Select, Sheet, Skeleton, StatePanel, Tag, Toggle } from '@nextstep/design-system';
-import { jobSchema, profileSchema, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
+import { feedbackReasonSchema, jobSchema, profileSchema, type FeedbackReason, recommendationClassSchema, recommendationListSchema, type Job, type Me, type Recommendation } from '@nextstep/contracts';
 import { ACTIVE_JOB, AI_CAUSES, buttonIcon as icon, call, monthDay, SOURCE_NAMES, useApplications, useDocument, useMailConnection, useProfile, useStored, useWhen } from '../api-client';
 import { Account } from '../account';
 import { Frame, progressText, SignedIn, useLatestRefresh } from '../frame';
@@ -181,7 +181,8 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
   // 피드백(좋아요는 같은 분류 안에서 위로, 별로는 숨김)과 제외 복구는 내 목록에만 반영된다.
   // 원문에서 마감을 확인하면 표시한다(다음 갱신 판정에서 마감으로 제외). 잘못 눌렀으면 취소한다.
   const close = useMutation({ mutationFn: (closed: boolean) => call(`recommendations/${item.postingId}/closed`, { method: 'PUT', body: JSON.stringify({ closed }) }), onSuccess: () => client.invalidateQueries({ queryKey: listKey }) });
-  const feedback = useMutation({ mutationFn: (body: { feedback?: 'up' | 'down' | null; restored?: boolean }) => call(`recommendations/${item.postingId}/feedback`, { method: 'PUT', body: JSON.stringify(body) }), onSuccess: () => client.invalidateQueries({ queryKey: listKey }) });
+  const [askReason, setAskReason] = useState(false);
+  const feedback = useMutation({ mutationFn: (body: { feedback?: 'up' | 'down' | null; reason?: FeedbackReason; restored?: boolean }) => call(`recommendations/${item.postingId}/feedback`, { method: 'PUT', body: JSON.stringify(body) }), onSuccess: () => client.invalidateQueries({ queryKey: listKey }) });
   // 지원 현황에 미지원으로 저장만 한다. 지원 완료는 사용자가 직접 바꾼다.
   const track = useMutation({
     mutationFn: () => call('applications', { method: 'POST', body: JSON.stringify({ company: item.company.slice(0, 200), roleTitle: item.title.slice(0, 200), postingUrl: item.url }) }),
@@ -220,9 +221,16 @@ function Detail({ item, me, listKey, onClose }: { item: Recommendation; me: Me; 
     <div className="flex flex-wrap items-center gap-2 text-body-sm text-muted-foreground">
       이 판정이 맞나요?
       <Button size="sm" variant="secondary" aria-pressed={item.feedback === 'up'} disabled={feedback.isPending} onClick={() => feedback.mutate({ feedback: item.feedback === 'up' ? null : 'up' })}>{item.feedback === 'up' ? '좋아요 취소' : '좋아요'}</Button>
-      {item.feedback !== 'down' && <Button size="sm" variant="secondary" disabled={feedback.isPending} onClick={() => feedback.mutate({ feedback: 'down' })}>별로예요</Button>}
+      {item.feedback !== 'down' && !askReason && <Button size="sm" variant="secondary" disabled={feedback.isPending} onClick={() => setAskReason(true)}>별로예요</Button>}
       {(item.classification === '제외' || item.restored) && <Button size="sm" variant="secondary" disabled={feedback.isPending} onClick={() => feedback.mutate({ restored: !item.restored })}>{item.restored ? '복구 취소' : '제외 복구'}</Button>}
     </div>
+    {/* 별로 이유는 판정 정확도를 재고 고치는 데 쓴다. 고르면 그 공고는 숨긴다. */}
+    {askReason && item.feedback !== 'down' && <div role="group" aria-label="별로인 이유" className="flex flex-wrap items-center gap-2 text-body-sm text-muted-foreground">
+      어디가 안 맞나요?
+      {feedbackReasonSchema.options.map(reason => <Button key={reason} size="sm" variant="secondary" disabled={feedback.isPending} onClick={() => feedback.mutate({ feedback: 'down', reason }, { onSuccess: () => setAskReason(false) })}>{reason}</Button>)}
+      <Button size="sm" variant="quiet" onClick={() => setAskReason(false)}>취소</Button>
+    </div>}
+    {item.feedback === 'down' && item.feedbackReason && <p className="text-body-sm text-muted-foreground">별로: {item.feedbackReason}</p>}
     <p className="text-caption text-muted-foreground">공고 확인 {when(item.checkedAt)} · 판정 {when(item.evaluatedAt)}. 지원은 기본 브라우저에서 직접 하고, 마치면 지원 현황에서 상태를 바꾸세요.</p>
     {error && <p role="alert" className="text-body-sm text-destructive">{error.message}</p>}
   </Sheet>;

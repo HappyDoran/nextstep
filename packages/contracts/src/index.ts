@@ -116,6 +116,8 @@ export const linkRequestSchema = z.object({ url: z.url({ protocol: /^https$/ }).
 
 // 추천: 공고 사실과 판정 근거. 기업 유형·규모는 출처 명시값만, 없으면 null(미확인).
 export const recommendationClassSchema = z.enum(['기본', '도전', '미확인', '제외']);
+// 별로 이유(P1-19 정확도 측정): 판정이 어디서 틀렸는지 모은다.
+export const feedbackReasonSchema = z.enum(['직무가 달라요', '경력이 안 맞아요', '기술이 안 맞아요', '지역·근무 형태', '회사(규모·분야)', '기타']);
 export const recommendationSchema = z.object({
   postingId: z.string(),
   source: sourceIdSchema,
@@ -140,10 +142,12 @@ export const recommendationSchema = z.object({
   hidden: z.boolean(),
   // 사용자 피드백(좋아요는 위로, 별로는 숨김)과 제외 복구. 그 사용자 목록에만 쓰고 회사·직무 전체 차단으로 해석하지 않는다.
   feedback: z.enum(['up', 'down']).nullable().default(null),
+  feedbackReason: feedbackReasonSchema.nullable().default(null),
   restored: z.boolean().default(false),
   evaluatedAt: z.string(),
 });
-export const recommendationFeedbackSchema = z.object({ feedback: z.enum(['up', 'down']).nullable().optional(), restored: z.boolean().optional() }).strict().refine(v => Object.keys(v).length > 0);
+export type FeedbackReason = z.infer<typeof feedbackReasonSchema>;
+export const recommendationFeedbackSchema = z.object({ feedback: z.enum(['up', 'down']).nullable().optional(), reason: feedbackReasonSchema.nullable().optional(), restored: z.boolean().optional() }).strict().refine(v => Object.keys(v).length > 0);
 export type Recommendation = z.infer<typeof recommendationSchema>;
 export const recommendationListSchema = z.object({ items: z.array(recommendationSchema), lastJob: jobSchema.nullable() });
 // 데스크톱 상주 앱 알림용: 마지막 공고 갱신 작업과 그 작업이 판정한 기본·도전 건수(끝나기 전에는 null).

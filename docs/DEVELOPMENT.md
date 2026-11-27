@@ -53,6 +53,7 @@ sh scripts/home-deploy.sh   # 받기·설치·서버/웹 빌드·서비스 재�
 | `pnpm --filter @nextstep/web start` | 빌드된 웹 실행 |
 | `pnpm --filter @nextstep/server verify:jobkorea` | 잡코리아 네 직무 공개 공고 소량 조회(직무당 목록 1회·상세 3건, 요청 간 2.5초). 원문 없이 추출 결과·실패 구분만 출력. 공고 검증 명령은 403·429를 받은 호스트에는 다시 요청하지 않음 |
 | `pnpm --filter @nextstep/server invite` | 운영자용 초대 코드 발급(누구나 한 번 쓰는 코드, 14일 유효). 서버와 같은 DB에 코드 해시만 저장하고 코드는 이 출력에서만 보임. 보통은 미등록 계정이 구글 로그인하면 그 계정 전용 코드가 Discord로 오므로 이 명령은 예비용 |
+| `EVAL_PROVIDER=local\|codex pnpm --filter @nextstep/server eval:extract` | 실제 공고 평가 세트(커밋하지 않는 `apps/server/.data/eval/`의 공고 본문·참고 라벨)로 공고 직무 분류 정확도를 경로별(로컬 Ollama / 이 기기 Codex)로 재고, 제목 보정 전후를 비교 |
 | `pnpm --filter @nextstep/server eval:recommend` | 정답 사례 57건(합성)의 공고 조건·지원자 사실을 로컬 AI로 추출하고 규칙으로 분류해 직무별 일치율·주입 사례·오판 근거를 출력(조정용 74건, `EVAL_SET=holdout`이면 검증용 20건) |
 | `pnpm --filter @nextstep/server verify:saramin` | 사람인 네 직무 공개 검색 목록 1회·상세 3건 조회(요청 간 2.5초). 원문 없이 추출 결과·본문 길이·실패 구분만 출력 |
 | `pnpm --filter @nextstep/server verify:wanted` | 원티드 네 직무 공개 목록·상세 각 3건 조회 |

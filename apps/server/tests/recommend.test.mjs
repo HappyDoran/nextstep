@@ -248,9 +248,13 @@ test('좋아요·별로·제외 복구는 그 사용자 목록에만 반영되�
     const fb = (cookie, id, body) => s.app.inject({ method: 'PUT', url: `/recommendations/${id}/feedback`, headers: { cookie }, payload: body });
     assert.equal((await fb(b, first.postingId, { feedback: 'up' })).statusCode, 404);
     assert.equal((await fb(a, first.postingId, {})).statusCode, 400);
-    assert.deepEqual((await fb(a, second.postingId, { feedback: 'up' })).json(), { feedback: 'up', restored: false, hidden: false });
+    assert.deepEqual((await fb(a, second.postingId, { feedback: 'up' })).json(), { feedback: 'up', reason: null, restored: false, hidden: false });
     // 별로는 숨김으로도 처리하고, 피드백을 지우면 숨김도 풀린다.
     assert.equal((await fb(a, first.postingId, { feedback: 'down' })).json().hidden, true);
+    // 별로 이유는 별로일 때만 남고 목록에 보인다. 정해진 이유만 받는다.
+    assert.equal((await fb(a, first.postingId, { feedback: 'down', reason: '직무가 달라요' })).json().reason, '직무가 달라요');
+    assert.equal((await s.app.inject({ url: '/recommendations', headers: { cookie: a } })).json().items.find(i => i.postingId === first.postingId).feedbackReason, '직무가 달라요');
+    assert.equal((await fb(a, first.postingId, { feedback: 'down', reason: '아무거나' })).statusCode, 400);
     assert.equal((await fb(a, first.postingId, { feedback: null })).json().hidden, false);
     assert.equal((await fb(a, first.postingId, { restored: true })).json().restored, true);
     // 같은 분류 안에서 좋아요가 위로 온다.
