@@ -39,7 +39,8 @@ export function parseCareers(raw: string): Career[] {
 
 export function parsePosting(id: string, html: string): SaraminPosting | { code: 'parse_failed' } {
   const title = html.match(/class="tit_job">([\s\S]*?)<\/h1>/)?.[1];
-  const company = html.match(/title="([^"]*)" class="company"/)?.[1];
+  // 회사 링크의 속성 순서가 공고마다 다르다(2026-11-27 'class="company" title=...' 형식으로 해석 실패 2건).
+  const company = html.match(/<a\b[^>]*\bclass="company"[^>]*>/)?.[0].match(/title="([^"]*)"/)?.[1];
   if (!title || !company) return { code: 'parse_failed' };
   const summary = html.slice(html.indexOf('jv_cont jv_summary'), html.indexOf('jv_cont jv_howto'));
   const facts = Object.fromEntries([...summary.matchAll(/<dt[^>]*>([\s\S]*?)<\/dt>\s*<dd[^>]*>([\s\S]*?)<\/dd>/g)].map(m => [text(m[1]!), text(m[2]!)]));

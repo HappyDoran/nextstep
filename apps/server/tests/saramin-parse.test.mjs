@@ -29,6 +29,9 @@ test('사람인 상세의 제목·회사·마감·근무지·경력을 추출하
   assert.equal(always.deadline, null);
   assert.equal(always.alwaysHire, true);
   assert.deepEqual(parsePosting('9', '<html></html>'), { code: 'parse_failed' });
+  // 회사 링크 속성 순서가 바뀐 공고(class가 title보다 앞)도 읽는다(2026-11-27 실제 해석 실패 2건).
+  const swapped = page().replace('title="가상회사&amp;파트너스" class="company"', 'class="company" title="가상회사&amp;파트너스"');
+  assert.equal(parsePosting('10', swapped).company, '가상회사&파트너스');
 });
 
 test('사람인 경력 표기를 연차 범위로 바꾼다', () => {
