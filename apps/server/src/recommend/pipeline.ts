@@ -18,7 +18,7 @@ import { seoulParts } from '../schedule.js';
 
 type Collected = { postings: CollectedPosting[]; failures: CollectFailure[] };
 export type PipelineDeps = {
-  collect: { saramin: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; wanted: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jumpit: (f: JobFamily, n: number, p: Profile) => Promise<Collected>; jobkorea: (f: JobFamily, n: number, p: Profile) => Promise<Collected> };
+  collect: Record<'saramin' | 'jobkorea' | 'wanted' | 'jumpit', (f: JobFamily, n: number, p: Profile, skip?: (id: string) => boolean) => Promise<Collected>>;
   fetchOne: Record<SourceId, (id: string) => Promise<CollectedPosting | CollectFailure>>;
   extract: (posting: { title: string; company: string; body: string }) => Promise<Requirements>;
   candidate: (text: string) => Promise<Candidate>;
@@ -34,7 +34,10 @@ export const defaultDeps: PipelineDeps = {
 };
 
 // 실행당 요청·판정 상한(출처 부담·요금 제한).
-const PER_FAMILY = 5;
+// 직무·출처마다 새 공고를 이만큼(사용자 결정 2026-11-26: 15건부터). 이미 분석한 공고는 세지 않는다.
+const PER_FAMILY = 15;
+// 로컬 LLM은 느려(1건 약 1분) 실행당 이만큼만 뽑고 나머지는 다음 실행·내 AI로 넘긴다(기획서: 하루 처리 상한).
+const LOCAL_EXTRACT_LIMIT = 40;
 // 노출 공고 마감 재확인: 매일 0시(KST) 이 시간보다 오래 확인 안 한 노출 공고를 모두 다시 읽는다(요청당 2.5초, 21시 갱신에서 받은 공고는 건너뜀).
 const RECHECK_AFTER_MS = 3 * 60 * 60_000;
 const RECHECK_HOUR = 0;
@@ -43,7 +46,7 @@ const NOT_HIRING = /교육생|수강생|훈련생|부트캠프|클래스메이�
 export const isNotHiring = (title: string) => NOT_HIRING.test(title);
 // 실패 원인 코드만 센다(요청 본문은 남기지 않는다).
 const failureCode = (error: unknown) => (error as { code?: string }).code ?? 'internal';
-type Counts = { aiFailures: number; aiFailureCodes: Record<string, number> };
+type Counts = { aiFailures: number; aiFailureCodes: Record<string, number>; localExtracts?: number };
 function countFailure(counts: Counts, error: unknown) {
   counts.aiFailures++;
   const code = failureCode(error);
@@ -104,6 +107,9 @@ async function storeRequirements(db: DatabaseSync, deps: PipelineDeps, userId: s
 }
 
 async function extractLocal(db: DatabaseSync, deps: PipelineDeps, userId: string, postingId: string, p: { title: string; company: string; body: string }, counts: Counts) {
+  // 상한을 넘으면 이번 실행에서는 뽑지 않는다(본문 조건 미확인으로 판정, 다음 실행·내 AI가 다시 본다).
+  if ((counts.localExtracts ?? 0) >= LOCAL_EXTRACT_LIMIT) return;
+  counts.localExtracts = (counts.localExtracts ?? 0) + 1;
   try { saveRequirements(db, userId, postingId, await deps.extract(p), 'local'); } catch (error) { countFailure(counts, error); }
 }
 
@@ -111,10 +117,12 @@ async function extractLocal(db: DatabaseSync, deps: PipelineDeps, userId: string
 async function settleRemote(db: DatabaseSync, deps: PipelineDeps, userId: string, ids: string[], counts: Counts) {
   if (!ids.length) return;
   const rest = await waitTasks(db, userId, ids, deps.waitMs ?? POSTING_WAIT_MS);
+  // 실행기가 지금도 일하고 있으면(1분 조회 중) 남은 공고를 로컬로 중복 처리하지 않고 내 AI가 마저 하게 둔다(끝나면 다시 판정).
+  const busy = aiState(db, userId).active && Boolean(db.prepare("SELECT 1 FROM ai_tasks WHERE user_id = ? AND status = '실행중'").get(userId));
   for (const id of rest) {
     const task = db.prepare("SELECT kind, ref, input FROM ai_tasks WHERE id = ? AND user_id = ?").get(id, userId) as { kind: string; ref: string; input: string } | undefined;
     if (!task) continue;
-    if (task.kind === 'posting') {
+    if (task.kind === 'posting' && !busy) {
       const has = db.prepare('SELECT requirements FROM postings WHERE id = ? AND owner_user_id = ?').get(task.ref, userId) as { requirements: string | null } | undefined;
       if (has && !(has.requirements && JSON.parse(has.requirements).version === REQUIREMENTS_PROMPT_VERSION)) {
         const { title, company, body } = JSON.parse(task.input) as { title: string; company: string; body: string };
@@ -286,12 +294,20 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     }
 
     const families = basis.profile.jobFamilies;
+    // 이미 현재 지시문으로 분석해 둔 공고는 상세를 다시 받지 않고 새 공고로 자리를 채운다(마감은 0시 재확인이 본다).
+    // 점핏 공고 번호는 사람인과 같아 사람인으로 받은 공고도 건너뛴다.
+    const analyzed = (source: SourceId) => (id: string) => {
+      const row = db.prepare('SELECT requirements FROM postings WHERE source = ? AND source_id = ? AND owner_user_id = ?').get(source, id, job.userId) as { requirements: string | null } | undefined;
+      const twin = SAME_POSTING[source];
+      if (twin && db.prepare('SELECT 1 FROM postings WHERE source = ? AND source_id = ? AND owner_user_id = ?').get(twin, id, job.userId)) return true;
+      return Boolean(row?.requirements && (JSON.parse(row.requirements) as { version?: string }).version === REQUIREMENTS_PROMPT_VERSION);
+    };
     const runs: [SourceId, () => Promise<Collected>][] = [];
     for (const family of families) {
-      runs.push(['saramin', () => deps.collect.saramin(family, PER_FAMILY, basis.profile)]);
-      runs.push(['jobkorea', () => deps.collect.jobkorea(family, PER_FAMILY, basis.profile)]);
-      runs.push(['wanted', () => deps.collect.wanted(family, PER_FAMILY, basis.profile)]);
-      if (DEV_FAMILIES.includes(family)) runs.push(['jumpit', () => deps.collect.jumpit(family, PER_FAMILY, basis.profile)]);
+      for (const source of ['saramin', 'jobkorea', 'wanted', 'jumpit'] as const) {
+        if (source === 'jumpit' && !DEV_FAMILIES.includes(family)) continue;
+        runs.push([source, () => deps.collect[source](family, PER_FAMILY, basis.profile, analyzed(source))]);
+      }
     }
     // 출처끼리는 순서대로 요청한다(같은 출처에 동시 요청을 만들지 않는다).
     // 진행: 끝낸 출처·직무 묶음 수와 지금까지 걸린 시간으로 남은 시간을 어림한다(공고 수·AI 속도가 묶음마다 달라 대략값).

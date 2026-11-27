@@ -18,7 +18,7 @@ export function listPostingIds(html: string) {
 
 // 검색이 받는 조건(실제 확인): 정규직(job_type=1). 경력은 여러 값을 함께 주면 신입만 돌아와 수집 후 거른다. 지역은 상세에서 거른다.
 export function saraminSearchUrl(family: JobFamily, f: Profile) {
-  const q = new URLSearchParams({ searchword: KEYWORDS[family], recruitPageCount: '20' });
+  const q = new URLSearchParams({ searchword: KEYWORDS[family], recruitPageCount: '50' });
   if (f.employmentTypes.length === 1 && f.employmentTypes[0] === '정규직') q.set('job_type', '1');
   return `${ORIGIN}/zf_user/search/recruit?${q}`;
 }
@@ -71,13 +71,14 @@ export async function fetchSaramin(id: string): Promise<CollectedPosting | Colle
   return { ...p, body: 'text' in body ? body.text : null, bodyFailure: 'code' in body ? body.code : null };
 }
 
-export async function collectSaramin(family: JobFamily, limit: number, f: Profile) {
+// 이미 분석해 둔 공고(skip)는 상세를 다시 받지 않고 세지도 않아 새 공고로 자리를 채운다(사용자 요청 2026-11-27, 마감은 0시 재확인이 본다).
+export async function collectSaramin(family: JobFamily, limit: number, f: Profile, skip: (id: string) => boolean = () => false) {
   const postings: CollectedPosting[] = [];
   const failures: CollectFailure[] = [];
   const list = await politeGet(saraminSearchUrl(family, f));
   if ('code' in list) return { postings, failures: [{ source: 'saramin' as const, code: list.code }] };
   // 지역·경력은 상세에서 확인해 거르므로 목록을 세 배까지 본다.
-  for (const id of listPostingIds(list.text).slice(0, limit * 3)) {
+  for (const id of listPostingIds(list.text).filter(id => !skip(id)).slice(0, limit * 3)) {
     if (postings.length >= limit) break;
     const r = await fetchSaramin(id);
     if ('code' in r) failures.push(r); else if (regionOk(r, f) && careerOk(r, f)) postings.push(r);

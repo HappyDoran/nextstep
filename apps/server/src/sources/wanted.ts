@@ -108,13 +108,14 @@ export function wantedListQuery(family: JobFamily, limit: number, f: Profile) {
   return query;
 }
 
-export async function collectWanted(family: JobFamily, limit: number, f: Profile) {
+// 이미 분석해 둔 공고(skip)는 상세를 다시 받지 않고 세지도 않아 새 공고로 자리를 채운다(사용자 요청 2026-11-27, 마감은 0시 재확인이 본다).
+export async function collectWanted(family: JobFamily, limit: number, f: Profile, skip: (id: string) => boolean = () => false) {
   const postings: CollectedPosting[] = [];
   const failures: CollectFailure[] = [];
-  // 수집 후 거르는 몫을 생각해 목록은 세 배까지 본다.
-  const list = await politeGet(`${ORIGIN}/api/v4/jobs?${wantedListQuery(family, limit * 3, f)}`, { accept: 'application/json' });
+  // 수집 후 거르는 몫과 이미 분석한 공고를 생각해 목록은 넉넉히(최대 100건) 받고 상세는 세 배까지 본다.
+  const list = await politeGet(`${ORIGIN}/api/v4/jobs?${wantedListQuery(family, Math.min(100, limit * 6), f)}`, { accept: 'application/json' });
   if ('code' in list) return { postings, failures: [{ source: 'wanted' as const, code: list.code }] };
-  for (const id of listIds(list.text)) {
+  for (const id of listIds(list.text).filter(id => !skip(id)).slice(0, limit * 3)) {
     if (postings.length >= limit) break;
     const r = await fetchWanted(id);
     if ('code' in r) failures.push(r); else if (regionOk(r, f) && careerOk(r, f)) postings.push(r);

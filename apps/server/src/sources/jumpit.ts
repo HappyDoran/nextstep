@@ -56,18 +56,20 @@ export async function fetchJumpit(id: string): Promise<CollectedPosting | Collec
   return { ...p, body: 'text' in body ? p.body : null, bodyFailure: 'code' in body ? body.code : null };
 }
 
-export async function collectJumpit(family: JobFamily, limit: number, f: Profile) {
+// 이미 분석해 둔 공고(skip)는 상세를 다시 받지 않고 세지도 않는다. 목록은 쪽당 16건이라 직무 분류마다 최대 3쪽 넘긴다.
+export async function collectJumpit(family: JobFamily, limit: number, f: Profile, skip: (id: string) => boolean = () => false) {
   const postings: CollectedPosting[] = [];
   const failures: CollectFailure[] = [];
-  for (const category of CATEGORIES[family] ?? []) {
-    const list = await politeGet(`${API}/positions?jobCategory=${category}&sort=reg_dt&page=1`, { accept: 'application/json', referer: `${ORIGIN}/positions` });
-    if ('code' in list) { failures.push({ source: 'jumpit', code: list.code }); continue; }
+  for (const category of CATEGORIES[family] ?? []) for (let page = 1; page <= 3 && postings.length < limit; page++) {
+    const list = await politeGet(`${API}/positions?jobCategory=${category}&sort=reg_dt&page=${page}`, { accept: 'application/json', referer: `${ORIGIN}/positions` });
+    if ('code' in list) { failures.push({ source: 'jumpit', code: list.code }); break; }
     let items: ListItem[];
-    try { items = listItems(list.text); } catch { failures.push({ source: 'jumpit', code: 'parse_failed' }); continue; }
+    try { items = listItems(list.text); } catch { failures.push({ source: 'jumpit', code: 'parse_failed' }); break; }
+    if (!items.length) break;
     // 목록의 근무지·경력으로 먼저 걸러 상세 요청을 줄인다.
     for (const item of items.filter(i => regionOk({ location: i.locations?.[0] ?? null, remote: null, careers: [] }, f) && careerOk({ location: null, remote: null, careers: careersOf(i) }, f))) {
       if (postings.length >= limit) break;
-      if (postings.some(p => p.sourceId === String(item.id))) continue;
+      if (skip(String(item.id)) || postings.some(p => p.sourceId === String(item.id))) continue;
       const r = await fetchJumpit(String(item.id));
       if ('code' in r) failures.push(r); else postings.push(r);
     }

@@ -133,13 +133,20 @@ export function jobkoreaSearchUrl(family: JobFamily, f: Profile) {
   return `${ORIGIN}/Search/?${q}`;
 }
 
-export async function collectJobkorea(family: JobFamily, limit: number, f: Profile) {
+// 이미 분석해 둔 공고(skip)는 상세를 다시 받지 않고 세지도 않아 새 공고로 자리를 채운다(사용자 요청 2026-11-27, 마감은 0시 재확인이 본다). 목록은 쪽당 20건이라 필요한 만큼(최대 3쪽) 넘긴다.
+export async function collectJobkorea(family: JobFamily, limit: number, f: Profile, skip: (id: string) => boolean = () => false) {
   const postings: CollectedPosting[] = [];
   const failures: CollectFailure[] = [];
-  const list = await politeGet(jobkoreaSearchUrl(family, f));
-  if ('code' in list) return { postings, failures: [{ source: 'jobkorea' as const, code: list.code }] };
+  const ids: string[] = [];
+  for (let page = 1; page <= 3 && ids.length < limit * 3; page++) {
+    const list = await politeGet(`${jobkoreaSearchUrl(family, f)}${page > 1 ? `&Page_No=${page}` : ''}`);
+    if ('code' in list) { if (page === 1) return { postings, failures: [{ source: 'jobkorea' as const, code: list.code }] }; break; }
+    const found = listPostingIds(list.text);
+    if (!found.length) break;
+    for (const id of found) if (!ids.includes(id) && !skip(id)) ids.push(id);
+  }
   // 지역은 상세에서만 알 수 있어 목록을 세 배까지 본다.
-  for (const id of listPostingIds(list.text).slice(0, limit * 3)) {
+  for (const id of ids.slice(0, limit * 3)) {
     if (postings.length >= limit) break;
     const r = await fetchJobkorea(id);
     if ('code' in r) failures.push(r); else if (regionOk(r, f) && careerOk(r, f)) postings.push(r);

@@ -419,3 +419,32 @@ test('매일 밤 재확인: 오래 확인 안 한 노출 공고를 상세로 다
     } finally { db.close(); }
   } finally { await s.done(); }
 });
+
+test('공고 갱신: 이미 분석한 공고는 수집기가 건너뛰게 하고, 로컬 추출은 실행당 40건까지만 한다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const seen = [];
+    const many = Array.from({ length: 45 }, (_, i) => posting('saramin', String(100 + i), `프론트엔드 ${i}`));
+    const calls = [];
+    const deps = fakeDeps(calls);
+    const empty = async () => ({ postings: [], failures: [] });
+    deps.collect = {
+      saramin: async (_family, limit, _profile, skip) => { seen.push({ limit, skipKnown: skip('100'), skipNew: skip('999') }); return { postings: many.filter(p => !skip(p.sourceId)), failures: [] }; },
+      jobkorea: empty, wanted: empty, jumpit: empty,
+    };
+    const run = async () => {
+      await s.app.inject({ method: 'POST', url: '/postings/refresh', headers: { cookie: a } });
+      const db = openDatabase(s.path);
+      try { await runNext(db, createHandler(db, deps)); } finally { db.close(); }
+    };
+    await run();
+    assert.equal(calls.filter(c => c.startsWith('extract:')).length, 40);
+    assert.deepEqual(seen[0], { limit: 15, skipKnown: false, skipNew: false });
+    // 두 번째 실행: 분석한 공고는 건너뛰고, 상한으로 못 뽑은 5건만 다시 받아 뽑는다.
+    calls.length = 0;
+    await run();
+    assert.equal(seen[1].skipKnown, true);
+    assert.equal(calls.filter(c => c.startsWith('extract:')).length, 5);
+  } finally { await s.done(); }
+});
