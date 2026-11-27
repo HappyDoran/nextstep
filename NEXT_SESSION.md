@@ -31,6 +31,7 @@ last_verified: 2026-11-26
 ### B. 다음 세션에서 에이전트가 할 일
 
 0. 내 AI 연결(P1-19) 실제 흐름: 데스크톱 앱이 켜진 상태의 21시 갱신이 내 Codex로 끝났는지(`ai_tasks` 0건, `postings.requirements.provider`=codex 비율, `candidate_facts` provider), 앱을 끈 날은 로컬 후 승격되는지, 사용량(설정 화면 오늘 n/30) 확인. 다음 단계는 백로그 P1-19 ②(정확도 측정)부터. Claude 연결은 추후.
+0-1. 정답 검토 표(비공개 아티팩트 https://claude.ai/artifact/SGRbrGj1UiCZyWhTQhN3h1, `reviews` 컬렉션)에 사용자가 확인한 직무·'나에게' 판정을 ArtifactData로 읽어 `apps/server/.data/eval/labels.json`에 반영하고 `eval:extract`를 다시 돌려 검증 기록을 고친다. 검토가 끝나면 '나에게' 값으로 기본·도전 판정 일치율을 잰다. 21시 갱신(직무당 15건) 뒤 수집 수·실행 시간·로컬 상한 도달 여부도 확인한다.
 1. 0시 마감 재확인이 도는지(0시 이후 노출 공고 `postings.checked_at`이 0시대로 바뀜, `closed_at`·지난 마감일로 빠진 공고 수, 걸린 시간). 자소설닷컴은 2026-11-25 출처에서 제거(사이트 차단).
 3. 사람인 상세 해석 실패가 다시 생기면(`sourceFailureIds`) 그 공고 화면 형식을 확인한다(11-19~21 실패 0).
 
