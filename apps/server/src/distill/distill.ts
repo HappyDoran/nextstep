@@ -6,7 +6,7 @@
 //   pnpm distill --scheduled   매주 예약 실행(6일 안에 실행했으면 건너뜀)
 //   pnpm distill --force       자료 수 조건 없이 학습
 //   pnpm distill --no-deploy   평가까지만
-//   pnpm distill --from-eval --force --no-deploy   홈서버 대신 평가 세트(.data/eval, eval:extract 결과)로 파이프라인 시험
+//   pnpm distill --from-eval --force   홈서버 대신 평가 세트(.data/eval, eval:extract 결과)로 파이프라인 시험(올리지 않고 state.json·runs/·Discord에 남기지 않음)
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -45,6 +45,8 @@ type State = { lastRunAt?: string; trainedAgreed?: number; deployedAt?: string; 
 type Score = { model: string; family: number; keysF1: number; failures: number; seconds: number; n: number };
 
 const statePath = `${DIR}state.json`;
+// 시험 실행은 실제 주간 학습의 기록(마지막 실행·학습한 일치 공고 수)과 홈서버 모델을 건드리지 않는다.
+const trial = args.has('--from-eval');
 const state: State = existsSync(statePath) ? JSON.parse(readFileSync(statePath, 'utf8')) as State : {};
 const saveState = () => writeFileSync(statePath, JSON.stringify(state, null, 1));
 const log = (line: string) => console.log(`[${new Date().toLocaleTimeString('sv-SE')}] ${line}`);
@@ -59,7 +61,7 @@ const ssh = (script: string, input?: string) => sh('ssh', ['-o', 'BatchMode=yes'
 
 /** 홈서버 Discord(nextstep 채널)로 알린다. 웹훅 주소는 서버 환경 파일에서만 읽고 이 Mac에 두지 않는다. */
 function notify(content: string) {
-  if (args.has('--from-eval')) return log(`(시험이라 알리지 않음) ${content.split('\n')[0]}`);
+  if (trial) return log(`(시험이라 알리지 않음) ${content.split('\n')[0]}`);
   try {
     ssh(`url=$(grep '^NEXTSTEP_DISCORD_WEBHOOK_URL=' ${REMOTE_ENV} | cut -d= -f2-); [ -n "$url" ] && curl -s -o /dev/null -H 'content-type: application/json' -d @- "$url"`,
       JSON.stringify({ username: 'NextStep', content: content.slice(0, 1900), allowed_mentions: { parse: [] } }));
@@ -157,6 +159,7 @@ async function main() {
   const record: Record<string, unknown> = { at: now.toISOString(), version: REQUIREMENTS_PROMPT_VERSION, comparison, train: train.length, valid: valid.length, test: test.length };
   const finish = (result: string, extra: Record<string, unknown> = {}) => {
     Object.assign(record, { result }, extra);
+    if (trial) return log(`(시험이라 기록하지 않음) ${JSON.stringify(record)}`);
     writeFileSync(`${DIR}runs/${stamp}.json`, JSON.stringify(record, null, 1));
     state.lastRunAt = now.toISOString();
     saveState();
@@ -175,7 +178,9 @@ async function main() {
   log(`학습 자료 쓰기: 학습 ${train.length}·검증 ${valid.length}·평가 ${test.length}`);
   mkdirSync(`${WORK}data`, { recursive: true });
   // 실제 서버 호출과 같은 지시문·입력. 정답은 스키마 순서로 다시 만든 Codex 결과.
-  const chat = (s: Sample) => JSON.stringify({ messages: [{ role: 'system', content: REQUIREMENTS_INSTRUCTIONS }, { role: 'user', content: requirementsInput(s.posting) }, { role: 'assistant', content: JSON.stringify(requirementsSchema.parse(s.codex)) }] });
+  // 예전 추출분은 salary 키가 없다. 지시문대로 null을 답하도록 채운다(salary는 스키마 마지막 키라 순서 유지).
+  const answer = (r: Requirements) => { const p = requirementsSchema.parse(r); return { ...p, salary: p.salary ?? null }; };
+  const chat = (s: Sample) => JSON.stringify({ messages: [{ role: 'system', content: REQUIREMENTS_INSTRUCTIONS }, { role: 'user', content: requirementsInput(s.posting) }, { role: 'assistant', content: JSON.stringify(answer(s.codex!)) }] });
   writeFileSync(`${WORK}data/train.jsonl`, `${train.map(chat).join('\n')}\n`);
   writeFileSync(`${WORK}data/valid.jsonl`, `${valid.map(chat).join('\n')}\n`);
 
@@ -206,7 +211,7 @@ async function main() {
   state.trainedAgreed = agreed.length;
 
   let deployed = false;
-  if (pass && !args.has('--no-deploy')) {
+  if (pass && !trial && !args.has('--no-deploy')) {
     log('홈서버에 올리기');
     const file = `${REMOTE_MODELS}/nextstep-posting-${stamp}.gguf`;
     ssh(`mkdir -p ${REMOTE_MODELS}`);
