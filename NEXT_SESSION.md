@@ -14,7 +14,7 @@ last_verified: 2026-11-28
 
 ## 남은 일 (2026-11-28 정리)
 
-배포 상태: 홈서버는 2026-11-28 기준 DB 버전 24(선호 입력·같은 공고 합치기, 커밋 4014e9b)까지 배포돼 있다. 이 세션에서 Claude 경로·경로별 분석·학습 표본(DB 버전 25)을 커밋·배포하고 데스크톱 앱을 다시 빌드·설치한다. Windows 압축 파일은 `apps/desktop/release/NextStep-win-x64.zip`(실행 확인은 Windows 필요, Claude 경로는 Windows에서 아직 쓰지 않음). 매주 로컬 모델 학습(`pnpm distill`, launchd 예약)은 별도 세션이 맡고 홈서버 DB 버전 25 배포 뒤 예약을 등록한다.
+배포 상태: 2026-11-28 Claude 경로·경로별 분석·학습 표본(DB 버전 25, 커밋 f153f32)을 홈서버에 배포했고(지원 건 303 유지), 데스크톱 앱도 같은 시점으로 다시 빌드·설치했다(실행기가 Codex 0.172.0·Claude Code 2.1.332 로그인 상태를 보고). Windows 압축 파일은 `apps/desktop/release/NextStep-win-x64.zip`(실행 확인은 Windows 필요, Claude 경로는 Windows에서 아직 쓰지 않음). 매주 로컬 모델 학습은 launchd `com.nextstep.distill`(매일 10:00 확인, 6일마다 실행)로 등록돼 있다.
 
 ### A. 사용자가 직접 확인 (화면·실제 계정이 필요)
 
