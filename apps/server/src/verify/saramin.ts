@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { jobFamilySchema, type Profile } from '@nextstep/contracts';
 import { politeGet } from '../sources/http.js';
 import { fetchSaramin, listPostingIds, saraminSearchUrl } from '../sources/saramin.js';
+import { searchWords } from '../sources/filter.js';
 
 const PER_ROLE = 3;
 
@@ -12,7 +13,7 @@ async function main() {
   const profile: Profile = { jobFamilies: jobFamilySchema.options, experiences: [], regions: [], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '', salaryMin: null, excludeCompanies: [], favoriteCompanies: [], preferredSkills: [], avoidSkills: [], companyTypes: [] };
   const report: Record<string, unknown> = {};
   for (const family of jobFamilySchema.options) {
-    const list = await politeGet(saraminSearchUrl(family, profile));
+    const list = await politeGet(saraminSearchUrl(searchWords(family, profile)[0]!, profile));
     if ('code' in list) { report[family] = { list }; continue; }
     const ids = listPostingIds(list.text);
     const postings = [];

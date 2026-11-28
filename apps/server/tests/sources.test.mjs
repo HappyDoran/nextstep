@@ -117,3 +117,11 @@ test('응답 본문을 읽다 실패하면(시간 초과 등) 예외 대신 연�
     assert.deepEqual(await politeGet('https://body-timeout.example/a'), { code: 'network' });
   } finally { globalThis.fetch = original; }
 });
+
+test('검색어: 직무 기본어 → 선호 기술(없으면 프로필 기술 앞 2개) → 다른 이름, 같은 공고는 회사·제목으로 알아본다', async () => {
+  const { searchWords, postingKey } = await import('../dist/sources/filter.js');
+  assert.deepEqual(searchWords('앱 개발', { skills: ['Swift', 'Kotlin', 'Java'], preferredSkills: [] }), ['앱 개발', '앱 개발 Swift', '앱 개발 Kotlin', 'iOS 개발자', 'Android 개발자', 'Flutter']);
+  assert.deepEqual(searchWords('기획', { skills: ['Figma'], preferredSkills: ['SQL'] }), ['서비스 기획', '서비스 기획 SQL', '프로덕트 매니저']);
+  assert.equal(postingKey('(주)휴넷', '[휴넷] IOS 앱 개발자 [정규직/경력]'), postingKey('휴넷', 'iOS 앱개발자'));
+  assert.notEqual(postingKey('휴넷', '백엔드 개발자 (신입)'), postingKey('휴넷', '백엔드 개발자 (경력)'));
+});

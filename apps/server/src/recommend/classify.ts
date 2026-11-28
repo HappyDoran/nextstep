@@ -7,7 +7,7 @@ import type { Judgement } from '../prompts/recommend.js';
 // 추천 분류 규칙(기술 설계 D절, 사용자 확정 2026-11-07). 모델은 사실만 뽑고 분류는 여기서 정한다.
 // 우선순위: 제외 > 도전 > 미확인 > 기본. 같은 입력이면 같은 분류가 나온다.
 // 규칙을 바꾸면 반드시 올린다. 저장된 추천은 이 값이 바뀌어야 다시 판정된다(2026-11-15 올리지 않아 재판정 누락).
-export const RULES_VERSION = 'rules-2026-11-27b';
+export const RULES_VERSION = 'rules-2026-11-28';
 
 // 제목에 직무 이름이 분명하면 그 직무를 더한다(2026-11-27 평가: 로컬 모델이 iOS 공고를 프론트엔드로, 앱 공고를 본문 '웹뷰'로 프론트엔드로 봄).
 // 모델이 '기타'로 둔 공고도 제목이 대상 직무를 말하면 그 직무로 본다. 제목이 앱만 말하면 모델의 프론트엔드는 뺀다. 본문 추출이 없으면 제목 직무만 쓴다.
@@ -19,10 +19,18 @@ const TITLE_FAMILIES: [string, RegExp][] = [
   ['기획', /서비스\s*기획|(?<![a-z])(pm|po)(?![a-z])|product\s+(manager|owner)|프로덕트\s*(매니저|오너)/i],
   ['QA', /(?<![a-z])qa(?![a-z])|품질\s*보증|테스트\s*엔지니어/i],
 ];
+// 2026-11-28 평가: 로컬 모델이 영업·CS·마케팅·현장직 공고에도 개발 직무를 붙임. 제목이 비개발 직무만 말하면 기타로 본다.
+// 제목이 기획 직무만 말하면(만드는 직무 이름 없음) 모델이 붙인 개발·디자인 직무를 뺀다.
+const NON_DEV = /영업|컨설턴트|마케(팅|터)|고객\s*(지원|상담)|(?<![a-z])cs(?![a-z])|상담원|기사(?!\s*개발)|회계|세무|경리|총무|물류\s*(관리|센터|직)|생산직|운전|배송|간호|약사|강사|청소|시공|판매|매장|조리|(사업|전략|상품|영업|마케팅)\s*기획|(?<![a-z])md(?![a-z])/i;
+const BUILDER = /개발|엔지니어|engineer|developer|프로그래머|퍼블리|디자이너|designer|(?<![a-z])qa(?![a-z])/i;
+const PLANNER = /기획|(?<![a-z])(pm|po)(?![a-z])|product\s+(manager|owner)|프로덕트\s*(매니저|오너)/i;
+const MAKER_FAMILIES = ['프론트엔드', '앱 개발', '백엔드', 'QA', '디자인'];
 export function withTitleFamilies(title: string, families: string[] | null): string[] | null {
   const named = TITLE_FAMILIES.filter(([, re]) => re.test(title)).map(([family]) => family);
-  if (!named.length) return families;
+  if (!named.length && !BUILDER.test(title) && !PLANNER.test(title) && NON_DEV.test(title)) return ['기타'];
   const merged = [...new Set([...(families ?? []).filter(f => f !== '기타'), ...named])];
+  if (PLANNER.test(title) && !BUILDER.test(title) && merged.includes('기획')) return merged.filter(f => !MAKER_FAMILIES.includes(f) || (f === '디자인' && /디자인|ui|ux/i.test(title)));
+  if (!named.length) return families;
   return named.includes('앱 개발') && !named.includes('프론트엔드') ? merged.filter(f => f !== '프론트엔드') : merged;
 }
 

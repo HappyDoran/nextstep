@@ -12,7 +12,7 @@ import { extractRequirements, REQUIREMENTS_PROMPT_VERSION, type Requirements } f
 import { extractCandidate, CANDIDATE_PROMPT_VERSION, type Candidate } from '../prompts/candidate.js';
 import { classify, RULES_VERSION, type PostingInput } from './classify.js';
 import { reportProgress, type ClaimedJob, type JobOutcome } from './jobs.js';
-import { passesFilter } from '../sources/filter.js';
+import { passesFilter, postingKey } from '../sources/filter.js';
 import { aiState, candidateFor, docsKey, isRemote, POSTING_WAIT_MS, postingTaskInput, queueDocuments, queueTask, saveRequirements, waitTasks, type AiState } from '../ai/remote.js';
 import { seoulParts } from '../schedule.js';
 
@@ -274,7 +274,7 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     if (!basis) return { status: '실패', errorCode: 'profile_or_resume_missing', result: {} };
     // 차단 기록은 실행 단위로 둔다. 다음 실행에서는 다시 한 번 시도한다.
     resetBlockedHosts();
-    const counts = { collected: 0, judged: 0, notHiring: 0, filteredOut: 0, aiFailures: 0, aiFailureCodes: {} as Record<string, number>, sourceFailures: [] as CollectFailure[], sourceCollected: {} as Record<string, number> };
+    const counts = { collected: 0, judged: 0, notHiring: 0, duplicates: 0, filteredOut: 0, aiFailures: 0, aiFailureCodes: {} as Record<string, number>, sourceFailures: [] as CollectFailure[], sourceCollected: {} as Record<string, number> };
     // 내 AI(실행기)를 지금 쓸 수 있으면 서류·새 공고를 일로 올리고 수집 뒤 최대 10분 기다린다. 남은 것은 로컬로 처리한다.
     const ai = aiState(db, job.userId);
     const waiting: string[] = [];
@@ -303,6 +303,9 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
       if (twin && db.prepare('SELECT 1 FROM postings WHERE source = ? AND source_id = ? AND owner_user_id = ?').get(twin, id, job.userId)) return true;
       return Boolean(row?.requirements && (JSON.parse(row.requirements) as { version?: string }).version === REQUIREMENTS_PROMPT_VERSION);
     };
+    // 다른 출처에 이미 있는 같은 공고(회사·제목)는 다시 저장·분석하지 않는다(2026-11-28, 목록도 하나만 보임).
+    const seen = new Map((db.prepare('SELECT source, source_id, company, title FROM postings WHERE owner_user_id = ?').all(job.userId) as { source: string; source_id: string; company: string; title: string }[])
+      .map(r => [postingKey(r.company, r.title), r.source] as const));
     const runs: [SourceId, () => Promise<Collected>][] = [];
     for (const family of families) {
       for (const source of ['saramin', 'jobkorea', 'wanted', 'jumpit'] as const) {
@@ -327,6 +330,9 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
         // 점핏 공고 ID는 사람인 공고 번호와 같다. 같은 공고를 두 출처로 두 번 저장·판정하지 않는다.
         const twin = SAME_POSTING[p.source];
         if (twin && db.prepare('SELECT 1 FROM postings WHERE source = ? AND source_id = ? AND owner_user_id = ?').get(twin, p.sourceId, job.userId)) continue;
+        const key = postingKey(p.company, p.title);
+        if ((seen.get(key) ?? p.source) !== p.source) { counts.duplicates++; continue; }
+        seen.set(key, p.source);
         const id = upsertPosting(db, p, 'auto', job.userId);
         const task = await storeRequirements(db, deps, job.userId, id, p, counts, ai);
         if (task) waiting.push(task);
@@ -343,7 +349,7 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
     counts.filteredOut = rows.length - matching.length;
     await judgeFor(db, deps, job.userId, judged, matching, counts);
     const failed = counts.sourceFailures.length > 0 || counts.aiFailures > 0;
-    const result = { collected: counts.collected, judged: counts.judged, notHiring: counts.notHiring, filteredOut: counts.filteredOut, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes, sourceFailures: counts.sourceFailures.map(f => `${f.source}:${f.code}`),
+    const result = { collected: counts.collected, judged: counts.judged, notHiring: counts.notHiring, duplicates: counts.duplicates, filteredOut: counts.filteredOut, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes, sourceFailures: counts.sourceFailures.map(f => `${f.source}:${f.code}`),
       // 출처별로 받은 공고 수(일부 실패와 전체 실패를 가르는 데 씀)와 실패한 공고 번호(원인 확인용, 원문 아님).
       sourceCollected: counts.sourceCollected, sourceFailureIds: counts.sourceFailures.filter(f => f.id).map(f => `${f.source}:${f.id}`) };
     if (counts.collected === 0 && failed) return { status: '실패', errorCode: 'collect_failed', result };

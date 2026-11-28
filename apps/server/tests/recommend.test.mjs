@@ -465,8 +465,14 @@ test('선호: 제외 회사는 목록에서 빠지고, 관심 회사·선호 기
     assert.deepEqual(item.signals, ['관심 회사', '선호 기술: react']);
     assert.ok(item.firstSeenAt);
     // 피하는 기술이 필수 조건에 있으면 아래로(빼지는 않음).
+    // 선호 기술을 비우면 프로필 기술로 대신 올린다(선호 입력은 선택).
     await save({ avoidSkills: ['React'] });
-    assert.equal((await list())[0].boost, -2);
+    assert.equal((await list())[0].boost, -1);
+    assert.deepEqual((await list())[0].signals, ['내 기술: React', '피하는 기술: React']);
+    // 관심 회사를 비워도 좋아요한 회사는 올린다.
+    await save({});
+    await s.app.inject({ method: 'PUT', url: `/recommendations/${item.postingId}/feedback`, headers: { cookie: a }, payload: { feedback: 'up' } });
+    assert.deepEqual((await list()).find(i => i.postingId === item.postingId).signals, ['전에 관심 보인 회사', '내 기술: React']);
     // 제외 회사는 목록에서 빠진다.
     await save({ excludeCompanies: ['가상 회사'] });
     assert.deepEqual(await list(), []);

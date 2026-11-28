@@ -44,9 +44,9 @@ test('사람인 경력 표기를 연차 범위로 바꾼다', () => {
 
 test('사람인 검색은 정규직만 고르면 고용 형태 조건을 넣는다', () => {
   const base = { jobFamilies: ['디자인'], experiences: [], regions: [], remoteOk: false, employmentTypes: [], careerMax: null, skills: [], summary: '' };
-  const u = new URL(saraminSearchUrl('디자인', { ...base, employmentTypes: ['정규직'] }));
+  const u = new URL(saraminSearchUrl('UI/UX 디자이너', { ...base, employmentTypes: ['정규직'] }));
   assert.equal(u.pathname, '/zf_user/search/recruit');
   assert.equal(u.searchParams.get('searchword'), 'UI/UX 디자이너');
   assert.equal(u.searchParams.get('job_type'), '1');
-  assert.equal(new URL(saraminSearchUrl('디자인', base)).searchParams.get('job_type'), null);
+  assert.equal(new URL(saraminSearchUrl('UI/UX 디자이너', base)).searchParams.get('job_type'), null);
 });

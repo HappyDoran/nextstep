@@ -95,7 +95,7 @@ function ProfileForm({ me, initial, updatedAt }: { me: Me; initial: Profile; upd
       <Field label="요구 경력 상한(년) · 이 연차를 넘게 요구하는 경력직 공고는 빼고 가져옵니다. 비우면 제한 없음"><Input type="number" min={0} max={30} step={1} value={form.careerMax ?? ''} onChange={e => setForm({ ...form, careerMax: e.target.value === '' ? null : Number(e.target.value) })} placeholder="제한 없음" className="!w-32" /></Field>
     </fieldset>
     <fieldset className="flex flex-col gap-4 rounded-surface border border-border bg-background p-5"><legend className="px-1 text-body-sm font-extrabold">선호 (연봉·회사·기술)</legend>
-      <p className="text-body-sm text-muted-foreground">연봉과 제외 회사는 공고를 거르고, 나머지는 추천 목록에서 위아래 순서만 바꿔요. 비워 두면 쓰지 않아요.</p>
+      <p className="text-body-sm text-muted-foreground">모두 선택 입력이에요. 비워 두면 지원 현황·좋아요·별로 기록과 프로필 기술로 순서를 정해요. 연봉과 제외 회사만 공고를 거르고, 나머지는 위아래 순서만 바꿔요.</p>
       <Field label="희망 연봉 하한(만원) · 공고가 밝힌 연봉 상한이 이보다 낮으면 빼요. 연봉을 안 밝힌 공고는 그대로 둬요"><Input type="number" min={0} max={100000} step={100} value={form.salaryMin ?? ''} onChange={e => setForm({ ...form, salaryMin: e.target.value === '' ? null : Number(e.target.value) })} placeholder="예: 4000" /></Field>
       {text('excludeCompanies', '제외 회사 (쉼표로 구분) · 이름이 들어간 회사 공고를 빼요', '예: 다녔던 회사')}
       {text('favoriteCompanies', '관심 회사 (쉼표로 구분) · 목록에서 위로 올리고 표시해요', '예: 토스, 당근')}

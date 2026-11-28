@@ -3,10 +3,9 @@
 import type { JobFamily, Profile } from '@nextstep/contracts';
 import type { Career, CollectedPosting, CollectFailure } from './types.js';
 import { htmlText, politeGet } from './http.js';
-import { careerOk, regionOk } from './filter.js';
+import { careerOk, regionOk, searchWords } from './filter.js';
 
 export const ORIGIN = 'https://www.saramin.co.kr';
-const KEYWORDS: Record<JobFamily, string> = { 프론트엔드: '프론트엔드', '앱 개발': '앱 개발', 디자인: 'UI/UX 디자이너', 기획: '서비스 기획', 백엔드: '백엔드', QA: 'QA 엔지니어' };
 
 export type SaraminPosting = Omit<CollectedPosting, 'body' | 'bodyFailure'>;
 
@@ -17,8 +16,8 @@ export function listPostingIds(html: string) {
 }
 
 // 검색이 받는 조건(실제 확인): 정규직(job_type=1). 경력은 여러 값을 함께 주면 신입만 돌아와 수집 후 거른다. 지역은 상세에서 거른다.
-export function saraminSearchUrl(family: JobFamily, f: Profile) {
-  const q = new URLSearchParams({ searchword: KEYWORDS[family], recruitPageCount: '50' });
+export function saraminSearchUrl(word: string, f: Profile) {
+  const q = new URLSearchParams({ searchword: word, recruitPageCount: '50' });
   if (f.employmentTypes.length === 1 && f.employmentTypes[0] === '정규직') q.set('job_type', '1');
   return `${ORIGIN}/zf_user/search/recruit?${q}`;
 }
@@ -76,10 +75,16 @@ export async function fetchSaramin(id: string): Promise<CollectedPosting | Colle
 export async function collectSaramin(family: JobFamily, limit: number, f: Profile, skip: (id: string) => boolean = () => false) {
   const postings: CollectedPosting[] = [];
   const failures: CollectFailure[] = [];
-  const list = await politeGet(saraminSearchUrl(family, f));
-  if ('code' in list) return { postings, failures: [{ source: 'saramin' as const, code: list.code }] };
+  const ids: string[] = [];
+  // 새 공고가 모자라면 다음 검색어로 넘어간다(첫 검색어가 막히면 출처 실패).
+  for (const [i, word] of searchWords(family, f).entries()) {
+    if (ids.length >= limit * 3) break;
+    const list = await politeGet(saraminSearchUrl(word, f));
+    if ('code' in list) { if (i === 0) return { postings, failures: [{ source: 'saramin' as const, code: list.code }] }; break; }
+    for (const id of listPostingIds(list.text)) if (!ids.includes(id) && !skip(id)) ids.push(id);
+  }
   // 지역·경력은 상세에서 확인해 거르므로 목록을 세 배까지 본다.
-  for (const id of listPostingIds(list.text).filter(id => !skip(id)).slice(0, limit * 3)) {
+  for (const id of ids.slice(0, limit * 3)) {
     if (postings.length >= limit) break;
     const r = await fetchSaramin(id);
     if ('code' in r) failures.push(r); else if (regionOk(r, f) && careerOk(r, f)) postings.push(r);

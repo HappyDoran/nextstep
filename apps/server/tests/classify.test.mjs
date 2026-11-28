@@ -108,6 +108,15 @@ test('제목에 직무가 분명하면 모델 직무 분류를 보정한다(앱 
   // 영문 단어 안의 글자(Pos, Spoon, iOSX 등)는 직무로 보지 않는다.
   assert.deepEqual(withTitleFamilies('Flutter 개발자 (바로더 POS/테이블오더)', ['앱 개발']), ['앱 개발']);
   assert.equal(withTitleFamilies('Responsive Designer', null), null);
+  // 제목이 비개발 직무만 말하면 기타, 기획 직무만 말하면 개발 직무를 뺀다(2026-11-28 평가).
+  assert.deepEqual(withTitleFamilies('ERP 회계 컨설턴트', ['기획']), ['기타']);
+  assert.deepEqual(withTitleFamilies('영어 고객지원(CS) 담당자', ['기획']), ['기타']);
+  assert.deepEqual(withTitleFamilies('배관청소기사 모집합니다', ['기획', '백엔드', 'QA']), ['기타']);
+  assert.deepEqual(withTitleFamilies('영업관리 시스템 백엔드 개발자', ['백엔드']), ['백엔드']);
+  assert.deepEqual(withTitleFamilies('[이퓨전아이] 웹/앱 기획자 채용', ['앱 개발', '디자인', '기획']), ['기획']);
+  assert.deepEqual(withTitleFamilies('모바일 앱 서비스 기획자 / PM', ['기획']), ['기획']);
+  assert.deepEqual(withTitleFamilies('Product Manager (PM)', ['프론트엔드', '앱 개발', '디자인', '기획', '백엔드', 'QA']), ['기획']);
+  assert.deepEqual(withTitleFamilies('웹/앱 UI/UX 기획 담당자', ['기획']), ['기획', '디자인']);
 });
 
 test('희망 연봉 하한: 공고가 밝힌 상한이 낮으면 제외하고, 미기재·하한 없음은 따지지 않는다', () => {

@@ -7,7 +7,7 @@ import { extractCandidate } from '../prompts/candidate.js';
 import { candidateFor } from '../ai/remote.js';
 import { enqueue, getJob, latestJob, runNext, type ClaimedJob, type JobOutcome } from './jobs.js';
 import { documentsText, parsePostingLink, rowFacts } from './pipeline.js';
-import { companyMatches, passesFilter } from '../sources/filter.js';
+import { companyMatches, passesFilter, postingKey } from '../sources/filter.js';
 import { norm } from './classify.js';
 
 type Row = {
@@ -19,20 +19,34 @@ type Row = {
 
 // 선호로 목록 순서만 조금 바꾼다(판정은 그대로, P1-19 ④): 관심 회사 +3, 선호 회사 유형 +1, 공고 조건에 든 선호 기술 하나당 +1(최대 3),
 // 필수 조건에 든 피하는 기술 하나당 -2. 근거는 목록에 표시한다.
-function preference(row: Row, profile: Profile | null) {
+// 선호 입력은 모두 선택(2026-11-28): 비워 두면 사용자가 이미 남긴 것으로 대신한다.
+// 관심 회사 → 지원 현황에 넣었거나 좋아요한 회사, 선호 기술 → 프로필 기술, 별로(회사 이유)를 고른 회사는 같은 회사 다른 공고도 내린다.
+type Learned = { likedCompanies: string[]; dislikedCompanies: string[] };
+function learned(db: DatabaseSync, userId: string): Learned {
+  const liked = db.prepare(`SELECT company FROM applications WHERE user_id = ?
+    UNION SELECT p.company FROM recommendations r JOIN postings p ON p.id = r.posting_id WHERE r.user_id = ? AND p.owner_user_id = ? AND r.feedback = 'up'`).all(userId, userId, userId) as { company: string }[];
+  const disliked = db.prepare(`SELECT DISTINCT p.company FROM recommendations r JOIN postings p ON p.id = r.posting_id
+    WHERE r.user_id = ? AND p.owner_user_id = ? AND r.feedback = 'down' AND r.feedback_reason = '회사(규모·분야)'`).all(userId, userId) as { company: string }[];
+  return { likedCompanies: liked.map(r => r.company), dislikedCompanies: disliked.map(r => r.company) };
+}
+
+function preference(row: Row, profile: Profile | null, past: Learned) {
   if (!profile) return { boost: 0, signals: [] as string[] };
   const signals: string[] = [];
   let boost = 0;
   if (profile.favoriteCompanies.length && companyMatches(row.company, profile.favoriteCompanies)) { boost += 3; signals.push('관심 회사'); }
+  else if (companyMatches(row.company, past.likedCompanies)) { boost += 2; signals.push('전에 관심 보인 회사'); }
+  if (row.feedback !== 'down' && companyMatches(row.company, past.dislikedCompanies)) { boost -= 3; signals.push('별로라고 한 회사'); }
   const type = row.company_type ?? '';
   if (type && profile.companyTypes.some(t => (t === '벤처·스타트업' ? /벤처|스타트업/.test(type) : type.startsWith(t)))) { boost += 1; signals.push('선호 회사 유형'); }
   const req = row.requirements ? JSON.parse(row.requirements) as { required?: { keys?: string[] }[]; preferred?: { keys?: string[] }[] } : null;
   const keys = (list?: { keys?: string[] }[]) => new Set((list ?? []).flatMap(r => r.keys ?? []).map(norm));
   const required = keys(req?.required);
   const any = new Set([...required, ...keys(req?.preferred)]);
-  const liked = profile.preferredSkills.filter(s => any.has(norm(s)));
+  const own = !profile.preferredSkills.length;
+  const liked = [...new Set(own ? profile.skills : profile.preferredSkills)].filter(s => any.has(norm(s)));
   const avoided = profile.avoidSkills.filter(s => required.has(norm(s)));
-  if (liked.length) { boost += Math.min(3, liked.length); signals.push(`선호 기술: ${liked.slice(0, 3).join('·')}`); }
+  if (liked.length) { boost += Math.min(own ? 2 : 3, liked.length); signals.push(`${own ? '내 기술' : '선호 기술'}: ${liked.slice(0, 3).join('·')}`); }
   if (avoided.length) { boost -= 2 * avoided.length; signals.push(`피하는 기술: ${avoided.slice(0, 3).join('·')}`); }
   return { boost, signals };
 }
@@ -87,9 +101,9 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
       FROM recommendations WHERE user_id = ? AND evaluated_at BETWEEN ? AND ?`).get(user.id, window.started_at, job.finishedAt) as { basic: number; challenge: number } : null;
     // 상단 막대: 마지막 갱신으로 새로 들어온 공고 수와, 지금 목록에 보이는 기본 추천 수(숨김·마감 제외).
     const now = Date.now();
-    const basicNow = (db.prepare(`SELECT p.deadline, p.always_hire FROM recommendations r JOIN postings p ON p.id = r.posting_id
-      WHERE r.user_id = ? AND p.owner_user_id = ? AND r.classification = '기본' AND r.hidden = 0 AND p.closed_at IS NULL`).all(user.id, user.id) as { deadline: string | null; always_hire: number }[])
-      .filter(p => p.always_hire === 1 || !p.deadline || !(Date.parse(p.deadline) <= now)).length;
+    const basicNow = new Set((db.prepare(`SELECT p.company, p.title, p.deadline, p.always_hire FROM recommendations r JOIN postings p ON p.id = r.posting_id
+      WHERE r.user_id = ? AND p.owner_user_id = ? AND r.classification = '기본' AND r.hidden = 0 AND p.closed_at IS NULL`).all(user.id, user.id) as { company: string; title: string; deadline: string | null; always_hire: number }[])
+      .filter(p => p.always_hire === 1 || !p.deadline || !(Date.parse(p.deadline) <= now)).map(p => postingKey(p.company, p.title))).size;
     const collected = job?.finishedAt ? Number((job.result as { collected?: number } | null)?.collected ?? 0) : 0;
     return latestRefreshSchema.parse({ job, counts: counts ? { basic: Number(counts.basic), challenge: Number(counts.challenge) } : null, overview: job?.finishedAt ? { newPostings: collected, basicNow } : null });
   });
@@ -112,9 +126,14 @@ export function registerRecommendations(app: FastifyInstance, db: DatabaseSync) 
     // 필터를 바꾸면 다시 가져오기 전에도 기존 결과를 현재 필터로 먼저 거른다(기술 설계 D). 링크 공고는 그대로 둔다.
     const profileRow = db.prepare('SELECT data FROM profiles WHERE user_id = ?').get(user.id) as { data: string } | undefined;
     const profile = profileRow ? profileSchema.parse(JSON.parse(profileRow.data)) : null;
-    const items = rows.filter(row => !profile || row.acquired_by === 'link' || passesFilter(rowFacts(row), profile)).map(row => {
+    // 여러 출처의 같은 공고는 하나만 보인다. 사용자가 표시(숨김·피드백)한 쪽을, 없으면 더 좋은 분류(정렬 앞)를 남긴다.
+    const past = learned(db, user.id);
+    const keep = new Map<string, Row>();
+    const marked = (row: Row) => row.acquired_by === 'link' || row.hidden === 1 || row.feedback !== null;
+    for (const row of rows) { const k = postingKey(row.company, row.title); const cur = keep.get(k); if (!cur || (!marked(cur) && marked(row))) keep.set(k, row); }
+    const items = rows.filter(row => keep.get(postingKey(row.company, row.title)) === row && (!profile || row.acquired_by === 'link' || passesFilter(rowFacts(row), profile))).map(row => {
       const j = JSON.parse(row.judgement) as { met: string[]; unmet: string[]; unknown: string[]; reason: string };
-      const pref = preference(row, profile);
+      const pref = preference(row, profile, past);
       return recommendationSchema.parse({
         postingId: row.posting_id, source: row.source, linkOnly: row.acquired_by === 'link', url: row.url, externalApplyUrl: row.external_apply_url,
         title: row.title, company: row.company, deadline: row.deadline, alwaysHire: row.always_hire === 1, postingStatus: postingStatus(row, now), closedAt: row.closed_at,

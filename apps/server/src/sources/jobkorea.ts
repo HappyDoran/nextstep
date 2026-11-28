@@ -2,7 +2,7 @@
 import type { JobFamily, Profile } from '@nextstep/contracts';
 import type { CollectedPosting, CollectFailure } from './types.js';
 import { htmlText, kstDeadline, politeGet } from './http.js';
-import { careerOk, regionOk } from './filter.js';
+import { careerOk, regionOk, searchWords } from './filter.js';
 export const ORIGIN = 'https://www.jobkorea.co.kr';
 // 사람 속도의 소량 요청: 직무당 목록 1회·상세 3건.
 export const PER_ROLE = 3;
@@ -123,11 +123,9 @@ export async function fetchJobkorea(id: string): Promise<CollectedPosting | Coll
   };
 }
 
-const KEYWORDS: Record<JobFamily, string> = { 프론트엔드: '프론트엔드', '앱 개발': '앱 개발', 디자인: 'UI/UX 디자이너', 기획: '서비스 기획', 백엔드: '백엔드', QA: 'QA 엔지니어' };
-
 // 검색이 받는 조건(실제 확인): 경력 범위(careerType=1,2&careerMin&careerMax), 정규직(jobtype=1). 지역은 받지 않아 수집 후 거른다.
-export function jobkoreaSearchUrl(family: JobFamily, f: Profile) {
-  const q = new URLSearchParams({ stext: KEYWORDS[family], tabType: 'recruit' });
+export function jobkoreaSearchUrl(word: string, f: Profile) {
+  const q = new URLSearchParams({ stext: word, tabType: 'recruit' });
   if (f.careerMax !== null) { q.set('careerType', '1,2'); q.set('careerMin', '0'); q.set('careerMax', String(f.careerMax)); }
   if (f.employmentTypes.length === 1 && f.employmentTypes[0] === '정규직') q.set('jobtype', '1');
   return `${ORIGIN}/Search/?${q}`;
@@ -138,12 +136,15 @@ export async function collectJobkorea(family: JobFamily, limit: number, f: Profi
   const postings: CollectedPosting[] = [];
   const failures: CollectFailure[] = [];
   const ids: string[] = [];
-  for (let page = 1; page <= 3 && ids.length < limit * 3; page++) {
-    const list = await politeGet(`${jobkoreaSearchUrl(family, f)}${page > 1 ? `&Page_No=${page}` : ''}`);
-    if ('code' in list) { if (page === 1) return { postings, failures: [{ source: 'jobkorea' as const, code: list.code }] }; break; }
-    const found = listPostingIds(list.text);
-    if (!found.length) break;
-    for (const id of found) if (!ids.includes(id) && !skip(id)) ids.push(id);
+  // 검색어마다 최대 3쪽, 새 공고가 모자랄 때만 다음 검색어로 넘어간다(첫 검색어 첫 쪽이 막히면 출처 실패).
+  words: for (const [i, word] of searchWords(family, f).entries()) {
+    for (let page = 1; page <= 3 && ids.length < limit * 3; page++) {
+      const list = await politeGet(`${jobkoreaSearchUrl(word, f)}${page > 1 ? `&Page_No=${page}` : ''}`);
+      if ('code' in list) { if (i === 0 && page === 1) return { postings, failures: [{ source: 'jobkorea' as const, code: list.code }] }; break words; }
+      const found = listPostingIds(list.text);
+      if (!found.length) break;
+      for (const id of found) if (!ids.includes(id) && !skip(id)) ids.push(id);
+    }
   }
   // 지역은 상세에서만 알 수 있어 목록을 세 배까지 본다.
   for (const id of ids.slice(0, limit * 3)) {
