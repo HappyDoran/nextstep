@@ -13,14 +13,16 @@ import { extractCandidate, CANDIDATE_PROMPT_VERSION, type Candidate } from '../p
 import { classify, RULES_VERSION, type PostingInput } from './classify.js';
 import { reportProgress, type ClaimedJob, type JobOutcome } from './jobs.js';
 import { passesFilter, postingKey } from '../sources/filter.js';
-import { aiState, candidateFor, docsKey, isRemote, POSTING_WAIT_MS, postingTaskInput, queueDocuments, queueTask, saveRequirements, waitTasks, type AiState } from '../ai/remote.js';
+import { aiState, candidateFor, docsKey, isRemote, missingProviders, POSTING_WAIT_MS, postingTaskInput, queueDocuments, queuePosting, saveRequirements, saveSample, teacherHints, waitTasks, type AiState } from '../ai/remote.js';
+import { postingModel } from '../ai/llm.js';
 import { seoulParts } from '../schedule.js';
 
 type Collected = { postings: CollectedPosting[]; failures: CollectFailure[] };
 export type PipelineDeps = {
   collect: Record<'saramin' | 'jobkorea' | 'wanted' | 'jumpit', (f: JobFamily, n: number, p: Profile, skip?: (id: string) => boolean) => Promise<Collected>>;
   fetchOne: Record<SourceId, (id: string) => Promise<CollectedPosting | CollectFailure>>;
-  extract: (posting: { title: string; company: string; body: string }) => Promise<Requirements>;
+  // hints: Codex·Claude가 비슷한 공고를 분석한 결과 요약(로컬 모델 참고용, 없으면 빈 문자열).
+  extract: (posting: { title: string; company: string; body: string }, hints?: string) => Promise<Requirements>;
   candidate: (text: string) => Promise<Candidate>;
   // 내 AI 결과를 기다리는 최대 시간(테스트는 짧게).
   waitMs?: number;
@@ -92,25 +94,33 @@ function upsertPosting(db: DatabaseSync, p: CollectedPosting, acquiredBy: 'auto'
 // 원문은 조건 추출에만 쓴다. 추출 결과(구조화 사실)만 저장하고, 내 AI 분석을 기다리는 동안만 원문을 일(ai_tasks)에 둔다.
 // 내 AI(실행기)를 지금 쓸 수 있으면 일로 올리고 ID를 돌려준다(갱신이 10분 기다린 뒤 남은 것만 로컬로).
 // 아니면 바로 로컬로 뽑고, 실행기를 쓰는 사용자면 나중에 내 AI로 다시 뽑을 일(승격)을 쌓는다.
-async function storeRequirements(db: DatabaseSync, deps: PipelineDeps, userId: string, postingId: string, p: CollectedPosting, counts: Counts, ai: AiState): Promise<string | undefined> {
+// 켠 경로(Codex·Claude)마다 같은 입력으로 일을 올린다. 갱신은 지금 쓸 수 있는 경로 중 가장 믿는 경로(Codex 우선)의 결과만 기다리고,
+// 다른 경로의 결과는 비교·학습 표본으로 쌓인다(사용자 결정 2026-11-28).
+async function storeRequirements(db: DatabaseSync, deps: PipelineDeps, userId: string, postingId: string, p: CollectedPosting, counts: Counts, ai: AiState): Promise<string[]> {
   const row = db.prepare('SELECT requirements FROM postings WHERE id = ? AND owner_user_id = ?').get(postingId, userId) as { requirements: string | null } | undefined;
-  if (!row || !p.body) return undefined;
+  if (!row || !p.body) return [];
   const current = row.requirements ? JSON.parse(row.requirements) as { version?: string; provider?: string } : null;
   const fresh = current?.version === REQUIREMENTS_PROMPT_VERSION;
   const send = ai.registered && ai.settings.sendPostings;
-  if (fresh && (isRemote(current?.provider) || !send)) return undefined;
+  const need = send ? missingProviders(db, userId, postingId, ai.registeredProviders) : [];
   const input = postingTaskInput({ id: postingId, title: p.title, company: p.company, body: p.body });
-  if (ai.active && ai.settings.sendPostings) return queueTask(db, userId, 'posting', postingId, input, new Date(Date.now() + (deps.waitMs ?? POSTING_WAIT_MS)).toISOString());
+  if (fresh && (isRemote(current?.provider) || !send)) { queuePosting(db, userId, postingId, input, need); return []; }
+  const primary = ai.settings.sendPostings ? ai.providers.find(provider => need.includes(provider)) : undefined;
+  if (primary) return queuePosting(db, userId, postingId, input, need, { provider: primary, fallbackAt: new Date(Date.now() + (deps.waitMs ?? POSTING_WAIT_MS)).toISOString() });
   if (!fresh) await extractLocal(db, deps, userId, postingId, { title: p.title, company: p.company, body: p.body }, counts);
-  if (send) queueTask(db, userId, 'posting', postingId, input, null);
-  return undefined;
+  queuePosting(db, userId, postingId, input, need);
+  return [];
 }
 
 async function extractLocal(db: DatabaseSync, deps: PipelineDeps, userId: string, postingId: string, p: { title: string; company: string; body: string }, counts: Counts) {
   // 상한을 넘으면 이번 실행에서는 뽑지 않는다(본문 조건 미확인으로 판정, 다음 실행·내 AI가 다시 본다).
   if ((counts.localExtracts ?? 0) >= LOCAL_EXTRACT_LIMIT) return;
   counts.localExtracts = (counts.localExtracts ?? 0) + 1;
-  try { saveRequirements(db, userId, postingId, await deps.extract(p), 'local'); } catch (error) { countFailure(counts, error); }
+  try {
+    const result = await deps.extract(p, teacherHints(db, p.title));
+    saveSample(db, userId, postingId, postingTaskInput({ id: postingId, ...p }), 'local', result, await postingModel());
+    saveRequirements(db, userId, postingId, result, 'local');
+  } catch (error) { countFailure(counts, error); }
 }
 
 /** 내 AI 일을 기다린 뒤, 끝나지 않은 공고는 로컬로 뽑고 그 일은 승격 일로 남긴다. */
@@ -190,11 +200,10 @@ export async function recheckPosting(db: DatabaseSync, userId: string, p: { id: 
     const fetched = await fetchOne[p.source](p.source_id);
     if (!('code' in fetched)) {
       upsertPosting(db, fetched, 'auto', userId);
-      // 본문을 다시 읽은 김에, 로컬로 뽑은 조건은 내 AI로 다시 뽑을 일로 올린다(실행기를 쓰는 사용자만).
+      // 본문을 다시 읽은 김에, 아직 그 경로로 분석하지 않은 공고는 내 AI 일로 올린다(로컬 결과 승격, Codex·Claude 비교·학습 표본).
       const ai = aiState(db, userId);
-      const row = db.prepare('SELECT requirements FROM postings WHERE id = ? AND owner_user_id = ?').get(p.id, userId) as { requirements: string | null } | undefined;
-      if (fetched.body && ai.registered && ai.settings.sendPostings && !isRemote(row?.requirements ? (JSON.parse(row.requirements) as { provider?: string }).provider : null)) {
-        queueTask(db, userId, 'posting', p.id, postingTaskInput({ id: p.id, title: fetched.title, company: fetched.company, body: fetched.body }), null);
+      if (fetched.body && ai.registered && ai.settings.sendPostings) {
+        queuePosting(db, userId, p.id, postingTaskInput({ id: p.id, title: fetched.title, company: fetched.company, body: fetched.body }), missingProviders(db, userId, p.id, ai.registeredProviders));
       }
       return true;
     }
@@ -287,8 +296,7 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
       const fetched = await deps.fetchOne[link.source](link.id);
       if ('code' in fetched) return { status: '실패', errorCode: `fetch_${fetched.code}`, result: {} };
       const id = upsertPosting(db, fetched, 'link', job.userId);
-      const task = await storeRequirements(db, deps, job.userId, id, fetched, counts, ai);
-      if (task) waiting.push(task);
+      waiting.push(...await storeRequirements(db, deps, job.userId, id, fetched, counts, ai));
       await settleRemote(db, deps, job.userId, waiting, counts);
       await judgeFor(db, deps, job.userId, loadUserBasis(db, job.userId) ?? basis, [db.prepare('SELECT * FROM postings WHERE id = ? AND owner_user_id = ?').get(id, job.userId) as PostingRow], counts);
       return { status: counts.aiFailures ? '일부 실패' : '성공', result: { postingId: id, judged: counts.judged, aiFailures: counts.aiFailures, aiFailureCodes: counts.aiFailureCodes } };
@@ -334,8 +342,7 @@ export function createHandler(db: DatabaseSync, deps: PipelineDeps = defaultDeps
         if ((seen.get(key) ?? p.source) !== p.source) { counts.duplicates++; continue; }
         seen.set(key, p.source);
         const id = upsertPosting(db, p, 'auto', job.userId);
-        const task = await storeRequirements(db, deps, job.userId, id, p, counts, ai);
-        if (task) waiting.push(task);
+        waiting.push(...await storeRequirements(db, deps, job.userId, id, p, counts, ai));
         counts.collected++;
       }
       progress(index + 1);

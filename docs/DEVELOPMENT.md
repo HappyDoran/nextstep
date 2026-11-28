@@ -1,7 +1,7 @@
 ---
 title: 개발 가이드
 kind: guide
-last_verified: 2026-11-25
+last_verified: 2026-11-28
 ---
 
 # NextStep 개발 가이드
@@ -10,7 +10,7 @@ last_verified: 2026-11-25
 
 ## 현재 구현 범위
 
-기획 범위와의 차이(2026-11-14 개정 기준): AI는 각 사용자가 연결한 내 AI(데스크톱 앱이 그 기기의 Codex 계정으로 실행, 2026-11-26)를 먼저 쓰고 없거나 늦으면 서버의 로컬 LLM(Ollama qwen3:1.7b)이 공고·서류·메일 정보 추출을 하며, 추천 분류는 서버 규칙이 한다(메일은 아직 로컬만). 자동 수집 네 곳·직무 여섯 개는 구현했으나 백엔드·QA·점핏은 실제 추천 흐름 검증 전이고, 메일은 네이버(가입 시점부터 조회·매시간 조회·과거 범위 넓히기 구현, 정기 누락 확인은 보류)이고, 추천 고급 필터·좋아요/별로·제외 복구, 지원 건 잠금, 확인 요청 보류·회사별 묶음·연결 제안, 지원 현황 CSV 가져오기를 구현했으며 서버는 아직 운영자 컴퓨터의 로컬 서버다. 데스크톱 상주 앱(Electron)은 macOS 개발 실행과 설치용 앱(`NextStep.app`) 실행을 확인했고, Windows용 압축 파일은 만들었으나 Windows 실행은 아직 확인하지 않았다. 단계별 상태는 [백로그](spec/백로그.md)가 소유한다.
+기획 범위와의 차이(2026-11-14 개정 기준): AI는 각 사용자가 연결한 내 AI(데스크톱 앱이 그 기기의 Codex·Claude 계정으로 실행, 2026-11-26·28, 공고는 켠 경로마다 분석해 학습 표본으로 모음)를 먼저 쓰고 없거나 늦으면 서버의 로컬 LLM(Ollama qwen3:1.7b, Codex 결과 참고 문구 사용. 매주 Mac에서 학습한 공고 모델 `nextstep-posting`이 평가를 통과해 올라와 있으면 공고 조건 추출에 그 모델)이 공고·서류·메일 정보 추출을 하며, 추천 분류는 서버 규칙이 한다(메일은 아직 로컬만). 자동 수집 네 곳·직무 여섯 개는 구현했으나 백엔드·QA·점핏은 실제 추천 흐름 검증 전이고, 메일은 네이버(가입 시점부터 조회·매시간 조회·과거 범위 넓히기 구현, 정기 누락 확인은 보류)이고, 추천 고급 필터·좋아요/별로·제외 복구, 지원 건 잠금, 확인 요청 보류·회사별 묶음·연결 제안, 지원 현황 CSV 가져오기를 구현했으며 서버는 아직 운영자 컴퓨터의 로컬 서버다. 데스크톱 상주 앱(Electron)은 macOS 개발 실행과 설치용 앱(`NextStep.app`) 실행을 확인했고, Windows용 압축 파일은 만들었으나 Windows 실행은 아직 확인하지 않았다. 단계별 상태는 [백로그](spec/백로그.md)가 소유한다.
 
 pnpm/Turborepo 모노레포, 웹 개발 화면, API·SQLite 준비 확인, DB 버전 관리, 공통 계약·UI·토큰과 Storybook을 구성했다. 디자인 기초는 원시 값·의미 색상·타입·간격·radius·그림자·모션 시간·이징·Lucide React 아이콘을 제공하며 선택한 브랜드와 Light/Dark를 카탈로그에서 비교할 수 있다. 구글 로그인(미등록 계정은 운영자 Discord로 초대 코드 요청 후 코드 입력, 이메일·비밀번호 로그인 없음)·로그아웃·계정 삭제·개인정보처리방침(`/privacy`), 지원 현황(직접 등록·검색·상태 필터·상세·상태/열람 수정과 변경 이력·삭제), 설정(계정·자동 갱신 ON/OFF 저장·연결 확인)이 웹에서 동작한다. 공고 열기는 기본 브라우저로 이동만 하고 지원 상태를 바꾸지 않는다. 서버에는 P1-01 기술 검증용 텍스트 PDF/MD 이력서 추출 모듈과 잡코리아 공고·네이버 IMAP 읽기 전용 검증 명령이 있으며 API에 연결하지 않았다. 서버 하나를 운영자와 초대 사용자가 쓰며, 공고는 갱신한 사용자 자료로만 저장한다.
 
@@ -53,7 +53,9 @@ sh scripts/home-deploy.sh   # 받기·설치·서버/웹 빌드·서비스 재�
 | `pnpm --filter @nextstep/web start` | 빌드된 웹 실행 |
 | `pnpm --filter @nextstep/server verify:jobkorea` | 잡코리아 네 직무 공개 공고 소량 조회(직무당 목록 1회·상세 3건, 요청 간 2.5초). 원문 없이 추출 결과·실패 구분만 출력. 공고 검증 명령은 403·429를 받은 호스트에는 다시 요청하지 않음 |
 | `pnpm --filter @nextstep/server invite` | 운영자용 초대 코드 발급(누구나 한 번 쓰는 코드, 14일 유효). 서버와 같은 DB에 코드 해시만 저장하고 코드는 이 출력에서만 보임. 보통은 미등록 계정이 구글 로그인하면 그 계정 전용 코드가 Discord로 오므로 이 명령은 예비용 |
-| `EVAL_PROVIDER=local\|codex pnpm --filter @nextstep/server eval:extract` | 실제 공고 평가 세트(커밋하지 않는 `apps/server/.data/eval/`의 공고 본문·참고 라벨)로 공고 직무 분류 정확도를 경로별(로컬 Ollama / 이 기기 Codex)로 재고, 제목 보정 전후를 비교 |
+| `EVAL_PROVIDER=local\|codex\|claude pnpm --filter @nextstep/server eval:extract` | 실제 공고 평가 세트(커밋하지 않는 `apps/server/.data/eval/`의 공고 본문·참고 라벨)로 공고 직무 분류 정확도를 경로별(로컬 Ollama / 이 기기 Codex / 이 기기 Claude)로 재고, 제목 보정 전후를 비교. 결과 전체는 `result-<경로>.json` |
+| `pnpm distill [--scheduled\|--force\|--no-deploy\|--from-eval]` | 로컬 공고 모델 학습(운영자 Mac 전용): 홈서버 학습 표본을 읽기 전용으로 받아 Codex·Claude가 직무를 같게 본 공고로 Qwen3 1.7B를 학습·평가하고, 지금 모델보다 나으면 홈서버 `nextstep-posting`으로 바꾼 뒤 Discord로 알림. 자료가 모자라면 건너뜀. `--from-eval`은 평가 세트로 파이프라인 시험. 준비는 아래 '로컬 모델 학습' |
+| `sh scripts/distill-schedule.sh install\|uninstall\|status` | 이 Mac launchd에 매주 학습 예약(매일 10:00 확인, 지난 실행 6일 뒤에만 실행, 기록 `apps/server/.data/distill/distill.log`) |
 | `pnpm --filter @nextstep/server eval:recommend` | 정답 사례 57건(합성)의 공고 조건·지원자 사실을 로컬 AI로 추출하고 규칙으로 분류해 직무별 일치율·주입 사례·오판 근거를 출력(조정용 74건, `EVAL_SET=holdout`이면 검증용 20건) |
 | `pnpm --filter @nextstep/server verify:saramin` | 사람인 네 직무 공개 검색 목록 1회·상세 3건 조회(요청 간 2.5초). 원문 없이 추출 결과·본문 길이·실패 구분만 출력 |
 | `pnpm --filter @nextstep/server verify:wanted` | 원티드 네 직무 공개 목록·상세 각 3건 조회 |
@@ -64,6 +66,22 @@ sh scripts/home-deploy.sh   # 받기·설치·서버/웹 빌드·서비스 재�
 
 
 최초 실행 전에 포트가 비어 있는지 확인한다. 다른 서비스의 프로세스를 종료하지 않는다. API·웹 포트를 바꾸는 경우 관련 URL을 함께 맞춘다. Next CLI 포트는 해당 workspace 명령의 `--port`를 수정하거나 CLI로 별도 지정한다.
+
+### 로컬 모델 학습 준비 (운영자 Mac, 한 번)
+
+Apple Silicon Mac에서만 돈다. 모두 커밋하지 않는 `apps/server/.data/distill/` 아래에 둔다.
+
+```sh
+cd apps/server
+python3 -m venv .data/distill/venv
+.data/distill/venv/bin/pip install mlx-lm torch "transformers>=4.50" sentencepiece protobuf
+git clone --depth 1 https://github.com/ggml-org/llama.cpp.git .data/distill/llama.cpp
+.data/distill/venv/bin/pip install -e .data/distill/llama.cpp/gguf-py
+brew install llama.cpp          # llama-quantize
+.data/distill/venv/bin/hf download Qwen/Qwen3-1.7B
+```
+
+Mac Ollama(`ollama serve`)에 `qwen3:1.7b`가 있어야 하고, `ssh doran-server`가 비밀번호 없이 되어야 한다. 학습한 모델을 되돌리려면 `ssh doran-server ollama rm nextstep-posting`(서버는 10분 안에 기본 모델로 돌아감).
 
 ## 환경과 데이터
 

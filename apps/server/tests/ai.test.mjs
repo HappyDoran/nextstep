@@ -9,7 +9,7 @@ import { judgementSchema } from '../dist/prompts/recommend.js';
 const valid = { classification: '기본', met: [], unmet: [], unknown: [], reason: '충족' };
 const reply = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
 async function withOllama(handler, fn) {
-  const server = createServer((req, res) => { let body = ''; req.on('data', c => { body += c; }).on('end', () => handler(req, res, JSON.parse(body))); });
+  const server = createServer((req, res) => { let body = ''; req.on('data', c => { body += c; }).on('end', () => handler(req, res, body ? JSON.parse(body) : null)); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const env = { ...process.env };
   Object.assign(process.env, { NEXTSTEP_OLLAMA_URL: `http://127.0.0.1:${server.address().port}`, NEXTSTEP_OLLAMA_MODEL: 'qwen3:1.7b' });
@@ -79,7 +79,8 @@ test('공고 조건 추출도 공용 입력 상한까지만 보낸다(문맥을 
   const seen = [];
   await withOllama((_req, res, body) => { seen.push(body); reply(res, 200, { message: { content: JSON.stringify(facts) } }); }, async () => {
     await extractRequirements({ title: '가상 공고', company: '가상회사', body: `${'가'.repeat(MAX_INPUT_CHARS)}본문끝표시` });
-    assert.equal(seen[0].messages[1].content.includes('본문끝표시'), false);
+    // 학습 모델 확인(모델 목록 조회)이 먼저 올 수 있어 대화 요청만 본다.
+    assert.equal(seen.find(b => b?.messages).messages[1].content.includes('본문끝표시'), false);
   });
 });
 

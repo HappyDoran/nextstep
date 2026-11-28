@@ -9,7 +9,7 @@ import { createInvite } from '../dist/auth.js';
 import { signIn } from './fake-google.mjs';
 import { runNext } from '../dist/recommend/jobs.js';
 import { createHandler } from '../dist/recommend/pipeline.js';
-import { sweep } from '../dist/ai/remote.js';
+import { sweep, teacherHints } from '../dist/ai/remote.js';
 
 // 내 AI 연결: 실행기(가짜)가 일을 받아 결과를 올리는 흐름과 폴백·격리만 확인한다(실제 Codex 호출 아님).
 const posting = (source, sourceId, title) => ({ source, sourceId, url: `https://example.com/${source}/${sourceId}`, title, company: '가상회사', deadline: '2099-01-01T00:00:00+09:00', alwaysHire: false, location: '서울', remote: false, careers: [], companyType: null, employeeCount: null, externalApplyUrl: null, body: '필수: Swift 3년', bodyFailure: null });
@@ -37,16 +37,17 @@ async function setup() {
     return cookie;
   };
   const api = (cookie, method, url, payload) => app.inject({ method, url, headers: { cookie }, ...(payload ? { payload } : {}) });
-  const runner = (cookie, loggedIn = true) => api(cookie, 'POST', '/ai/runner', { device: '테스트 Mac', codex: { installed: true, loggedIn, version: '0.172.0' } });
+  const runner = (cookie, loggedIn = true, claude) => api(cookie, 'POST', '/ai/runner', { device: '테스트 Mac', codex: { installed: true, loggedIn, version: '0.172.0' }, ...(claude ? { claude } : {}) });
   return { dir, path, app, signup, api, runner, done: async () => { await app.close(); rmSync(dir, { recursive: true, force: true }); } };
 }
 // 가짜 실행기: 받을 일이 없을 때까지 받아서 정해진 결과를 올린다.
-async function drain(s, cookie, outputFor) {
+async function drain(s, cookie, outputFor, provider = 'codex') {
   for (let i = 0; i < 10; i++) {
-    const job = (await s.api(cookie, 'POST', '/ai/tasks/claim')).json();
+    // Codex는 이전 앱처럼 본문 없이 받는다.
+    const job = (await s.api(cookie, 'POST', '/ai/tasks/claim', provider === 'codex' ? undefined : { provider })).json();
     if (!job.kind) return;
     const ids = job.prompt.match(/"id":\s*"([^"]+)"/g)?.map(m => m.split('"')[3]) ?? [];
-    const res = await s.api(cookie, 'POST', '/ai/tasks/submit', { provider: 'codex', taskIds: job.taskIds, output: outputFor(job.kind, ids) });
+    const res = await s.api(cookie, 'POST', '/ai/tasks/submit', { provider, taskIds: job.taskIds, output: outputFor(job.kind, ids) });
     assert.equal(res.statusCode, 200, res.body);
   }
 }
@@ -58,7 +59,7 @@ test('실행기가 켜져 있으면 갱신이 서류·공고를 내 AI 일로 �
     const a = await s.signup('a@example.com');
     const status = (await s.runner(a)).json();
     assert.equal(status.active, true);
-    assert.deepEqual(status.settings, { enabled: true, sendPostings: true, sendDocuments: true, sendMail: false, dailyLimit: 30 });
+    assert.deepEqual(status.settings, { enabled: true, codex: true, claude: true, sendPostings: true, sendDocuments: true, sendMail: false, dailyLimit: 30 });
     // 실행기 알림만으로 서류 분석 일이 생긴다.
     assert.equal(status.pending, 1);
     await s.api(a, 'POST', '/postings/refresh');
@@ -78,7 +79,7 @@ test('실행기가 켜져 있으면 갱신이 서류·공고를 내 AI 일로 �
     assert.equal(after.pending, 0);
     assert.equal(after.remotePostings, 1);
     assert.equal(after.remoteDocuments, true);
-    assert.equal(after.usage.calls, 2);
+    assert.deepEqual([after.usage.codex, after.usage.claude], [2, 0]);
   } finally { await s.done(); }
 });
 
@@ -138,7 +139,7 @@ test('다른 사용자의 일은 받거나 올릴 수 없고, 끄면 대기 중�
     assert.equal((await s.api(a, 'POST', '/ai/tasks/submit', { provider: 'codex', taskIds: job.taskIds, output: { careers: 'x' } })).statusCode, 422);
     assert.equal((await s.api(a, 'POST', '/ai/tasks/claim')).json().kind, 'candidate');
     // 하루 상한(1번)을 넘으면 주지 않는다.
-    const settings = { enabled: true, sendPostings: true, sendDocuments: true, sendMail: false, dailyLimit: 1 };
+    const settings = { enabled: true, codex: true, claude: true, sendPostings: true, sendDocuments: true, sendMail: false, dailyLimit: 1 };
     await s.api(a, 'PUT', '/ai/settings', settings);
     assert.equal((await s.api(a, 'POST', '/ai/tasks/claim')).json().kind, null);
     // 서류 보내기를 끄면 대기 중인 서류 일을 지운다.
@@ -167,6 +168,48 @@ test('1시간 안에 내 AI가 안 한 서류는 로컬로 처리하고, 3일 �
       assert.equal(db.prepare('SELECT fallback_at FROM ai_tasks').get().fallback_at, null);
       await sweep(db, local, Date.now() + 4 * 86_400_000);
       assert.equal(db.prepare('SELECT count(*) n FROM ai_tasks').get().n, 0);
+      // 학습 표본은 90일 뒤 지운다.
+      const user = db.prepare('SELECT id FROM users').get().id;
+      db.prepare("INSERT INTO ai_samples (user_id, posting_id, version, input, created_at, updated_at) VALUES (?, 'p', 'v', '{}', ?, ?)").run(user, new Date().toISOString(), new Date().toISOString());
+      await sweep(db, local, Date.now() + 89 * 86_400_000);
+      assert.equal(db.prepare('SELECT count(*) n FROM ai_samples').get().n, 1);
+      await sweep(db, local, Date.now() + 91 * 86_400_000);
+      assert.equal(db.prepare('SELECT count(*) n FROM ai_samples').get().n, 0);
     } finally { db.close(); }
+  } finally { await s.done(); }
+});
+
+test('Codex·Claude 둘 다 켜져 있으면 같은 공고를 경로마다 분석해 표본에 모으고, 판정은 Codex 결과를 쓴다', async () => {
+  const s = await setup();
+  try {
+    const a = await s.signup('a@example.com');
+    const status = (await s.runner(a, true, { installed: true, loggedIn: true, version: '2.1.332' })).json();
+    assert.deepEqual(status.providers, ['codex', 'claude']);
+    await s.api(a, 'POST', '/postings/refresh');
+    const calls = [];
+    const db = openDatabase(s.path);
+    try {
+      const running = runNext(db, createHandler(db, deps(calls, 5000)));
+      await new Promise(resolve => setTimeout(resolve, 200));
+      // Claude가 먼저 끝내도 갱신은 Codex 결과를 기다리고, Codex 결과가 판정에 쓰인다.
+      await drain(s, a, (kind, ids) => (kind === 'candidate' ? candidate : { items: ids.map(id => ({ id, result: requirements('기획') })) }), 'claude');
+      await drain(s, a, output);
+      await running;
+      assert.deepEqual(calls, []);
+      const sample = db.prepare('SELECT input, codex, claude, local FROM ai_samples').get();
+      assert.equal(JSON.parse(sample.input).title, 'iOS 개발자');
+      assert.deepEqual([JSON.parse(sample.codex).jobFamilies, JSON.parse(sample.claude).jobFamilies, sample.local], [['앱 개발'], ['기획'], null]);
+      assert.equal(JSON.parse(db.prepare('SELECT requirements FROM postings').get().requirements).provider, 'codex');
+      // 서류는 한 경로만 분석한다(Claude가 먼저 받음, 학습에 쓰지 않음).
+      assert.equal(db.prepare('SELECT provider FROM candidate_facts').get().provider, 'claude');
+      // 로컬 모델 참고 문구: 비슷한 제목의 Codex 결과.
+      assert.match(teacherHints(db, 'iOS 앱 개발자'), /"iOS 개발자" → 직무 앱 개발 · 필수 Swift/);
+      assert.equal(teacherHints(db, '물류 영업 담당'), '');
+    } finally { db.close(); }
+    const after = (await s.api(a, 'GET', '/ai/status')).json();
+    assert.deepEqual([after.usage.codex, after.usage.claude, after.pending], [1, 2, 0]);
+    // Claude를 끄면 Claude 일만 지우고 Claude로 주지 않는다.
+    await s.api(a, 'PUT', '/ai/settings', { ...after.settings, claude: false });
+    assert.equal((await s.api(a, 'POST', '/ai/tasks/claim', { provider: 'claude' })).json().kind, null);
   } finally { await s.done(); }
 });

@@ -63,3 +63,13 @@ test('내 AI 실행기: 셸 시작 문구가 섞여도 PATH는 마지막 줄, �
   assert.equal(classify(r('Not logged in. Run codex login')), 'not_logged_in');
   assert.equal(classify(r('something else')), 'failed');
 });
+
+test('Claude 실행기: 구조화 출력을 고르고, 로그인·사용량 한도·형식 실패를 가른다', async () => {
+  const { claudeResult } = await import('../dist/runner.js');
+  const r = (body, extra = {}) => ({ code: 0, stdout: JSON.stringify(body), stderr: '', timedOut: false, ...extra });
+  assert.deepEqual(claudeResult(r({ is_error: false, result: '{}', structured_output: { items: [] } })), { output: { items: [] } });
+  assert.deepEqual(claudeResult(r({ is_error: false, result: '그냥 글' })), { error: 'invalid_output' });
+  assert.deepEqual(claudeResult(r({ is_error: true, result: 'Invalid API key · Please run /login' }, { code: 1 })), { error: 'not_logged_in' });
+  assert.deepEqual(claudeResult(r({ is_error: true, result: "You've hit your limit · resets 3pm" }, { code: 1 })), { error: 'usage_limit' });
+  assert.deepEqual(claudeResult({ code: null, stdout: '', stderr: '', timedOut: true }), { error: 'timeout' });
+});

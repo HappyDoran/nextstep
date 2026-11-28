@@ -19,7 +19,8 @@
     "verify:mail-accuracy": "tsx src/verify/mail-accuracy.ts",
     "verify:mail-sync": "tsx --env-file-if-exists=.env.local src/verify/mail-sync.ts",
     "verify:recommend-flow": "tsx --env-file-if-exists=.env.local src/verify/recommend-flow.ts",
-    "eval:extract": "tsx --env-file-if-exists=.env.local src/verify/eval-extract.ts"
+    "eval:extract": "tsx --env-file-if-exists=.env.local src/verify/eval-extract.ts",
+    "distill": "tsx src/distill/distill.ts"
   },
   "dependencies": {
     "@nextstep/contracts": "workspace:*",

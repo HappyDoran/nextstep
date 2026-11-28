@@ -33,16 +33,33 @@ export async function ollamaStatus(): Promise<'정상' | '모델 없음' | '연�
   } catch { return '연결 실패'; }
 }
 
-export async function structured<T extends z.ZodType>(name: string, schema: T, instructions: string, input: string): Promise<z.infer<T>> {
+// 공고 분석 전용 학습 모델(사용자 결정 2026-11-28): Mac에서 Codex·Claude 결과로 학습해 평가를 통과하면 이 이름으로 홈서버 Ollama에 올린다.
+// 있으면 공고 조건 추출에 쓰고, 지우면(`ollama rm nextstep-posting`) 기본 모델로 돌아간다. 10분마다 다시 확인한다.
+export const POSTING_MODEL = 'nextstep-posting';
+let postingCheck = { at: 0, model: '' };
+export async function postingModel(): Promise<string> {
+  if (fake()) return ollamaModel();
+  if (Date.now() - postingCheck.at < 10 * 60_000 && postingCheck.model) return postingCheck.model;
+  let model = ollamaModel();
+  try {
+    const response = await fetch(`${ollamaUrl()}/api/tags`, { signal: AbortSignal.timeout(3000) });
+    const { models } = await response.json() as { models?: { name?: string }[] };
+    if (models?.some(m => m.name === POSTING_MODEL || m.name === `${POSTING_MODEL}:latest`)) model = POSTING_MODEL;
+  } catch { /* 연결 실패면 기본 모델(호출에서 다시 실패를 알린다) */ }
+  postingCheck = { at: Date.now(), model };
+  return model;
+}
+
+export async function structured<T extends z.ZodType>(name: string, schema: T, instructions: string, input: string, model = ollamaModel()): Promise<z.infer<T>> {
   if (fake()) {
     try { return schema.parse(fakeValue(jsonSchema(schema))); } catch { throw new AiError('ai_invalid_output'); }
   }
   const dir = process.env.NEXTSTEP_AI_CACHE_DIR;
-  const file = dir && join(dir, `${createHash('sha256').update(JSON.stringify([`ollama:${ollamaModel()}${think() ? ':think' : ''}`, name, instructions, input])).digest('hex')}.json`);
+  const file = dir && join(dir, `${createHash('sha256').update(JSON.stringify([`ollama:${model}${think() ? ':think' : ''}`, name, instructions, input])).digest('hex')}.json`);
   if (file) {
     try { return schema.parse(JSON.parse(readFileSync(file, 'utf8'))); } catch { /* 없거나 스키마가 바뀌면 새로 요청 */ }
   }
-  const value = await requestOllama(schema, instructions, input);
+  const value = await requestOllama(schema, instructions, input, model);
   if (file) {
     // 응답에 개인 자료(회사명 등)가 있을 수 있어 소유자만 읽게 둔다.
     mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -70,7 +87,7 @@ export const MAX_INPUT_CHARS = 7000;
 
 // Ollama 구조화 출력: JSON Schema를 format으로 넘기고 Qwen3 생각 모드는 끈다. 온도 0, 문맥 8,192 토큰.
 // 형식이 틀리면 한 번 다시 묻고, 그래도 틀리면 ai_invalid_output(호출한 쪽이 미확인으로 처리).
-async function requestOllama<T extends z.ZodType>(schema: T, instructions: string, input: string): Promise<z.infer<T>> {
+async function requestOllama<T extends z.ZodType>(schema: T, instructions: string, input: string, model: string): Promise<z.infer<T>> {
   for (let attempt = 0; attempt < 2; attempt++) {
     let res: Response;
     try {
@@ -79,7 +96,7 @@ async function requestOllama<T extends z.ZodType>(schema: T, instructions: strin
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           // 생각 모드는 기본으로 끈다(느림). NEXTSTEP_OLLAMA_THINK=1은 품질 비교용.
-          model: ollamaModel(), stream: false, think: think(), format: jsonSchema(schema),
+          model, stream: false, think: think(), format: jsonSchema(schema),
           // 출력 상한: 작은 모델이 JSON을 끝없이 이어 쓰는 경우를 막는다(구조화 출력은 보통 수백 토큰, 생각 모드면 더 길게).
           options: { temperature: 0, num_ctx: 8192, num_predict: think() ? 6144 : 1536 },
           messages: [{ role: 'system', content: instructions }, { role: 'user', content: input }],

@@ -174,18 +174,22 @@ test('마감된 공고는 지원 여부와 관계없이 추천 목록에서 빠�
   } finally { await deleteAccount(page); }
 });
 
-test('설정 내 AI 연결: 연결 전 안내와 보낼 항목 저장(실제 Codex 호출 아님)', async ({ page }) => {
+test('설정 내 AI 연결: Codex·Claude 연결 전 안내와 보낼 항목·경로 저장(실제 AI 호출 아님)', async ({ page }) => {
   await signup(page, `e2e-ai-${Date.now()}@example.com`);
   try {
     await page.goto('/#settings-ai');
     const dialog = page.getByRole('dialog', { name: '설정' });
-    await expect(dialog.getByText('연결 전')).toBeVisible();
+    await expect(dialog.getByText('연결 전')).toHaveCount(2);
     await expect(dialog.getByText('codex login')).toBeVisible();
+    await expect(dialog.getByText('claude', { exact: true })).toBeVisible();
     await expect(dialog.getByRole('switch', { name: '메일 보내기(준비 중)' })).toBeDisabled();
     await dialog.getByRole('switch', { name: '공고 보내기' }).uncheck();
+    await dialog.getByRole('switch', { name: 'Claude 쓰기' }).uncheck();
     await dialog.getByRole('button', { name: '저장' }).click();
     await expect(dialog.getByRole('status').filter({ hasText: '저장했어요' })).toBeVisible();
     await page.reload();
     await expect(page.getByRole('dialog', { name: '설정' }).getByRole('switch', { name: '공고 보내기' })).not.toBeChecked();
+    await expect(page.getByRole('dialog', { name: '설정' }).getByRole('switch', { name: 'Claude 쓰기' })).not.toBeChecked();
+    await expect(page.getByRole('dialog', { name: '설정' }).getByRole('switch', { name: 'Codex 쓰기' })).toBeChecked();
   } finally { await deleteAccount(page); }
 });

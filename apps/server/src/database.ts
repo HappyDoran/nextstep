@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-export const SCHEMA_VERSION = 24;
+export const SCHEMA_VERSION = 25;
 
 // 쓰기 트랜잭션(BEGIN IMMEDIATE)에서 fn을 동기로 실행한다. fn 안에서 await하지 않는다.
 // fn이 직접 ROLLBACK하고 돌아오면 COMMIT하지 않고, 예외면 되돌린 뒤 다시 던진다.
@@ -405,6 +405,29 @@ export function openDatabase(filename: string) {
       // 새 공고 표시(P1-19 ④, 2026-11-27): 그 사용자 자료로 처음 들어온 시각. 기존 공고는 마지막 확인 시각으로 채운다.
       if (!db.prepare("SELECT 1 FROM pragma_table_info('postings') WHERE name = 'first_seen_at'").get()) db.exec('ALTER TABLE postings ADD COLUMN first_seen_at TEXT; UPDATE postings SET first_seen_at = checked_at');
       db.exec('PRAGMA user_version = 24');
+    }
+    if (version < 25) {
+      // Claude 경로·로컬 모델 학습(사용자 결정 2026-11-28).
+      // ai_tasks.provider: 공고 일은 경로(codex·claude)마다 하나씩 둔다. ''는 어느 경로든 받는 일(서류, 이전 버전에서 쌓인 일).
+      // ai_samples: 같은 공고 입력에 대한 경로별(codex·claude·local) 조건 추출 결과. 공개 채용공고 본문만 두며 서류·메일은 넣지 않는다.
+      // 로컬 모델을 Codex·Claude 결과에 맞춰 학습·평가하는 자료이며 90일 뒤 지운다(retention.ts).
+      if (!db.prepare("SELECT 1 FROM pragma_table_info('ai_tasks') WHERE name = 'provider'").get()) db.exec("ALTER TABLE ai_tasks ADD COLUMN provider TEXT NOT NULL DEFAULT ''");
+      db.exec(`DROP INDEX IF EXISTS ai_tasks_ref;
+        CREATE UNIQUE INDEX IF NOT EXISTS ai_tasks_ref_provider ON ai_tasks(user_id, kind, ref, provider);
+        CREATE TABLE IF NOT EXISTS ai_samples (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          posting_id TEXT NOT NULL,
+          version TEXT NOT NULL,
+          input TEXT NOT NULL,
+          codex TEXT,
+          claude TEXT,
+          local TEXT,
+          local_model TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, posting_id, version)
+        ) STRICT;
+        PRAGMA user_version = 25;`);
     }
     db.exec('COMMIT');
     // 버전 확인 뒤에 설정해 거부한 미래 DB의 저널 모드를 바꾸지 않는다.

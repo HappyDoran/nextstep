@@ -16,6 +16,7 @@
     "test:harness": "node --test tests/harness/*.test.mjs",
     "test:e2e": "playwright test",
     "structure:check": "node scripts/check-structure.mjs",
+    "distill": "pnpm --filter @nextstep/server distill",
     "check": "pnpm structure:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "prepare": "node scripts/install-hooks.mjs"
   },

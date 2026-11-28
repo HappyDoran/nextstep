@@ -1,7 +1,7 @@
 ---
 title: 기술 규칙
 kind: rule
-last_verified: 2026-11-26
+last_verified: 2026-11-28
 ---
 
 # 기술 규칙
@@ -12,7 +12,7 @@ last_verified: 2026-11-26
 
 서버는 Fastify 5, 로컬 관계형 DB는 SQLite와 Node 내장 `node:sqlite`를 사용한다. 단일 서버·작업자, 트랜잭션·고유 제약을 사용할 수 있는 초기 로컬 개발 선택이다. 내장 SQLite API의 안정성 상태는 Node 버전에 종속되며 현재 실행 시 실험적 경고가 발생할 수 있다. 작은 동기 쿼리용으로 한정하고 수집·추출처럼 오래 걸리는 처리는 요청 경로에 넣지 않는다. 운영 환경은 홈서버 한 대(Ubuntu)이며 웹·API·SQLite를 함께 실행하고 Tailscale 사설망으로만 접속한다. 개발은 Mac, 빌드·실행은 홈서버에서 한다(사용자 결정 2026-11-14).
 
-AI 처리는 각 사용자가 연결한 내 AI(자기 기기 데스크톱 앱이 자기 Codex 계정으로 `codex exec` 실행, 사용자 결정 2026-11-26)를 먼저 쓰고, 없거나 늦으면 홈서버 로컬 LLM이 한다. 서버는 외부 AI API를 직접 부르지 않고 AI 로그인 정보·키를 보관하지 않는다(내 AI 결과는 서버가 같은 스키마로 다시 검증, `apps/server/src/ai/remote.ts`). Ollama를 `127.0.0.1`에만 열어 서버가 fetch로 호출하고(`NEXTSTEP_OLLAMA_URL`·`NEXTSTEP_OLLAMA_MODEL`, 기본 qwen3:1.7b), JSON Schema 구조화 출력을 받아 공통 계약 schema로 다시 검증한다. 모델은 정답 사례 측정(검증 기록)으로 정한 Qwen3 1.7B(Q4_K_M)다. 로컬 LLM은 공고·서류·메일의 정보 추출만 하고 추천 분류는 서버 규칙이 한다. 서버는 외부 AI API를 호출하지 않는다. 이력서·공고·메일 본문은 구분자 안의 데이터로만 전달한다. 메일 조회는 imapflow, PDF 본문 추출은 pdfjs-dist legacy 빌드를 서버에서만 사용한다. IMAP은 읽기 전용(EXAMINE)으로 열고 플래그를 바꾸지 않는다. 서류는 모두 MD 텍스트로 바꿔 저장·분석한다. PDF는 크기·처리 시간 제한 안에서 텍스트 레이어를 읽고, 글자 없는 쪽만 시스템 도구 `pdftoppm`(poppler)·`tesseract`(kor+eng)로 글자를 인식한다(도구가 없으면 경고만). Notion ZIP은 의존성 없이 Node `zlib`으로 MD 항목만 메모리에서 읽고 디스크에 풀지 않는다(항목·해제 크기 제한, 암호화·ZIP64 거부). 공고 수집은 사람 속도로 요청하고 로그인·차단 우회를 하지 않는다. 출처는 자동 수집하며(현재 코드: 사람인·잡코리아·자소설닷컴, 범위: 원티드·점핏 추가) 약관 위험과 결정 근거는 기술 설계 D절이 소유한다.
+AI 처리는 각 사용자가 연결한 내 AI(자기 기기 데스크톱 앱이 자기 Codex·Claude 계정으로 `codex exec`·`claude -p` 실행, 사용자 결정 2026-11-26·28)를 먼저 쓰고, 없거나 늦으면 홈서버 로컬 LLM이 한다. 로컬 공고 모델 학습은 운영자 Mac에서만 개발 도구로 돈다: Python 가상환경의 mlx-lm(LoRA 학습·합치기), llama.cpp `convert_hf_to_gguf.py`·`llama-quantize`(GGUF Q4_K_M), Mac Ollama(평가). 서버 실행 코드는 이 도구들을 쓰지 않고 학습된 모델을 Ollama 모델 이름(`nextstep-posting`)으로만 쓴다. 서버는 외부 AI API를 직접 부르지 않고 AI 로그인 정보·키를 보관하지 않는다(내 AI 결과는 서버가 같은 스키마로 다시 검증, `apps/server/src/ai/remote.ts`). Ollama를 `127.0.0.1`에만 열어 서버가 fetch로 호출하고(`NEXTSTEP_OLLAMA_URL`·`NEXTSTEP_OLLAMA_MODEL`, 기본 qwen3:1.7b), JSON Schema 구조화 출력을 받아 공통 계약 schema로 다시 검증한다. 모델은 정답 사례 측정(검증 기록)으로 정한 Qwen3 1.7B(Q4_K_M)다. 로컬 LLM은 공고·서류·메일의 정보 추출만 하고 추천 분류는 서버 규칙이 한다. 서버는 외부 AI API를 호출하지 않는다. 이력서·공고·메일 본문은 구분자 안의 데이터로만 전달한다. 메일 조회는 imapflow, PDF 본문 추출은 pdfjs-dist legacy 빌드를 서버에서만 사용한다. IMAP은 읽기 전용(EXAMINE)으로 열고 플래그를 바꾸지 않는다. 서류는 모두 MD 텍스트로 바꿔 저장·분석한다. PDF는 크기·처리 시간 제한 안에서 텍스트 레이어를 읽고, 글자 없는 쪽만 시스템 도구 `pdftoppm`(poppler)·`tesseract`(kor+eng)로 글자를 인식한다(도구가 없으면 경고만). Notion ZIP은 의존성 없이 Node `zlib`으로 MD 항목만 메모리에서 읽고 디스크에 풀지 않는다(항목·해제 크기 제한, 암호화·ZIP64 거부). 공고 수집은 사람 속도로 요청하고 로그인·차단 우회를 하지 않는다. 출처는 자동 수집하며(현재 코드: 사람인·잡코리아·자소설닷컴, 범위: 원티드·점핏 추가) 약관 위험과 결정 근거는 기술 설계 D절이 소유한다.
 
 Fastify의 [Node 지원 정책](https://fastify.dev/docs/latest/Reference/LTS/), Node의 [SQLite API](https://nodejs.org/docs/latest-v24.x/api/sqlite.html)를 기준으로 설치·타입·실행 호환성을 검증한다. 버전 문자열만으로 호환성을 보장하지 않는다.
 

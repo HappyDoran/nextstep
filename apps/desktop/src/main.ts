@@ -5,7 +5,7 @@ import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { serviceUrl, isServiceNavigation, isExternalUrl, googleLoginUrl, desktopLoginPath } from './security.js';
 import { noticeFor, wanted, type LatestRefresh, type NotifyPrefs } from './notify.js';
-import { codexStatus, runCodex, type Claim, type CodexStatus } from './runner.js';
+import { runners, type Claim, type CodexStatus, type Provider } from './runner.js';
 
 // 상주 앱: 창은 홈서버 웹을 그대로 열고, 창을 닫아도 메뉴 막대(macOS)·알림 영역(Windows) 아이콘으로 남아
 // 서버의 마지막 공고 갱신 결과를 1분마다 확인해 OS 알림을 보낸다. 수집·판정은 서버가 하고,
@@ -98,36 +98,52 @@ async function page<T>(path: string, body?: unknown): Promise<T | null> {
   return await window!.webContents.executeJavaScript(`fetch(${JSON.stringify(path)}, ${init}).then(r => r.ok ? r.json() : null).catch(() => null)`) as T | null;
 }
 
-// 내 AI 실행기: 1분 조회 때 이 기기의 Codex 상태를 서버에 알리고, 서버가 나눠 준 분석이 있으면 처리해 결과를 올린다.
-// Codex 상태는 10분마다(로그인 전이면 5분마다) 다시 본다. 사용량 한도에 걸리면 1시간 쉰다. 한 번에 하나만 돈다.
+// 내 AI 실행기: 1분 조회 때 이 기기의 Codex·Claude 상태를 서버에 알리고, 서버가 경로별로 나눠 준 분석이 있으면 처리해 결과를 올린다.
+// 상태는 10분마다(로그인 전이면 5분마다) 다시 본다. 사용량 한도에 걸린 경로는 1시간 쉰다. 한 번에 하나만 돈다(Codex 먼저).
 let ai = '확인 전';
 let runnerBusy = false;
-let codex: CodexStatus | undefined;
-let codexCheckedAt = 0;
-let pausedUntil = 0;
+const PROVIDERS: Provider[] = ['codex', 'claude'];
+const NAMES: Record<Provider, string> = { codex: 'Codex', claude: 'Claude' };
+const tools: Record<Provider, { status?: CodexStatus; checkedAt: number; pausedUntil: number }> = { codex: { checkedAt: 0, pausedUntil: 0 }, claude: { checkedAt: 0, pausedUntil: 0 } };
+/** 아이콘 메뉴 상태 줄: 쓸 수 있는 경로 이름, 없으면 첫 번째로 필요한 조치. */
+function aiLabel(enabled: boolean | undefined) {
+  if (enabled === false) return '꺼짐';
+  const ready = PROVIDERS.filter(p => tools[p].status?.loggedIn);
+  if (!ready.length) {
+    const codex = tools.codex.status;
+    return !codex?.installed ? 'Codex 설치 필요' : 'Codex 로그인 필요';
+  }
+  const resting = ready.filter(p => Date.now() < tools[p].pausedUntil);
+  return resting.length === ready.length ? '사용량 한도로 쉬는 중' : `연결됨(${ready.filter(p => !resting.includes(p)).map(p => NAMES[p]).join('·')})`;
+}
 async function runnerTick() {
   if (runnerBusy || loadFailed) return;
   runnerBusy = true;
   try {
-    const stale = Date.now() - codexCheckedAt > (codex?.loggedIn ? 10 : 5) * 60_000;
-    if (!codex || stale) { codex = await codexStatus(); codexCheckedAt = Date.now(); }
-    const state = await page<{ active: boolean; settings: { enabled: boolean } }>('/api/ai/runner', { device: hostname().slice(0, 100), codex });
-    ai = !codex.installed ? 'Codex 설치 필요' : !codex.loggedIn ? 'Codex 로그인 필요' : !state?.settings.enabled ? '꺼짐' : Date.now() < pausedUntil ? '사용량 한도로 쉬는 중' : '연결됨';
-    if (!state?.active || Date.now() < pausedUntil) return;
-    for (let i = 0; i < 20; i++) {
-      const claim = await page<Claim>('/api/ai/tasks/claim');
-      if (!claim?.kind) break;
-      ai = '분석 중';
-      updateTray();
-      const result = await runCodex(claim);
-      await page('/api/ai/tasks/submit', { provider: 'codex', taskIds: claim.taskIds, ...result });
-      if ('error' in result) {
-        if (result.error === 'usage_limit') pausedUntil = Date.now() + 60 * 60_000;
-        if (result.error === 'not_logged_in') codex = { ...codex, loggedIn: false };
-        break;
+    for (const p of PROVIDERS) {
+      const t = tools[p];
+      if (!t.status || Date.now() - t.checkedAt > (t.status.loggedIn ? 10 : 5) * 60_000) { t.status = await runners[p].status(); t.checkedAt = Date.now(); }
+    }
+    const state = await page<{ providers: Provider[]; settings: { enabled: boolean } }>('/api/ai/runner', { device: hostname().slice(0, 100), codex: tools.codex.status, claude: tools.claude.status });
+    ai = aiLabel(state?.settings.enabled);
+    for (const p of state?.providers ?? []) {
+      const t = tools[p];
+      if (Date.now() < t.pausedUntil) continue;
+      for (let i = 0; i < 20; i++) {
+        const claim = await page<Claim>('/api/ai/tasks/claim', { provider: p });
+        if (!claim?.kind) break;
+        ai = `분석 중(${NAMES[p]})`;
+        updateTray();
+        const result = await runners[p].run(claim);
+        await page('/api/ai/tasks/submit', { provider: p, taskIds: claim.taskIds, ...result });
+        if ('error' in result) {
+          if (result.error === 'usage_limit') t.pausedUntil = Date.now() + 60 * 60_000;
+          if (result.error === 'not_logged_in' && t.status) t.status = { ...t.status, loggedIn: false };
+          break;
+        }
       }
     }
-    ai = codex.loggedIn ? (Date.now() < pausedUntil ? '사용량 한도로 쉬는 중' : '연결됨') : 'Codex 로그인 필요';
+    ai = aiLabel(state?.settings.enabled);
   } catch { ai = '확인 실패'; } finally { runnerBusy = false; updateTray(); }
 }
 

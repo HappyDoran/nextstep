@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { dataBlock, MAX_INPUT_CHARS, structured } from '../ai/llm.js';
+import { dataBlock, MAX_INPUT_CHARS, POSTING_MODEL, postingModel, structured } from '../ai/llm.js';
 
 // 공고 본문에서 구조화 사실만 뽑는다. 원문은 저장하지 않고 이 결과만 저장한다.
 // 분류는 하지 않는다. 기본·도전·미확인·제외는 recommend/classify.ts 규칙이 정한다(기술 설계 D절).
@@ -41,11 +41,20 @@ export const REQUIREMENTS_INSTRUCTIONS = `너는 채용공고에서 사실만 �
 
 const CONDITION_WORDS = /자격|필수|요건|경력|이상|우대|requirement/i;
 
-export async function extractRequirements(posting: { title: string; company: string; body: string }) {
+/** 로컬 모델 입력(사용자 메시지). 학습 자료(distill)도 같은 함수로 만들어 학습과 실제 호출의 입력을 맞춘다. */
+export const requirementsInput = (posting: { title: string; company: string; body: string }, hints = '') =>
+  `${hints ? `${hints}\n\n` : ''}${dataBlock('posting', { title: posting.title, company: posting.company, body: posting.body.slice(0, MAX_INPUT_CHARS) })}`;
+
+/**
+ * 로컬 공고 조건 추출. hints: Codex·Claude가 비슷한 공고를 분석한 요약(remote.ts teacherHints).
+ * 학습한 공고 모델(nextstep-posting)이 있으면 그 모델을 참고 문구 없이 쓴다(학습할 때 문구가 없었다).
+ */
+export async function extractRequirements(posting: { title: string; company: string; body: string }, hints = '', model?: string) {
+  const chosen = model ?? await postingModel();
   // 본문이 너무 길면 앞부분만 보낸다. 문맥을 넘으면 Ollama가 지시문부터 잘라 버린다(공용 입력 상한).
-  const input = dataBlock('posting', { ...posting, body: posting.body.slice(0, MAX_INPUT_CHARS) });
-  const first = await structured('posting_requirements', requirementsSchema, REQUIREMENTS_INSTRUCTIONS, input);
+  const input = requirementsInput(posting, chosen === POSTING_MODEL || chosen.startsWith(`${POSTING_MODEL}:`) ? '' : hints);
+  const first = await structured('posting_requirements', requirementsSchema, REQUIREMENTS_INSTRUCTIONS, input, chosen);
   // 본문에 조건이 있는데 필수 조건을 비워 돌려주는 경우가 있어(2026-11-14 평가에서 관찰) 한 번만 다시 묻는다.
   if (first.required.length || !CONDITION_WORDS.test(posting.body)) return first;
-  return structured('posting_requirements', requirementsSchema, `${REQUIREMENTS_INSTRUCTIONS}\n- 본문에 자격요건·필수 조건이 있으면 required를 비우지 않는다.`, input);
+  return structured('posting_requirements', requirementsSchema, `${REQUIREMENTS_INSTRUCTIONS}\n- 본문에 자격요건·필수 조건이 있으면 required를 비우지 않는다.`, input, chosen);
 }
